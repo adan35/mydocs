@@ -12,6 +12,8 @@ import {
   Settings,
   Star,
   Trash2,
+  LayoutTemplate,
+  Network,
   Upload,
   Keyboard,
   PencilLine,
@@ -94,6 +96,25 @@ export function Sidebar({ onClose, drawer }: { onClose?: () => void; drawer?: bo
           route={{ name: 'tags' }}
           current={route.name === 'tags'}
         />
+        <NavItem
+          icon={<Network size={16} />}
+          label="Graph"
+          route={{ name: 'graph' }}
+          current={route.name === 'graph'}
+        />
+        <button
+          type="button"
+          className="flex h-[30px] w-full items-center gap-2 rounded-md px-2 text-left text-[14px] hover:bg-hover"
+          onClick={() => {
+            useUi.getState().setDrawer(false);
+            void A.newFromTemplate();
+          }}
+        >
+          <span className="text-steel" aria-hidden>
+            <LayoutTemplate size={16} />
+          </span>
+          <span className="flex-1">Templates</span>
+        </button>
         <NavItem
           icon={<Trash2 size={16} />}
           label="Trash"

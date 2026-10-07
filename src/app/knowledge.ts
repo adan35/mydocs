@@ -2,7 +2,8 @@ import type { EntryId } from '@/domain/types';
 import type { Tree } from '@/domain/tree';
 import { extractLinks, type RawLink } from '@/domain/links';
 import { extractTags } from '@/domain/tags';
-import { isMarkdownName } from '@/domain/names';
+import { baseName, isMarkdownName } from '@/domain/names';
+import { findMentions } from '@/domain/mentions';
 import { resolvePath } from '@/domain/paths';
 import { resolveWikiLink } from './workspace';
 
@@ -83,6 +84,74 @@ export class KnowledgeIndex {
         out.push(from);
     }
     return out;
+  }
+
+  /**
+   * Documents that mention `id`'s name in plain text without linking to it.
+   * Scans text only on demand (when the panel is open), capped for big workspaces.
+   */
+  unlinkedMentions(
+    tree: Tree,
+    id: EntryId,
+    texts: ReadonlyMap<EntryId, string>,
+    limit = 30,
+  ): { id: EntryId; count: number }[] {
+    const target = tree.get(id);
+    if (!target) return [];
+    const name = baseName(target.name);
+    if (name.length < 3) return [];
+    const linked = new Set(this.backlinks(tree, id));
+    const needle = name.toLocaleLowerCase();
+    const out: { id: EntryId; count: number }[] = [];
+    for (const from of this.facts.keys()) {
+      if (from === id || linked.has(from) || tree.isTrashed(from)) continue;
+      const text = texts.get(from);
+      // Cheap pre-check before the precise scan.
+      if (!text || !text.toLocaleLowerCase().includes(needle)) continue;
+      const count = findMentions(text, name).length;
+      if (count) out.push({ id: from, count });
+      if (out.length >= limit) break;
+    }
+    return out.sort((a, b) => b.count - a.count);
+  }
+
+  /**
+   * Related documents, ranked by direct links, shared tags, shared link targets
+   * and sharing a folder. Quiet suggestions, never stored.
+   */
+  related(tree: Tree, id: EntryId, limit = 6): EntryId[] {
+    const mine = this.facts.get(id);
+    if (!mine) return [];
+    const myTags = new Set(mine.tags);
+    const myTargets = new Set(
+      this.outgoing(tree, id)
+        .map((o) => o.targetId)
+        .filter((t): t is EntryId => !!t),
+    );
+    const linkedFrom = new Set(this.backlinks(tree, id));
+    const folder = tree.get(id)?.parentId ?? null;
+    const scores: { id: EntryId; score: number }[] = [];
+    for (const [other, f] of this.facts) {
+      if (other === id || tree.isTrashed(other)) continue;
+      let score = 0;
+      if (myTargets.has(other)) score += 3;
+      if (linkedFrom.has(other)) score += 3;
+      for (const t of f.tags) if (myTags.has(t)) score += 2;
+      if (score === 0 && !f.links.length) continue;
+      for (const l of f.links) {
+        const target = l.kind === 'image' ? undefined : this.resolve(tree, other, l);
+        if (target && target !== id && myTargets.has(target)) score += 1;
+      }
+      if (score > 0 && tree.get(other)?.parentId === folder) score += 1;
+      if (score > 0) scores.push({ id: other, score });
+    }
+    return scores
+      .sort(
+        (a, b) =>
+          b.score - a.score || (tree.get(b.id)?.updatedAt ?? 0) - (tree.get(a.id)?.updatedAt ?? 0),
+      )
+      .slice(0, limit)
+      .map((s) => s.id);
   }
 
   /** Links that point at nothing (useful for "broken link" hints). */

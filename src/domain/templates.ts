@@ -195,16 +195,116 @@ $$
 - [ ] 
 `,
   },
+  {
+    id: 'bug',
+    name: 'Bug report',
+    description: 'Steps to reproduce, expected and actual behavior.',
+    fileName: 'Bug {{date}}',
+    body: `# {{title}}
+
+**Reported:** {{date}} · **Severity:** 
+
+## Summary
+
+## Steps to reproduce
+
+1. 
+
+## Expected
+
+## Actual
+
+## Environment
+
+## Notes
+`,
+  },
+  {
+    id: 'design',
+    name: 'Technical design',
+    description: 'Context, proposal, alternatives and risks.',
+    fileName: 'Technical design',
+    body: `---
+status: draft
+created: {{date}}
+---
+
+# {{title}}
+
+## Context
+
+## Goals and non-goals
+
+## Proposal
+
+## Alternatives considered
+
+## Risks and open questions
+
+## Rollout
+`,
+  },
+  {
+    id: 'architecture',
+    name: 'Software architecture',
+    description: 'Components, data flow, decisions and quality attributes.',
+    fileName: 'Architecture',
+    body: `# {{title}}
+
+## Overview
+
+## Components
+
+| Component | Responsibility | Owner |
+| --- | --- | --- |
+|  |  |  |
+
+## Data flow
+
+\`\`\`mermaid
+flowchart LR
+  Client --> API --> Database
+\`\`\`
+
+## Key decisions
+
+## Quality attributes
+
+## Deployment
+`,
+  },
 ];
+
+/** Turns a Markdown file into a template: its first paragraph line describes it. */
+export function templateFromFile(id: string, name: string, body: string): Template {
+  const description =
+    body
+      .replace(/^---[\s\S]*?\n---\s*\n/, '')
+      .split('\n')
+      .map((l) => l.trim())
+      .find((l) => l && !l.startsWith('#') && !l.startsWith('---')) ?? 'Your template';
+  return {
+    id,
+    name,
+    description: description.length > 90 ? `${description.slice(0, 89)}…` : description,
+    fileName: name,
+    body,
+  };
+}
 
 export function isoDate(d = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-export function expandTemplate(text: string, vars: { title: string; date?: string }): string {
+/** Expands {{title}}, {{date}} and {{time}}. */
+export function expandTemplate(
+  text: string,
+  vars: { title: string; date?: string; time?: string },
+): string {
   const date = vars.date ?? isoDate();
-  return text.replace(/\{\{\s*(title|date)\s*\}\}/g, (_m, key: string) =>
-    key === 'title' ? vars.title : date,
+  const time = vars.time ?? new Date().toTimeString().slice(0, 5);
+  return text.replace(/\{\{\s*(title|date|time)\s*\}\}/g, (_m, key: string) =>
+    key === 'title' ? vars.title : key === 'date' ? date : time,
   );
 }

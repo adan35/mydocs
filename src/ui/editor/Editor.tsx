@@ -47,6 +47,7 @@ import { saveAttachment } from '@/app/attachments';
 import { toastError } from '@/app/toast-store';
 import { findFirstMatch as findFirst } from '@/app/search';
 import { markdownHighlight } from './highlight';
+import { slashCompletion } from './slash';
 import { insertCodeBlock, insertLink, insertText, toggleLinePrefix, toggleWrap } from './commands';
 
 export interface EditorHandle {
@@ -155,6 +156,27 @@ const fontTheme = EditorView.theme({
   '.cm-content': { fontVariantLigatures: 'none' },
 });
 
+/** Typewriter scrolling: the line being edited stays near the middle of the screen. */
+const typewriter: Extension = [
+  EditorView.editorAttributes.of({ class: 'cm-typewriter' }),
+  EditorView.updateListener.of((u) => {
+    if (!u.selectionSet && !u.docChanged) return;
+    if (
+      !u.transactions.some(
+        (tr) => tr.isUserEvent('input') || tr.isUserEvent('delete') || tr.isUserEvent('select'),
+      )
+    )
+      return;
+    const view = u.view;
+    requestAnimationFrame(() => {
+      if (!view.dom.isConnected) return;
+      view.dispatch({
+        effects: EditorView.scrollIntoView(view.state.selection.main.head, { y: 'center' }),
+      });
+    });
+  }),
+];
+
 function settingsExtensions(): Extension[] {
   const s = useSettings.getState();
   return [
@@ -162,6 +184,7 @@ function settingsExtensions(): Extension[] {
     s.wordWrap ? EditorView.lineWrapping : [],
     EditorState.tabSize.of(s.tabSize),
     indentUnit.of(' '.repeat(s.tabSize)),
+    s.typewriter ? typewriter : [],
     EditorView.contentAttributes.of({
       spellcheck: s.spellcheck ? 'true' : 'false',
       autocorrect: 'on',
@@ -320,7 +343,10 @@ export function Editor({
         effects: langComp.current.reconfigure([
           label,
           markdown({ base: markdownLanguage, codeLanguages: languages, addKeymap: true }),
-          autocompletion({ override: [wikiAndTagCompletion(docId)], icons: false }),
+          autocompletion({
+            override: [wikiAndTagCompletion(docId), slashCompletion],
+            icons: false,
+          }),
           dedupeListMarker,
           placeholder('Start writing…'),
         ]),

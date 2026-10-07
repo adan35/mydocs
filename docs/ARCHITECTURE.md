@@ -29,6 +29,10 @@ Pure functions with unit tests in `domain.test.ts`.
 | `templates.ts`     | Document templates.                                                                                               |
 | `diff.ts`          | Line diff for version history.                                                                                    |
 | `tasks.ts`         | Task checkbox toggling and word counts.                                                                           |
+| `table.ts`         | GFM table parsing, editing operations and padded serializing for the table editor.                                |
+| `query.ts`         | Search query parsing: free text, `"phrases"`, `-exclusions`, `tag:`, `folder:`, `type:`, date ranges.             |
+| `mentions.ts`      | Plain-text mentions of a document name outside code and links, and linking the first one.                         |
+| `graph-layout.ts`  | A small force-directed layout (springs, grid-based repulsion) for the graph view.                                 |
 
 Every entry has a stable random id. Names and paths can change; ids never do. Tabs, favorites, recents, versions and links all refer to ids.
 
@@ -60,10 +64,13 @@ A future store (real folders on disk, or a server) only has to implement these t
 - Trash sets `trashedAt` on the top entry only. Descendants count as trashed through `Tree.isTrashed`, so restoring the folder restores everything inside it as it was.
 - Versions snapshot the previous text when a save comes more than 5 minutes after the last snapshot, keeping at most 50 per document. Import replacements and restores always snapshot first.
 
+**Tab ownership** (`ownership.ts`): every tab keeps the workspace in memory and writes whole entry records, so only one tab may own the data. The owner holds an exclusive Web Lock (`mydoc-owner`). Other tabs show "open in another tab"; **Use here** posts a hand-over request on a `BroadcastChannel`, the owner flushes saves and recovery drafts, clears its buffers and releases the lock, and the new owner reloads from storage. `Workspace` also refuses commits while the tab isn't the owner.
+
 **`WorkspaceSession`** (`session.ts`) owns the derived indexes and keeps them current from workspace events:
 
 - `KnowledgeIndex` (`knowledge.ts`): tags and links per document, backlinks, broken links. Nothing here is stored; it is rebuilt from the files on open.
-- `SearchIndex` (`search.ts`): MiniSearch over name, path, tags and content with prefix and fuzzy matching, field boosts, filters and snippets.
+- `SearchIndex` (`search.ts`): MiniSearch over name, path, tags and content with prefix and fuzzy matching, field boosts, filters and snippets. Queries go through `parseQuery`; operators filter the ranked results (or, with no free text, list matching documents newest first).
+- `KnowledgeIndex` also answers related documents (links, shared tags and link targets, folder) and unlinked mentions, computed on demand when the Links panel is open. `graph.ts` builds the link graph for the lazily loaded graph view.
 
 **Stores** (Zustand):
 
@@ -92,6 +99,10 @@ A future store (real folders on disk, or a server) only has to implement these t
 Layout tiers: phone below 768px (bottom navigation, full-screen views), tablet from 768px to 1099px (sidebar as a drawer), desktop from 1100px, and wide from 1280px (right panel shown beside the document).
 
 `DocumentView` and the Markdown renderer are split into a lazily loaded chunk, as are Mermaid and KaTeX.
+
+## Offline (`src/pwa`)
+
+A small Vite plugin in `vite.config.ts` emits `sw.js` from `src/pwa/sw-template.js` with the exact list of built files, so the whole app, lazy chunks included, is cached on first visit. Navigations are network-first with the cached shell as the offline fallback; other same-origin files are cache-first. The cache name is a hash of the file list, and old caches are removed on activation. Updates wait until the user accepts the "new version" toast, which saves open documents first. Documents never pass through the service worker; they live in IndexedDB. Registration runs only in production builds over HTTPS or on localhost.
 
 ## Theming
 

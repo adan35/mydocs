@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { CornerDownLeft, Search } from 'lucide-react';
 import type { EntryId } from '@/domain/types';
 import { useUi } from '@/app/ui-store';
-import { useApp } from '@/app/app-store';
+import { session, useApp } from '@/app/app-store';
 import { openEntry } from '@/app/actions';
 import { editorActions } from '@/app/editor-store';
 import { navigate } from '@/app/router';
@@ -201,6 +201,7 @@ export function QuickOpen() {
   const [query, setQuery] = useState('');
   const tree = useTree()!;
   const recents = useApp((s) => s.recents);
+  const openCounts = useApp((s) => s.openCounts);
   const items = useMemo<Item[]>(() => {
     const q = query.trim();
     const toItem = (id: EntryId, positions?: number[], group?: string): Item | null => {
@@ -235,19 +236,31 @@ export function QuickOpen() {
         .map((e) => toItem(e.id, undefined, 'Recently modified')!)
         .filter(Boolean);
     }
-    // Fuzzy over names, then paths; recents get a small boost.
-    const recentSet = new Map(recents.map((r, i) => [r.id, 30 - i]));
+    // Exact title, then prefix, then fuzzy name, path and tag matches; documents
+    // opened recently or often rank higher.
+    const recentSet = new Map(recents.map((r, i) => [r.id, 60 - i * 2]));
+    const ql = q.toLowerCase();
+    const tagQuery = ql.replace(/^#/, '');
+    const knowledge = session().knowledge;
     const scored: { id: EntryId; score: number; positions: number[] }[] = [];
     for (const e of tree.liveEntries()) {
+      const name = e.name.toLowerCase();
+      const stem = name.replace(/\.[^.]+$/, '');
       const byName = fuzzyScore(q, e.name);
       const byPath = byName ? null : fuzzyScore(q, tree.pathOf(e.id));
-      const m = byName ?? (byPath ? { score: byPath.score - 300, positions: [] } : null);
+      let m = byName ?? (byPath ? { score: byPath.score - 300, positions: [] } : null);
+      if (!m && e.kind === 'file' && tagQuery.length > 1) {
+        const tagHit = knowledge.tagsOf(e.id).some((t) => t.startsWith(tagQuery));
+        if (tagHit) m = { score: -400, positions: [] };
+      }
       if (!m) continue;
-      scored.push({
-        id: e.id,
-        score: m.score + (recentSet.get(e.id) ?? 0) + (e.kind === 'folder' ? -5 : 0),
-        positions: m.positions,
-      });
+      let score = m.score;
+      if (stem === ql || name === ql) score += 2000;
+      else if (name.startsWith(ql)) score += 600;
+      score += recentSet.get(e.id) ?? 0;
+      score += Math.min(120, Math.log2((openCounts[e.id] ?? 0) + 1) * 25);
+      if (e.kind === 'folder') score -= 5;
+      scored.push({ id: e.id, score, positions: m.positions });
     }
     scored.sort((a, b) => b.score - a.score);
     const out = scored
@@ -263,7 +276,7 @@ export function QuickOpen() {
       run: () => navigate({ name: 'search', q }),
     });
     return out;
-  }, [query, tree, recents]);
+  }, [query, tree, recents, openCounts]);
   return (
     <PaletteFrame
       label="Open document"

@@ -14,6 +14,7 @@ import {
 import { extractLinks, rewriteLinks, type RawLink } from '@/domain/links';
 import { encodeHrefPath, relativePath, resolvePath } from '@/domain/paths';
 import { addTag, removeTag, replaceTag } from '@/domain/tags';
+import { linkFirstMention } from '@/domain/mentions';
 import type { ChangeSet, WorkspaceStore } from '@/storage/types';
 
 /** Snapshot the previous content when the last snapshot is older than this. */
@@ -30,6 +31,13 @@ export type WorkspaceEvent =
   { type: 'tree' } | { type: 'content'; ids: EntryId[]; source: 'save' | 'external' };
 
 type Listener = (event: WorkspaceEvent) => void;
+
+let writeGuard: () => boolean = () => true;
+
+/** Lets the app block writes, for example while another browser tab owns the data. */
+export function setWriteGuard(fn: () => boolean) {
+  writeGuard = fn;
+}
 
 const textBytes = (s: string) => new Blob([s]).size;
 
@@ -91,6 +99,11 @@ export class Workspace {
   }
 
   private async apply(changes: ChangeSet, texts?: Map<EntryId, string>): Promise<void> {
+    if (!writeGuard()) {
+      throw new WorkspaceError(
+        'My Doc is open in another tab, so changes here are paused. Choose "Use here" to continue in this tab.',
+      );
+    }
     await this.store.commit(changes);
     for (const e of changes.putEntries ?? []) this.entries.set(e.id, e);
     for (const id of changes.deleteEntries ?? []) {
@@ -651,6 +664,11 @@ export class Workspace {
 
   renameTag(docIds: EntryId[], from: string, to: string) {
     return this.serial(() => this.editTexts(docIds, (t) => replaceTag(t, from, to)));
+  }
+
+  /** Turns the first plain-text mention of `name` in a document into a wiki link. */
+  linkMention(id: EntryId, name: string) {
+    return this.serial(() => this.editTexts([id], (t) => linkFirstMention(t, name) ?? t));
   }
 }
 

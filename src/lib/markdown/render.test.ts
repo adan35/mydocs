@@ -96,4 +96,18 @@ describe('wiki links', () => {
     expect(doc.querySelectorAll('script, img, [onerror]')).toHaveLength(0);
     expect(doc.querySelector('a.wiki-link')?.textContent).toBe('"><script>x</script>');
   });
+
+  it('renders callouts with a title and escapes it', () => {
+    const { html } = renderMarkdown(
+      '> [!WARNING] Back up <b>first</b>\n> The body text.\n\n> [!tip]\n> Short.',
+    );
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const [warn, tip] = doc.querySelectorAll('blockquote');
+    expect(warn!.className).toBe('callout callout-warning');
+    expect(warn!.querySelector('.callout-title')?.textContent).toBe('Back up <b>first</b>');
+    expect(warn!.querySelector('b')).toBeNull();
+    expect(warn!.textContent).toContain('The body text.');
+    expect(warn!.textContent).not.toContain('[!WARNING]');
+    expect(tip!.querySelector('.callout-title')?.textContent).toBe('Tip');
+  });
 });

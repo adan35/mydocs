@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { EntryId } from '@/domain/types';
+import type { Table } from '@/domain/table';
 
 export interface PromptOptions {
   title: string;
@@ -48,7 +49,8 @@ export type DialogRequest =
     }
   | { kind: 'template'; resolve: (v: string | null) => void }
   | { kind: 'history'; entryId: EntryId; resolve: (v: void) => void }
-  | { kind: 'shortcuts'; resolve: (v: void) => void };
+  | { kind: 'shortcuts'; resolve: (v: void) => void }
+  | { kind: 'table'; table: Table; isNew: boolean; resolve: (v: Table | null) => void };
 
 interface DialogState {
   stack: DialogRequest[];
@@ -90,4 +92,6 @@ export const dialogs = {
   history: (entryId: EntryId) =>
     request<void>((resolve) => ({ kind: 'history', entryId, resolve })),
   shortcuts: () => request<void>((resolve) => ({ kind: 'shortcuts', resolve })),
+  table: (table: Table, isNew: boolean) =>
+    request<Table | null>((resolve) => ({ kind: 'table', table, isNew, resolve })),
 };

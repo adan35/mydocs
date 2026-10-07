@@ -1,6 +1,7 @@
 /** Single source of truth for keyboard shortcuts (shown in menus, palette and help). */
 export const SHORTCUTS = {
   palette: 'Mod+K',
+  paletteAlt: 'Mod+Shift+P',
   quickOpen: 'Mod+P',
   search: 'Mod+Shift+F',
   newDoc: 'Alt+N',
@@ -20,17 +21,19 @@ export const SHORTCUTS = {
   focusMode: 'Mod+Shift+.',
   readingMode: 'Mod+Shift+R',
   rename: 'F2',
+  dailyNote: 'Mod+Shift+D',
 } as const;
 
 export const SHORTCUT_GROUPS: { title: string; items: [string, string][] }[] = [
   {
     title: 'General',
     items: [
-      ['Command palette', SHORTCUTS.palette],
+      ['Command palette', `${SHORTCUTS.palette} or ${SHORTCUTS.paletteAlt}`],
       ['Quick open', SHORTCUTS.quickOpen],
       ['Search everything', SHORTCUTS.search],
       ['New document', SHORTCUTS.newDoc],
       ['New folder', SHORTCUTS.newFolder],
+      ["Today's daily note", SHORTCUTS.dailyNote],
       ['Toggle sidebar', SHORTCUTS.toggleSidebar],
       ['Toggle side panel', SHORTCUTS.togglePanel],
       ['Close overlays', 'Esc'],
