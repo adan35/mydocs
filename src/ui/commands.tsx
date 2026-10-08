@@ -30,10 +30,15 @@ import {
   Copy,
   Tag,
   Table,
+  Pin,
+  X,
+  AlignVerticalJustifyCenter,
+  CalendarDays,
+  Network,
 } from 'lucide-react';
 import * as A from '@/app/actions';
 import { ws } from '@/app/app-store';
-import { useEditor } from '@/app/editor-store';
+import { editorActions, useEditor } from '@/app/editor-store';
 import { navigate, useRouter } from '@/app/router';
 import { useSettings } from '@/app/settings-store';
 import { useUi } from '@/app/ui-store';
@@ -42,6 +47,7 @@ import { SHORTCUTS } from '@/app/shortcuts';
 import { isMarkdownName } from '@/domain/names';
 import { pickImport } from './import-pickers';
 import { reopenClosedTab, sendDocCommand } from './doc-commands';
+import { canInstall, installApp } from '@/pwa/register';
 
 export interface Command {
   id: string;
@@ -77,6 +83,15 @@ export function getCommands(): Command[] {
       icon: <LayoutTemplate />,
       keywords: 'readme meeting notes lecture class daily todo api research',
       run: () => void A.newFromTemplate(),
+    },
+    {
+      id: 'daily-note',
+      title: "Open today's daily note",
+      group: 'Create',
+      icon: <CalendarDays />,
+      shortcut: SHORTCUTS.dailyNote,
+      keywords: 'journal diary today date',
+      run: () => void A.openDailyNote(),
     },
     {
       id: 'new-folder',
@@ -166,6 +181,14 @@ export function getCommands(): Command[] {
       run: () => navigate({ name: 'tags' }),
     },
     {
+      id: 'graph',
+      title: 'Open graph view',
+      group: 'Navigate',
+      icon: <Network />,
+      keywords: 'links map connections knowledge',
+      run: () => navigate({ name: 'graph' }),
+    },
+    {
       id: 'trash',
       title: 'Go to Trash',
       group: 'Navigate',
@@ -252,6 +275,16 @@ export function getCommands(): Command[] {
       run: () => void A.emptyTrash(),
     },
   ];
+  if (canInstall()) {
+    cmds.push({
+      id: 'install',
+      title: 'Install My Doc as an app',
+      group: 'Workspace',
+      icon: <Download />,
+      keywords: 'pwa desktop offline home screen',
+      run: () => void installApp(),
+    });
+  }
   if (doc) {
     const md = isMarkdownName(doc.name);
     cmds.unshift(
@@ -277,6 +310,36 @@ export function getCommands(): Command[] {
         run: () => void A.duplicateEntry(doc.id),
       },
       {
+        id: 'local-graph',
+        title: 'Show local graph',
+        group: 'Document',
+        icon: <Network />,
+        keywords: 'links connections map',
+        run: () => navigate({ name: 'graph', id: doc.id }),
+      },
+      {
+        id: 'pin-tab',
+        title: useEditor.getState().pinned.includes(doc.id) ? 'Unpin tab' : 'Pin tab',
+        group: 'Document',
+        icon: <Pin />,
+        keywords: 'keep tab',
+        run: () => useEditor.getState().tabs.includes(doc.id) && editorActions.togglePin(doc.id),
+      },
+      {
+        id: 'close-others',
+        title: 'Close other tabs',
+        group: 'Document',
+        icon: <X />,
+        run: () => void editorActions.closeOthers(doc.id),
+      },
+      {
+        id: 'close-right',
+        title: 'Close tabs to the right',
+        group: 'Document',
+        icon: <X />,
+        run: () => void editorActions.closeToRight(doc.id),
+      },
+      {
         id: 'favorite',
         title: doc.favorite ? 'Remove from favorites' : 'Add to favorites',
         group: 'Document',
@@ -295,10 +358,10 @@ export function getCommands(): Command[] {
         ? [
             {
               id: 'insert-table',
-              title: 'Insert table',
+              title: 'Insert or edit table',
               group: 'Document' as const,
               icon: <Table />,
-              keywords: 'grid columns rows',
+              keywords: 'grid columns rows visual editor',
               run: () => sendDocCommand('insert-table'),
             },
           ]
@@ -318,6 +381,14 @@ export function getCommands(): Command[] {
         icon: <Trash2 />,
         keywords: 'delete remove',
         run: () => void A.trashEntries([doc.id]),
+      },
+      {
+        id: 'typewriter',
+        title: settings.typewriter ? 'Turn off typewriter scrolling' : 'Typewriter scrolling',
+        group: 'View',
+        icon: <AlignVerticalJustifyCenter />,
+        keywords: 'center line writing focus',
+        run: () => settings.update({ typewriter: !settings.typewriter }),
       },
       {
         id: 'focus',
@@ -375,6 +446,14 @@ export function getCommands(): Command[] {
           run: () => void dialogs.history(doc.id),
         },
         {
+          id: 'save-template',
+          title: 'Save as template',
+          group: 'Document',
+          icon: <LayoutTemplate />,
+          keywords: 'reuse copy',
+          run: () => void A.saveAsTemplate(doc.id),
+        },
+        {
           id: 'tag',
           title: 'Add tag…',
           group: 'Document',
@@ -387,6 +466,14 @@ export function getCommands(): Command[] {
           group: 'Document',
           icon: <Download />,
           run: () => void A.exportEntry(doc.id, 'html'),
+        },
+        {
+          id: 'export-txt',
+          title: 'Export as plain text',
+          group: 'Document',
+          icon: <Download />,
+          keywords: 'txt',
+          run: () => void A.exportEntry(doc.id, 'txt'),
         },
         {
           id: 'export-pdf',

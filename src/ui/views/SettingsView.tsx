@@ -221,6 +221,17 @@ export function SettingsView() {
             onChange={(spellcheck) => set({ spellcheck })}
           />
         </Row>
+        <Row
+          label="Typewriter scrolling"
+          hint="Keeps the line you're writing near the middle of the screen."
+          htmlFor="typewriter"
+        >
+          <Toggle
+            id="typewriter"
+            checked={s.typewriter}
+            onChange={(typewriter) => set({ typewriter })}
+          />
+        </Row>
         <Row label="Tab size">
           <Segmented
             label="Tab size"
@@ -245,6 +256,22 @@ export function SettingsView() {
               [700, 'Normal'],
               [2000, 'Relaxed'],
             ]}
+          />
+        </Row>
+      </Section>
+
+      <Section title="Daily notes">
+        <Row
+          label="Daily notes folder"
+          hint="Today's note opens with Ctrl/Cmd + Shift + D. Use / for subfolders."
+          htmlFor="daily-folder"
+        >
+          <input
+            id="daily-folder"
+            className="input h-8 w-56"
+            value={s.dailyFolder}
+            onChange={(e) => set({ dailyFolder: e.target.value })}
+            onBlur={(e) => set({ dailyFolder: e.target.value.trim() || 'Daily notes' })}
           />
         </Row>
       </Section>

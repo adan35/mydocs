@@ -4,6 +4,7 @@ import { useApp, ws } from './app-store';
 import { useSettings } from './settings-store';
 import { prefs } from './prefs';
 import { toastError, toast } from './toast-store';
+import { ownership } from './ownership';
 
 export type SaveStatus = 'loading' | 'saved' | 'unsaved' | 'saving' | 'error';
 
@@ -30,6 +31,8 @@ export interface FocusRequest {
 
 interface EditorState {
   tabs: EntryId[];
+  /** Pinned tabs stay first and survive "close others", "close all" and "close to the right". */
+  pinned: EntryId[];
   activeId: EntryId | null;
   closed: EntryId[];
   buffers: Record<EntryId, Buffer>;
@@ -38,6 +41,7 @@ interface EditorState {
 
 export const useEditor = create<EditorState>(() => ({
   tabs: [],
+  pinned: [],
   activeId: null,
   closed: [],
   buffers: {},
@@ -62,8 +66,8 @@ function patchBuffer(id: EntryId, patch: Partial<Buffer>) {
 function persistTabs() {
   const s = useApp.getState().session;
   if (!s) return;
-  const { tabs, activeId } = get();
-  prefs.set(tabsKey(s.workspace.id), { tabs, activeId });
+  const { tabs, activeId, pinned } = get();
+  prefs.set(tabsKey(s.workspace.id), { tabs, activeId, pinned });
 }
 
 async function loadBuffer(id: EntryId) {
@@ -93,15 +97,27 @@ function scheduleSave(id: EntryId, delay = useSettings.getState().autosaveDelay)
 /** Writes all dirty buffers to localStorage synchronously, for crash/close recovery. */
 export function writeRecoveryDrafts() {
   const s = useApp.getState().session;
-  if (!s) return;
+  // A tab that handed the data to another tab must not overwrite that tab's drafts.
+  if (!s || !ownership.isOwner) return;
   const drafts: Record<EntryId, { text: string; at: number }> = {};
   for (const b of Object.values(get().buffers)) {
     if (b.status !== 'loading' && b.text !== b.savedText)
       drafts[b.id] = { text: b.text, at: Date.now() };
   }
-  if (Object.keys(drafts).length) prefs.set(recoveryKey(s.workspace.id), drafts);
-  else prefs.remove(recoveryKey(s.workspace.id));
+  if (!Object.keys(drafts).length) {
+    prefs.remove(recoveryKey(s.workspace.id));
+  } else if (!prefs.set(recoveryKey(s.workspace.id), drafts) && !warnedDraftFailure) {
+    warnedDraftFailure = true;
+    toast({
+      message: 'Unsaved changes could not be stored as a recovery copy.',
+      detail:
+        'Browser storage may be full. Keep this tab open until "Saved" appears, or export the document.',
+      tone: 'error',
+    });
+  }
 }
+
+let warnedDraftFailure = false;
 
 export const editorActions = {
   async open(id: EntryId, opts: { activate?: boolean } = {}) {
@@ -192,6 +208,14 @@ export const editorActions = {
     await Promise.all(Object.keys(get().buffers).map((id) => editorActions.flush(id)));
   },
 
+  /** Drops every tab and buffer without saving (after handing the data to another tab). */
+  reset() {
+    for (const t of timers.values()) clearTimeout(t);
+    timers.clear();
+    retries.clear();
+    set({ tabs: [], pinned: [], activeId: null, buffers: {}, closed: [], focusRequest: null });
+  },
+
   hasUnsaved(): boolean {
     return Object.values(get().buffers).some(
       (b) => b.status !== 'loading' && b.text !== b.savedText,
@@ -219,6 +243,7 @@ export const editorActions = {
         tabs,
         buffers,
         activeId,
+        pinned: s.pinned.filter((p) => p !== id),
         closed: [id, ...s.closed.filter((c) => c !== id)].slice(0, 20),
       };
     });
@@ -226,11 +251,33 @@ export const editorActions = {
   },
 
   async closeOthers(id: EntryId) {
-    for (const t of get().tabs) if (t !== id) await editorActions.close(t);
+    const { tabs, pinned } = get();
+    for (const t of tabs) if (t !== id && !pinned.includes(t)) await editorActions.close(t);
   },
 
+  /** Closes every unpinned tab. */
   async closeAll() {
-    for (const t of [...get().tabs]) await editorActions.close(t);
+    const { tabs, pinned } = get();
+    for (const t of tabs) if (!pinned.includes(t)) await editorActions.close(t);
+  },
+
+  async closeToRight(id: EntryId) {
+    const { tabs, pinned } = get();
+    for (const t of tabs.slice(tabs.indexOf(id) + 1))
+      if (!pinned.includes(t)) await editorActions.close(t);
+  },
+
+  togglePin(id: EntryId) {
+    set((s) => {
+      if (!s.tabs.includes(id)) return s;
+      const pinned = s.pinned.includes(id)
+        ? s.pinned.filter((p) => p !== id)
+        : [...s.pinned.filter((p) => s.tabs.includes(p)), id];
+      // Pinned tabs come first, in pin order; the rest keep their order.
+      const tabs = [...pinned, ...s.tabs.filter((t) => !pinned.includes(t))];
+      return { pinned, tabs };
+    });
+    persistTabs();
   },
 
   /** Returns the id of the reopened tab, if any. */
@@ -249,7 +296,12 @@ export const editorActions = {
       const tabs = [...s.tabs];
       const [moved] = tabs.splice(from, 1);
       if (moved === undefined) return s;
-      tabs.splice(to, 0, moved);
+      // Pinned and unpinned tabs each stay in their own group.
+      const pinnedCount = s.pinned.filter((p) => p !== moved && s.tabs.includes(p)).length;
+      const target = s.pinned.includes(moved)
+        ? Math.min(to, pinnedCount)
+        : Math.max(to, pinnedCount);
+      tabs.splice(target, 0, moved);
       return { tabs };
     });
     persistTabs();
@@ -260,7 +312,7 @@ export const editorActions = {
     const s = useApp.getState().session;
     if (!s) return;
     for (const id of Object.keys(get().buffers)) clearTimeout(timers.get(id));
-    set({ tabs: [], activeId: null, buffers: {}, closed: [] });
+    set({ tabs: [], pinned: [], activeId: null, buffers: {}, closed: [] });
     const tree = s.workspace.tree;
     const drafts = prefs.get<Record<EntryId, { text: string; at: number }>>(
       recoveryKey(s.workspace.id),
@@ -287,7 +339,7 @@ export const editorActions = {
         tone: 'success',
       });
     }
-    const saved = prefs.get<{ tabs: EntryId[]; activeId: EntryId | null }>(
+    const saved = prefs.get<{ tabs: EntryId[]; activeId: EntryId | null; pinned?: EntryId[] }>(
       tabsKey(s.workspace.id),
       {
         tabs: [],
@@ -295,8 +347,10 @@ export const editorActions = {
       },
     );
     const live = saved.tabs.filter((id) => tree.get(id)?.kind === 'file' && !tree.isTrashed(id));
+    const pinned = (saved.pinned ?? []).filter((id) => live.includes(id));
     set({
-      tabs: live,
+      tabs: [...pinned, ...live.filter((id) => !pinned.includes(id))],
+      pinned,
       activeId: live.includes(saved.activeId ?? '') ? saved.activeId : (live[0] ?? null),
     });
     for (const id of live) {
@@ -336,6 +390,7 @@ export const editorActions = {
       return {
         tabs,
         buffers,
+        pinned: s.pinned.filter((p) => !gone.includes(p)),
         activeId:
           s.activeId && gone.includes(s.activeId) ? (tabs[tabs.length - 1] ?? null) : s.activeId,
       };

@@ -32,7 +32,7 @@ export function useGlobalShortcuts() {
         e.stopPropagation();
         fn();
       };
-      if (m(SHORTCUTS.palette))
+      if (m(SHORTCUTS.palette) || m(SHORTCUTS.paletteAlt))
         return run(() => ui.setOverlay(ui.overlay === 'palette' ? null : 'palette'));
       if (m(SHORTCUTS.quickOpen))
         return run(() => ui.setOverlay(ui.overlay === 'quickopen' ? null : 'quickopen'));
@@ -40,6 +40,7 @@ export function useGlobalShortcuts() {
       // Mod+N also works where the browser doesn't reserve it.
       if (m(SHORTCUTS.newDoc) || m('Mod+N')) return run(() => void A.newDocument());
       if (m(SHORTCUTS.newFolder)) return run(() => void A.newFolder());
+      if (m(SHORTCUTS.dailyNote)) return run(() => void A.openDailyNote());
       if (m(SHORTCUTS.toggleSidebar))
         return run(() =>
           matchMedia('(max-width: 1099px)').matches

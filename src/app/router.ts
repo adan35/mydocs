@@ -10,7 +10,9 @@ export type Route =
   | { name: 'recent' }
   | { name: 'tags'; tag?: string }
   | { name: 'trash' }
-  | { name: 'settings' };
+  | { name: 'settings' }
+  /** `id` shows the local graph around one document. */
+  | { name: 'graph'; id?: string };
 
 export function parseHash(hash: string): Route {
   const [path = '', query = ''] = hash.replace(/^#\/?/, '').split('?');
@@ -41,6 +43,8 @@ export function parseHash(hash: string): Route {
       return { name: 'trash' };
     case 'settings':
       return { name: 'settings' };
+    case 'graph':
+      return rest[0] ? { name: 'graph', id: rest[0] } : { name: 'graph' };
     default:
       return { name: 'home' };
   }
@@ -58,6 +62,8 @@ export function routeToHash(r: Route): string {
       return r.tag ? `#/tags/${r.tag.split('/').map(encodeURIComponent).join('/')}` : '#/tags';
     case 'home':
       return '#/';
+    case 'graph':
+      return r.id ? `#/graph/${encodeURIComponent(r.id)}` : '#/graph';
     default:
       return `#/${r.name}`;
   }

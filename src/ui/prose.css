@@ -414,3 +414,34 @@
 [data-theme='dark'] .hljs-deletion {
   color: #ff8a80;
 }
+
+/* Callouts: > [!NOTE] Title */
+.prose blockquote.callout {
+  --callout: var(--primary);
+  border-left: 3px solid var(--callout);
+  background: color-mix(in srgb, var(--callout) 8%, transparent);
+  border-radius: 0 8px 8px 0;
+  padding: 0.7em 1em;
+  color: var(--ink);
+}
+.prose blockquote.callout-tip,
+.prose blockquote.callout-success {
+  --callout: var(--success);
+}
+.prose blockquote.callout-warning,
+.prose blockquote.callout-caution,
+.prose blockquote.callout-question,
+.prose blockquote.callout-todo {
+  --callout: var(--warning);
+}
+.prose blockquote.callout-danger,
+.prose blockquote.callout-bug,
+.prose blockquote.callout-failure {
+  --callout: var(--danger);
+}
+.prose .callout-title {
+  display: block;
+  font-weight: 600;
+  color: var(--callout);
+  margin-bottom: 0.25em;
+}

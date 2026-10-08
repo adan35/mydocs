@@ -24,6 +24,9 @@ const DocumentView = lazy(() =>
   import('../document/DocumentView').then((m) => ({ default: m.DocumentView })),
 );
 
+// The graph is optional, so its code loads only when it's opened.
+const GraphView = lazy(() => import('../views/GraphView').then((m) => ({ default: m.GraphView })));
+
 function DocumentFallback() {
   return (
     <div
@@ -66,6 +69,12 @@ function RouteView() {
       return <TrashView />;
     case 'settings':
       return <SettingsView />;
+    case 'graph':
+      return (
+        <Suspense fallback={<DocumentFallback />}>
+          <GraphView focusId={route.id} />
+        </Suspense>
+      );
     default:
       return <HomeView />;
   }

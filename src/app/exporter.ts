@@ -2,6 +2,7 @@ import { zipSync } from 'fflate';
 import type { Entry, EntryId } from '@/domain/types';
 import { baseName, isMarkdownName } from '@/domain/names';
 import type { Workspace } from './workspace';
+import { markdownToPlainText } from './search';
 
 export function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -62,6 +63,7 @@ blockquote{margin:1em 0;padding:.2em 1em;border-left:3px solid #c8c4be;color:#5d
 table{border-collapse:collapse;width:100%}th,td{border:1px solid #e5e3df;padding:6px 12px;text-align:left}th{background:#fafaf9}
 img{max-width:100%}.heading-anchor{display:none}.code-lang{display:none}hr{border:0;border-top:1px solid #e5e3df}
 .contains-task-list{list-style:none;padding-left:1em}
+blockquote.callout{border-left-color:#5645d4;background:#f4f2fc;color:#1a1a1a;border-radius:0 8px 8px 0;padding:.6em 1em}.callout-title{display:block;font-weight:600}
 `;
 
 /** Standalone HTML (sanitized, no scripts) that opens anywhere. */
@@ -90,4 +92,13 @@ export async function exportHtml(ws: Workspace, id: EntryId) {
     ? await documentHtml(baseName(e.name), text)
     : await documentHtml(e.name, '~~~~~~~~\n' + text + '\n~~~~~~~~');
   downloadBlob(new Blob([html], { type: 'text/html' }), `${baseName(e.name)}.html`);
+}
+
+/** Plain text: Markdown syntax is dropped so the words read cleanly anywhere. */
+export async function exportText(ws: Workspace, id: EntryId) {
+  const e = ws.get(id);
+  if (!e) return;
+  const text = await ws.readText(id);
+  const plain = isMarkdownName(e.name) ? markdownToPlainText(text) : text;
+  downloadBlob(new Blob([plain], { type: 'text/plain;charset=utf-8' }), `${baseName(e.name)}.txt`);
 }

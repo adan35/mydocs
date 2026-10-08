@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X } from 'lucide-react';
+import { Pin, X } from 'lucide-react';
 import { useEditor, editorActions } from '@/app/editor-store';
 import { navigate, useRouter } from '@/app/router';
 import { appActions } from '@/app/app-store';
@@ -10,10 +10,11 @@ import { openMenu } from '../components/Menu';
 import { useTree } from '../hooks';
 import { reopenClosedTab } from '../doc-commands';
 
-/** Open documents. Kept deliberately simple: open, close, reorder, close others/all, reopen. */
+/** Open documents: open, close, pin, reorder, close others/right/all, reopen. */
 export function TabBar() {
   const tabs = useEditor((s) => s.tabs);
   const activeId = useEditor((s) => s.activeId);
+  const pinned = useEditor((s) => s.pinned);
   const route = useRouter((s) => s.route);
   const tree = useTree()!;
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -39,6 +40,7 @@ export function TabBar() {
         const e = tree.get(id);
         if (!e) return null;
         const selected = onDoc && id === activeId;
+        const isPinned = pinned.includes(id);
         return (
           <div
             key={id}
@@ -47,7 +49,8 @@ export function TabBar() {
             tabIndex={selected ? 0 : -1}
             draggable
             title={tree.pathOf(id)}
-            className={`group relative flex h-8 max-w-[200px] min-w-[96px] shrink-0 cursor-pointer items-center gap-1.5 rounded-t-md pr-1 pl-2.5 text-[13px] select-none ${
+            data-pinned={isPinned || undefined}
+            className={`group relative flex h-8 ${isPinned ? 'max-w-[160px] min-w-0' : 'max-w-[200px] min-w-[96px]'} shrink-0 cursor-pointer items-center gap-1.5 rounded-t-md pr-1 pl-2.5 text-[13px] select-none ${
               selected
                 ? 'bg-canvas text-ink shadow-[0_1px_0_var(--canvas)]'
                 : 'text-steel hover:bg-hover hover:text-charcoal'
@@ -78,9 +81,24 @@ export function TabBar() {
                     onSelect: () => void editorActions.closeOthers(id).then(() => openEntry(id)),
                   },
                   {
+                    label: 'Close tabs to the right',
+                    disabled: i === tabs.length - 1,
+                    onSelect: () => void editorActions.closeToRight(id),
+                  },
+                  {
                     label: 'Close all',
                     onSelect: () =>
-                      void editorActions.closeAll().then(() => navigate({ name: 'home' })),
+                      void editorActions.closeAll().then(() => {
+                        const left = useEditor.getState().tabs[0];
+                        if (left) void openEntry(left);
+                        else navigate({ name: 'home' });
+                      }),
+                  },
+                  'separator',
+                  {
+                    label: isPinned ? 'Unpin tab' : 'Pin tab',
+                    icon: <Pin size={14} />,
+                    onSelect: () => editorActions.togglePin(id),
                   },
                   'separator',
                   {
@@ -109,7 +127,23 @@ export function TabBar() {
           >
             <FileIcon entry={e} size={14} className="shrink-0 opacity-80" />
             <span className="min-w-0 flex-1 truncate">{e.name}</span>
-            <TabCloseButton id={id} name={e.name} onClose={() => void close(id)} />
+            {isPinned ? (
+              <button
+                type="button"
+                tabIndex={-1}
+                aria-label={`Unpin ${e.name}`}
+                title="Pinned (click to unpin)"
+                className="flex size-5 shrink-0 items-center justify-center rounded text-steel hover:bg-active hover:text-ink"
+                onClick={(ev) => {
+                  ev.stopPropagation();
+                  editorActions.togglePin(id);
+                }}
+              >
+                <Pin size={12} />
+              </button>
+            ) : (
+              <TabCloseButton id={id} name={e.name} onClose={() => void close(id)} />
+            )}
           </div>
         );
       })}

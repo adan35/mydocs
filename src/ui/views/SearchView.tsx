@@ -5,6 +5,7 @@ import { session } from '@/app/app-store';
 import { navigate } from '@/app/router';
 import { openEntry } from '@/app/actions';
 import { prefs } from '@/app/prefs';
+import { useUi } from '@/app/ui-store';
 import { editorActions } from '@/app/editor-store';
 import type { SearchHit } from '@/app/search';
 import { Page } from '../components/Page';
@@ -13,6 +14,22 @@ import { Highlight } from '../components/Highlight';
 import { useDebounced, useIndexVersion, useTree } from '../hooks';
 
 const RECENT_KEY = 'mydoc:recent-searches';
+const DAY = 86_400_000;
+const DATE_FILTERS: { label: string; days: number }[] = [
+  { label: 'Today', days: 1 },
+  { label: 'Past week', days: 7 },
+  { label: 'Past month', days: 30 },
+  { label: 'Past year', days: 365 },
+];
+const OPERATORS: [string, string][] = [
+  ['"exact phrase"', 'Exact words in order'],
+  ['-word', 'Leave out documents with a word'],
+  ['tag:idea or #idea', 'Documents with a tag'],
+  ['folder:Projects', 'Inside a folder'],
+  ['type:md', 'md, txt, code, data, image or pdf'],
+  ['modified:week', 'today, week, month, 7d, 2026-10, >2026-09-01'],
+  ['created:2026', 'Same values as modified'],
+];
 const TYPE_FILTERS: { label: string; types: FileType[] }[] = [
   { label: 'Markdown', types: ['markdown'] },
   { label: 'Text & code', types: ['text', 'code', 'data'] },
@@ -33,6 +50,7 @@ export function SearchView({ q }: { q: string }) {
   const [typeIdx, setTypeIdx] = useState<number | null>(null);
   const [tag, setTag] = useState('');
   const [folderId, setFolderId] = useState('');
+  const [days, setDays] = useState(0);
   const [recent, setRecent] = useState<string[]>(() => prefs.get(RECENT_KEY, []));
   const input = useRef<HTMLInputElement>(null);
   const debounced = useDebounced(query, 120);
@@ -74,12 +92,20 @@ export function SearchView({ q }: { q: string }) {
         types: typeIdx !== null ? TYPE_FILTERS[typeIdx]!.types : undefined,
         tag: tag || undefined,
         folderId: folderId || undefined,
+        modifiedAfter: days ? new Date().setHours(0, 0, 0, 0) - (days - 1) * DAY : undefined,
       },
       100,
     );
     return { hits, ms: performance.now() - started };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debounced, tree, indexVersion, typeIdx, tag, folderId]);
+  }, [debounced, tree, indexVersion, typeIdx, tag, folderId, days]);
+  const hasFilters = typeIdx !== null || !!tag || !!folderId || !!days;
+  const clearFilters = () => {
+    setTypeIdx(null);
+    setTag('');
+    setFolderId('');
+    setDays(0);
+  };
 
   return (
     <Page title="Search" icon={<Search />}>
@@ -93,7 +119,7 @@ export function SearchView({ q }: { q: string }) {
           ref={input}
           type="search"
           className="input h-11 pr-10 pl-10 text-[16px]"
-          placeholder="Search names, paths, tags and content"
+          placeholder='Search everything. Try "exact phrase", tag:idea, modified:week'
           aria-label="Search everything"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -150,6 +176,28 @@ export function SearchView({ q }: { q: string }) {
             </option>
           ))}
         </select>
+        <select
+          className="input h-7 w-auto max-w-[160px] rounded-full py-0 text-caption"
+          aria-label="Filter by date modified"
+          value={days}
+          onChange={(e) => setDays(Number(e.target.value))}
+        >
+          <option value={0}>Any time</option>
+          {DATE_FILTERS.map((f) => (
+            <option key={f.days} value={f.days}>
+              Modified: {f.label.toLowerCase()}
+            </option>
+          ))}
+        </select>
+        {hasFilters && (
+          <button
+            type="button"
+            className="h-7 rounded-full px-2 text-caption text-steel hover:bg-hover hover:text-ink"
+            onClick={clearFilters}
+          >
+            Clear filters
+          </button>
+        )}
       </div>
 
       {!debounced.trim() ? (
@@ -183,6 +231,31 @@ export function SearchView({ q }: { q: string }) {
             Typos are forgiven.
           </p>
         )
+      ) : null}
+      {!debounced.trim() ? (
+        <section className="mt-6">
+          <h2 className="section-label mb-2">Search operators</h2>
+          <dl className="grid gap-x-6 gap-y-1.5 text-[13px] sm:grid-cols-[auto_1fr]">
+            {OPERATORS.map(([op, desc]) => (
+              <div key={op} className="contents">
+                <dt>
+                  <button
+                    type="button"
+                    className="rounded bg-surface-soft px-1.5 py-0.5 font-mono text-[12px] text-charcoal hover:bg-hover"
+                    onClick={() => {
+                      const first = op.split(' or ')[0]!;
+                      setQuery((cur) => `${cur.trim()} ${first}`.trim());
+                      input.current?.focus();
+                    }}
+                  >
+                    {op}
+                  </button>
+                </dt>
+                <dd className="text-steel">{desc}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
       ) : (
         <section>
           <p className="mb-2 text-caption text-steel" aria-live="polite">
@@ -192,9 +265,23 @@ export function SearchView({ q }: { q: string }) {
             · {results.ms < 1 ? '<1' : Math.round(results.ms)} ms
           </p>
           {results.hits.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-hairline-strong p-8 text-center text-[14px] text-steel">
-              No documents match "{debounced}". Try fewer words or remove a filter.
-            </p>
+            <div className="rounded-lg border border-dashed border-hairline-strong p-8 text-center text-[14px] text-steel">
+              <p>No documents match "{debounced}". Try fewer words or another spelling.</p>
+              <div className="mt-3 flex flex-wrap justify-center gap-2">
+                {hasFilters && (
+                  <button type="button" className="btn btn-secondary h-8" onClick={clearFilters}>
+                    Clear filters
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-secondary h-8"
+                  onClick={() => useUi.getState().setOverlay('quickopen')}
+                >
+                  Open by name instead
+                </button>
+              </div>
+            </div>
           ) : (
             <ul className="divide-y divide-hairline-soft overflow-hidden rounded-lg border border-hairline">
               {results.hits.map((hit) => {

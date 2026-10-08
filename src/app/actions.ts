@@ -1,6 +1,18 @@
 import type { Entry, EntryId } from '@/domain/types';
-import { NAME_ERROR_MESSAGES, baseName, extensionOf, validateName } from '@/domain/names';
-import { TEMPLATES, expandTemplate, isoDate } from '@/domain/templates';
+import {
+  NAME_ERROR_MESSAGES,
+  baseName,
+  extensionOf,
+  isMarkdownName,
+  validateName,
+} from '@/domain/names';
+import {
+  TEMPLATES,
+  expandTemplate,
+  isoDate,
+  templateFromFile,
+  type Template,
+} from '@/domain/templates';
 import { isValidTag, normalizeTag } from '@/domain/tags';
 import { appActions, session, useApp, ws } from './app-store';
 import { dialogs } from './dialog-store';
@@ -9,7 +21,7 @@ import { navigate, useRouter } from './router';
 import { toast, toastError, useToasts } from './toast-store';
 import { useUi } from './ui-store';
 import { useSettings } from './settings-store';
-import { exportFile, exportHtml, exportZip } from './exporter';
+import { exportFile, exportHtml, exportText, exportZip } from './exporter';
 import { importItems, type ImportItem } from './importer';
 import { diskLinks } from './disk-links';
 
@@ -57,11 +69,37 @@ async function guard<T>(message: string, fn: () => Promise<T>): Promise<T | unde
   }
 }
 
+export const TEMPLATES_FOLDER = 'Templates';
+
+/** The top-level "Templates" folder, if the workspace has one. */
+export function templatesFolder(): Entry | undefined {
+  const tree = ws().tree;
+  return tree
+    .childrenOf(null)
+    .find((e) => e.kind === 'folder' && e.name.toLowerCase() === TEMPLATES_FOLDER.toLowerCase());
+}
+
+/** Markdown files in the Templates folder are templates too; they come first. */
+export function workspaceTemplates(): Template[] {
+  const folder = templatesFolder();
+  if (!folder) return [];
+  const tree = ws().tree;
+  return tree
+    .childrenOf(folder.id)
+    .filter((e) => e.kind === 'file' && isMarkdownName(e.name))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((e) =>
+      templateFromFile(`user:${e.id}`, baseName(e.name), ws().allTexts().get(e.id) ?? ''),
+    );
+}
+
 export async function newDocument(
   parentId: EntryId | null = contextFolderId(),
   templateId?: string,
 ) {
-  const template = TEMPLATES.find((t) => t.id === (templateId ?? 'blank')) ?? TEMPLATES[0]!;
+  const template =
+    [...workspaceTemplates(), ...TEMPLATES].find((t) => t.id === (templateId ?? 'blank')) ??
+    TEMPLATES[0]!;
   const title = expandTemplate(template.fileName, { title: '' }) || 'Untitled';
   // Keys typed while the document is created must not press the "New document" button again.
   if (document.activeElement instanceof HTMLButtonElement) document.activeElement.blur();
@@ -82,6 +120,64 @@ export async function newDocument(
 export async function newFromTemplate(parentId: EntryId | null = contextFolderId()) {
   const id = await dialogs.template();
   if (id) return newDocument(parentId, id);
+}
+
+/**
+ * Opens today's note (YYYY-MM-DD.md in the daily notes folder), creating it from
+ * the daily template if needed.
+ */
+export async function openDailyNote() {
+  const date = isoDate();
+  return guard("Unable to open today's note.", async () => {
+    let parentId: EntryId | null = null;
+    const segments = useSettings
+      .getState()
+      .dailyFolder.split('/')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    for (const seg of segments) parentId = (await ws().ensureFolder(parentId, seg)).id;
+    const tree = ws().tree;
+    const existing = tree
+      .childrenOf(parentId)
+      .find((e) => e.kind === 'file' && e.name.toLowerCase() === `${date}.md`);
+    if (existing) {
+      editorActions.requestFocus(existing.id, { end: true });
+      await openEntry(existing.id);
+      return existing;
+    }
+    const template = TEMPLATES.find((t) => t.id === 'daily')!;
+    const entry = await ws().createFile(
+      parentId,
+      `${date}.md`,
+      expandTemplate(template.body, { title: date, date }),
+      { uniquify: false },
+    );
+    if (parentId) appActions.setExpanded(parentId, true);
+    if (useSettings.getState().defaultViewMode === 'preview')
+      useUi.getState().setViewMode(entry.id, 'edit');
+    editorActions.requestFocus(entry.id, { end: true });
+    await openEntry(entry.id);
+    return entry;
+  });
+}
+
+/** Copies a document into the Templates folder so it shows up in "New from template". */
+export async function saveAsTemplate(id: EntryId) {
+  const e = ws().get(id);
+  if (!e) return;
+  await editorActions.flush(id);
+  return guard('Unable to save the template.', async () => {
+    const folder = templatesFolder() ?? (await ws().createFolder(null, TEMPLATES_FOLDER));
+    const text = await ws().readText(id);
+    const entry = await ws().createFile(folder.id, e.name, text);
+    toast({
+      message: `Saved "${baseName(entry.name)}" as a template.`,
+      detail: 'Use {{title}}, {{date}} and {{time}} for values filled in when you use it.',
+      tone: 'success',
+      action: { label: 'Open', run: () => void openEntry(entry.id) },
+    });
+    return entry;
+  });
 }
 
 export async function newFolder(parentId: EntryId | null = contextFolderId()) {
@@ -323,19 +419,31 @@ function dismissToast(id: number) {
   useToasts.getState().dismiss(id);
 }
 
-export async function exportEntry(id: EntryId | null, format: 'file' | 'html' | 'zip' | 'pdf') {
+export async function exportEntry(
+  id: EntryId | null,
+  format: 'file' | 'html' | 'zip' | 'pdf' | 'txt',
+) {
   await editorActions.flushAll();
   await guard('Unable to export.', async () => {
     if (format === 'zip') return exportZip(ws(), id);
     if (!id) return;
     if (format === 'file') return exportFile(ws(), id);
     if (format === 'html') return exportHtml(ws(), id);
+    if (format === 'txt') return exportText(ws(), id);
     if (format === 'pdf') {
       await openEntry(id);
       useUi.getState().setReadingMode(true);
       setTimeout(() => window.print(), 400);
     }
   });
+}
+
+/** Links a plain-text mention of `targetId` in `sourceId` (from "Unlinked mentions"). */
+export async function linkMention(sourceId: EntryId, targetId: EntryId) {
+  const target = ws().get(targetId);
+  if (!target) return;
+  await editorActions.flush(sourceId);
+  await guard('Unable to add the link.', () => ws().linkMention(sourceId, baseName(target.name)));
 }
 
 export async function addTagTo(id: EntryId) {

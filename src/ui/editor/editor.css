@@ -210,3 +210,8 @@
 .cm-md-tag {
   color: var(--primary);
 }
+
+/* Typewriter mode: room below the last line so it can sit mid-screen too. */
+.cm-typewriter .cm-content {
+  padding-bottom: 45vh;
+}

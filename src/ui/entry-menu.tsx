@@ -15,6 +15,7 @@ import {
   FileArchive,
   FileCode,
   Printer,
+  FileText,
 } from 'lucide-react';
 import type { Entry } from '@/domain/types';
 import { isMarkdownName } from '@/domain/names';
@@ -59,6 +60,11 @@ export function entryMenu(e: Entry): MenuEntry[] {
     items.push(
       { label: 'Add tag…', icon: <Tag />, onSelect: () => void A.addTagTo(e.id) },
       { label: 'Version history', icon: <History />, onSelect: () => void dialogs.history(e.id) },
+      {
+        label: 'Save as template',
+        icon: <LayoutTemplate />,
+        onSelect: () => void A.saveAsTemplate(e.id),
+      },
     );
   }
   items.push({ label: 'Export', icon: <Download />, submenu: exportSubmenu(e) }, 'separator', {
@@ -92,6 +98,11 @@ export function exportSubmenu(e: Entry): MenuEntry[] {
     items.push(
       { label: 'HTML page', icon: <FileCode />, onSelect: () => void A.exportEntry(e.id, 'html') },
       { label: 'PDF (print)', icon: <Printer />, onSelect: () => void A.exportEntry(e.id, 'pdf') },
+      {
+        label: 'Plain text (.txt)',
+        icon: <FileText />,
+        onSelect: () => void A.exportEntry(e.id, 'txt'),
+      },
     );
   }
   return items;

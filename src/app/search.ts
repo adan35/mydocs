@@ -2,6 +2,7 @@ import MiniSearch, { type SearchResult as MiniResult } from 'minisearch';
 import type { EntryId } from '@/domain/types';
 import type { Tree } from '@/domain/tree';
 import { fileTypeOf, type FileType } from '@/domain/names';
+import { inRange, parseQuery } from '@/domain/query';
 
 /** Content beyond this many characters isn't indexed (the file still opens fine). */
 const MAX_INDEXED_CHARS = 1_000_000;
@@ -21,6 +22,8 @@ export interface SearchFilters {
   types?: FileType[];
   folderId?: EntryId | null;
   tag?: string;
+  /** Only documents modified at or after this time (epoch ms). */
+  modifiedAfter?: number;
 }
 
 export interface SearchHit {
@@ -98,27 +101,62 @@ export class SearchIndex {
     await this.mini.addAllAsync(items, { chunkSize: 200 });
   }
 
+  /**
+   * Ranked full-text search. The query may use operators (see `parseQuery`):
+   * `tag:`, `folder:`, `type:`, `created:`, `modified:`, `"exact phrase"`, `-exclude`.
+   */
   search(query: string, tree: Tree, filters: SearchFilters = {}, limit = 50): SearchHit[] {
-    const q = query.trim();
-    if (!q) return [];
-    let results: MiniResult[] = this.mini.search(q);
-    if (!results.length) results = this.mini.search(q, { combineWith: 'OR' });
+    const q = parseQuery(query.trim());
+    const text = [q.text, ...q.phrases].join(' ').trim();
+    if (!text && !q.hasOperators) return [];
+    let results: Pick<MiniResult, 'id' | 'score' | 'terms' | 'match'>[];
+    if (text) {
+      results = this.mini.search(text);
+      if (!results.length && !q.phrases.length) {
+        results = this.mini.search(text, { combineWith: 'OR' });
+      }
+    } else {
+      // Operators only (e.g. "tag:idea modified:week"): newest first.
+      results = [...this.docs.keys()]
+        .map((id) => ({ id, score: tree.get(id)?.updatedAt ?? 0, terms: [], match: {} }))
+        .sort((a, b) => b.score - a.score);
+    }
+    const types = [...(filters.types ?? []), ...q.types];
+    const tags = [...(filters.tag ? [filters.tag] : []), ...q.tags];
+    const phrases = q.phrases.map((p) => p.toLocaleLowerCase());
     const hits: SearchHit[] = [];
     for (const r of results) {
       const id = r.id as EntryId;
       const entry = tree.get(id);
       if (!entry || tree.isTrashed(id)) continue;
-      if (filters.types?.length && !filters.types.includes(fileTypeOf(entry.name))) continue;
+      if (types.length && !types.includes(fileTypeOf(entry.name))) continue;
       if (filters.folderId && !tree.isWithin(id, filters.folderId)) continue;
+      if (!inRange(entry.createdAt, q.created) || !inRange(entry.updatedAt, q.modified)) continue;
+      if (filters.modifiedAfter && entry.updatedAt < filters.modifiedAfter) continue;
       const doc = this.docs.get(id);
-      if (filters.tag && !doc?.tags.split(' ').includes(filters.tag)) continue;
+      if (!doc) continue;
+      if (q.folders.length) {
+        const dir = `/${tree.dirOf(id).toLocaleLowerCase()}/`;
+        if (!q.folders.every((f) => dir.includes(`/${f}`))) continue;
+      }
+      if (tags.length) {
+        const docTags = doc.tags ? doc.tags.split(' ') : [];
+        const has = (t: string) => docTags.some((d) => d === t || d.startsWith(`${t}/`));
+        if (!tags.every(has)) continue;
+      }
+      if (phrases.length || q.exclude.length) {
+        const hay = `${doc.name}\n${doc.content}`.toLocaleLowerCase();
+        if (!phrases.every((p) => hay.includes(p))) continue;
+        if (q.exclude.some((x) => hay.includes(x))) continue;
+      }
       const fields = [...new Set(Object.values(r.match).flat())];
+      const terms = [...new Set([...q.phrases, ...r.terms])];
       hits.push({
         id,
         score: r.score,
         fields,
-        terms: r.terms,
-        snippet: doc && fields.includes('content') ? snippetFor(doc, r.terms) : undefined,
+        terms,
+        snippet: fields.includes('content') ? snippetFor(doc, terms) : undefined,
       });
       if (hits.length >= limit) break;
     }

@@ -3,11 +3,13 @@ import { appActions, useApp } from '@/app/app-store';
 import { editorActions, writeRecoveryDrafts } from '@/app/editor-store';
 import { diskLinks, useDiskLinks } from '@/app/disk-links';
 import { useRouter, navigate } from '@/app/router';
+import { ownership } from '@/app/ownership';
 import { AppShell } from './layout/AppShell';
 import { DialogHost } from './dialogs/DialogHost';
 import { MenuHost } from './components/Menu';
 import { Toaster } from './components/Toaster';
 import { useResolvedTheme } from './hooks';
+import { useUi } from '@/app/ui-store';
 
 function useThemeAttribute() {
   const theme = useResolvedTheme();
@@ -55,6 +57,19 @@ function useLifecycle() {
       unsub();
     };
   }, [session]);
+
+  // Another tab asked to take over: save everything, then step back.
+  useEffect(
+    () =>
+      ownership.onTakeover(async () => {
+        await editorActions.flushAll();
+        writeRecoveryDrafts();
+        useUi.getState().setOverlay(null);
+        editorActions.reset();
+        appActions.relinquish();
+      }),
+    [],
+  );
 
   useEffect(() => {
     const protect = () => {
@@ -125,6 +140,28 @@ export function App() {
           </button>
         </div>
       </div>
+    );
+  }
+
+  if (phase === 'elsewhere') {
+    return (
+      <main className="flex h-full items-center justify-center bg-canvas p-6">
+        <div className="card max-w-md p-8 text-center">
+          <h1 className="text-[18px] font-semibold text-ink">My Doc is open in another tab</h1>
+          <p className="mt-2 text-[14px] text-slate">
+            To keep your documents safe, My Doc works in one tab at a time. Your changes from the
+            other tab are saved.
+          </p>
+          <button
+            type="button"
+            autoFocus
+            className="btn btn-primary mt-6"
+            onClick={() => void appActions.takeOver()}
+          >
+            Use here
+          </button>
+        </div>
+      </main>
     );
   }
 

@@ -18,6 +18,24 @@ const escapeHtml = (s: string) =>
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!,
   );
 
+const CALLOUT_KINDS = new Set([
+  'note',
+  'tip',
+  'important',
+  'warning',
+  'caution',
+  'info',
+  'success',
+  'question',
+  'danger',
+  'example',
+  'quote',
+  'abstract',
+  'todo',
+  'bug',
+  'failure',
+]);
+
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg|avif|bmp|ico)$/i;
 
 /** CommonJS plugins may arrive wrapped in `{ default }` depending on the bundler. */
@@ -78,6 +96,28 @@ function createRenderer(): MarkdownIt {
         anchor.content = ` <a class="heading-anchor" href="#${escapeHtml(id)}" aria-label="Link to this section">#</a>`;
         inline.children.push(anchor);
       }
+    }
+  });
+
+  // Callouts: a blockquote starting with [!NOTE], [!TIP], [!WARNING]… (GitHub and Obsidian syntax).
+  md.core.ruler.push('callouts', (state) => {
+    const tokens = state.tokens;
+    for (let i = 0; i < tokens.length; i++) {
+      if (tokens[i]!.type !== 'blockquote_open') continue;
+      const inline = tokens[i + 2];
+      if (tokens[i + 1]?.type !== 'paragraph_open' || inline?.type !== 'inline') continue;
+      const m = /^\[!([a-z]+)\][+-]?[ \t]*([^\n]*)/i.exec(inline.content);
+      if (!m || !inline.children?.length) continue;
+      const kind = m[1]!.toLowerCase();
+      const title = m[2]!.trim() || kind[0]!.toUpperCase() + kind.slice(1);
+      tokens[i]!.attrJoin('class', `callout callout-${CALLOUT_KINDS.has(kind) ? kind : 'note'}`);
+      // The whole first line is the marker and title; the body starts after its line break.
+      const children = inline.children!;
+      const br = children.findIndex((c) => c.type === 'softbreak' || c.type === 'hardbreak');
+      children.splice(0, br === -1 ? children.length : br + 1);
+      const head = new state.Token('html_inline', '', 0);
+      head.content = `<span class="callout-title">${escapeHtml(title)}</span>`;
+      inline.children!.unshift(head);
     }
   });
 

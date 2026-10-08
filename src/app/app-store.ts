@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import type { EntryId, WorkspaceInfo } from '@/domain/types';
 import type { WorkspaceProvider } from '@/storage/types';
 import { IndexedDbProvider } from '@/storage/indexeddb';
-import { Workspace } from './workspace';
+import { Workspace, setWriteGuard } from './workspace';
+import { ownership } from './ownership';
 import { WorkspaceSession } from './session';
 import { prefs } from './prefs';
 import { seedWorkspace } from './seed';
@@ -15,7 +16,8 @@ export interface RecentItem {
 }
 
 interface AppState {
-  phase: 'loading' | 'ready' | 'error';
+  /** `elsewhere`: another browser tab owns the data (see ownership.ts). */
+  phase: 'loading' | 'ready' | 'error' | 'elsewhere';
   error?: string;
   provider: WorkspaceProvider;
   workspaces: WorkspaceInfo[];
@@ -25,6 +27,8 @@ interface AppState {
   /** Bumps whenever derived indexes (search, tags, links) change. */
   indexVersion: number;
   recents: RecentItem[];
+  /** How often each document was opened, for ranking quick open. */
+  openCounts: Record<EntryId, number>;
   expanded: Record<EntryId, true>;
   persistentStorage: boolean | null;
 }
@@ -33,6 +37,8 @@ const RECENTS_LIMIT = 30;
 let initPromise: Promise<void> | null = null;
 const LAST_WS_KEY = 'mydoc:last-workspace';
 const recentsKey = (ws: string) => `mydoc:recents:${ws}`;
+const frequencyKey = (ws: string) => `mydoc:open-counts:${ws}`;
+const FREQUENCY_LIMIT = 500;
 const expandedKey = (ws: string) => `mydoc:expanded:${ws}`;
 
 export const useApp = create<AppState>(() => ({
@@ -43,6 +49,7 @@ export const useApp = create<AppState>(() => ({
   treeVersion: 0,
   indexVersion: 0,
   recents: [],
+  openCounts: {},
   expanded: {},
   persistentStorage: null,
 }));
@@ -77,6 +84,7 @@ async function openSession(info: WorkspaceInfo) {
     session: next,
     treeVersion: get().treeVersion + 1,
     recents: prefs.get<RecentItem[]>(recentsKey(info.id), []),
+    openCounts: prefs.get<Record<EntryId, number>>(frequencyKey(info.id), {}),
     expanded: prefs.get<Record<EntryId, true>>(expandedKey(info.id), {}),
   });
   return next;
@@ -99,6 +107,11 @@ export const appActions = {
   async doInit() {
     try {
       set({ phase: 'loading', error: undefined });
+      if (!(await ownership.acquire())) {
+        set({ phase: 'elsewhere' });
+        return;
+      }
+      setWriteGuard(() => ownership.isOwner);
       const provider = get().provider;
       let workspaces = await provider.list();
       let fresh = false;
@@ -131,6 +144,20 @@ export const appActions = {
             : 'My Doc could not open its local storage. This can happen in private browsing or when site data is blocked.',
       });
     }
+  },
+
+  /** Called after this tab saved everything and is handing the data to another tab. */
+  relinquish() {
+    set({ phase: 'elsewhere' });
+  },
+
+  /** Takes the data back from the tab that owns it, then reloads from storage. */
+  async takeOver() {
+    set({ phase: 'loading' });
+    await ownership.takeOver();
+    get().session?.dispose();
+    set({ session: null });
+    await appActions.init();
   },
 
   async switchWorkspace(id: string) {
@@ -167,6 +194,7 @@ export const appActions = {
     }
     await provider.remove(id);
     prefs.remove(recentsKey(id));
+    prefs.remove(frequencyKey(id));
     prefs.remove(expandedKey(id));
     let workspaces = await provider.list();
     if (!workspaces.length) {
@@ -184,8 +212,16 @@ export const appActions = {
       0,
       RECENTS_LIMIT,
     );
-    set({ recents });
+    const counts = { ...get().openCounts, [id]: (get().openCounts[id] ?? 0) + 1 };
+    // Keep the map bounded: drop the least-opened documents.
+    const entries = Object.entries(counts);
+    const openCounts =
+      entries.length > FREQUENCY_LIMIT
+        ? Object.fromEntries(entries.sort((a, b) => b[1] - a[1]).slice(0, FREQUENCY_LIMIT))
+        : counts;
+    set({ recents, openCounts });
     prefs.set(recentsKey(s.workspace.id), recents);
+    prefs.set(frequencyKey(s.workspace.id), openCounts);
   },
 
   setExpanded(id: EntryId, open: boolean) {

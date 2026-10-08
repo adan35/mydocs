@@ -18,6 +18,7 @@ import { slugify } from '@/domain/outline';
 import { resolveWikiLink } from '@/app/workspace';
 import { toast } from '@/app/toast-store';
 import { useResolvedTheme, useTree } from '../hooks';
+import { useLinkPreview } from './LinkPreview';
 
 export interface PreviewHandle {
   scrollToLine(line: number, smooth?: boolean): void;
@@ -60,6 +61,13 @@ export function Preview({ docId, text, className = '', onToggleTask, onVisibleLi
   const theme = useResolvedTheme();
   const [zoom, setZoom] = useState<{ src: string; alt: string } | null>(null);
   const rendered = useMemo(() => renderMarkdown(deferred), [deferred]);
+  const linkPreview = useLinkPreview((a) => {
+    if (a.dataset.wiki !== undefined) return resolveWiki(a.dataset.wiki);
+    const href = a.getAttribute('href') ?? '';
+    if (!href || href.startsWith('#') || isExternalHref(href)) return undefined;
+    const id = resolveHref(docId, href);
+    return id && id !== docId ? id : undefined;
+  });
   const callbacks = useRef({ onToggleTask, onVisibleLine });
   callbacks.current = { onToggleTask, onVisibleLine };
 
@@ -230,13 +238,19 @@ export function Preview({ docId, text, className = '', onToggleTask, onVisibleLi
 
   return (
     <>
+      {rendered.frontMatter && <Properties data={rendered.frontMatter} className={className} />}
       <article
         ref={root}
         className={`prose ${className}`}
-        onClick={onClick}
+        onClick={(e) => {
+          linkPreview.hide();
+          onClick(e);
+        }}
+        {...linkPreview.handlers}
         // Sanitized by DOMPurify in renderMarkdown.
         dangerouslySetInnerHTML={{ __html: rendered.html }}
       />
+      {linkPreview.card}
       {zoom &&
         createPortal(
           <div
@@ -249,6 +263,41 @@ export function Preview({ docId, text, className = '', onToggleTask, onVisibleLi
             tabIndex={-1}
             ref={(el) => el?.focus()}
           >
+            <div
+              className="absolute top-3 right-3 flex gap-1 rounded-lg bg-canvas p-1 shadow-3"
+              role="toolbar"
+              aria-label="Image actions"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                className="btn btn-ghost h-8 px-2 text-caption"
+                onClick={() => window.open(zoom.src, '_blank', 'noopener')}
+              >
+                Open full size
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost h-8 px-2 text-caption"
+                onClick={() => void copyImage(zoom.src)}
+              >
+                Copy
+              </button>
+              <a
+                className="btn btn-ghost h-8 px-2 text-caption"
+                href={zoom.src}
+                download={zoom.alt || 'image'}
+              >
+                Download
+              </a>
+              <button
+                type="button"
+                className="btn btn-ghost h-8 px-2 text-caption"
+                onClick={() => setZoom(null)}
+              >
+                Close
+              </button>
+            </div>
             <img
               src={zoom.src}
               alt={zoom.alt}
@@ -258,6 +307,57 @@ export function Preview({ docId, text, className = '', onToggleTask, onVisibleLi
           document.body,
         )}
     </>
+  );
+}
+
+/**
+ * Copies an image to the clipboard as PNG (the format every browser accepts).
+ * Drawn through a canvas rather than fetched, which the content security policy allows.
+ */
+async function copyImage(src: string) {
+  try {
+    const img = new Image();
+    img.src = src;
+    await img.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    canvas.getContext('2d')!.drawImage(img, 0, 0);
+    const png = await new Promise<Blob>((resolve, reject) =>
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('encode'))), 'image/png'),
+    );
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+    toast({ message: 'Image copied.', tone: 'success' });
+  } catch {
+    toast({ message: "This image can't be copied here. Try Download instead.", tone: 'error' });
+  }
+}
+
+/** Formats a front-matter value for display without changing the source. */
+export function propertyText(v: unknown): string {
+  if (v === null || v === undefined) return '';
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  if (Array.isArray(v)) return v.map(propertyText).join(', ');
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+}
+
+/** Front matter shown as a quiet properties table above the document. */
+function Properties({ data, className }: { data: Record<string, unknown>; className: string }) {
+  const entries = Object.entries(data).filter(([, v]) => propertyText(v) !== '');
+  if (!entries.length) return null;
+  return (
+    <dl
+      aria-label="Properties"
+      className={`properties mb-6 grid grid-cols-[minmax(80px,auto)_1fr] gap-x-6 gap-y-1 border-b border-hairline pb-4 text-[13px] ${className}`}
+    >
+      {entries.map(([k, v]) => (
+        <div key={k} className="contents">
+          <dt className="truncate text-steel">{k}</dt>
+          <dd className="min-w-0 break-words text-charcoal">{propertyText(v)}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 

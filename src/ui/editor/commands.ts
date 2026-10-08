@@ -1,5 +1,7 @@
 import { EditorSelection, type ChangeSpec } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
+import { emptyTable, findTable, parseTable, serializeTable } from '@/domain/table';
+import { dialogs } from '@/app/dialog-store';
 
 /** Wraps each selection with `marker` (or unwraps if already wrapped). */
 export function toggleWrap(view: EditorView, marker: string, placeholder = 'text'): boolean {
@@ -119,11 +121,42 @@ export function insertCodeBlock(view: EditorView): boolean {
   return true;
 }
 
+/**
+ * Opens the visual table editor: on the table under the cursor, or for a new table
+ * inserted at the cursor. The result is written back as valid Markdown.
+ */
 export function insertTable(view: EditorView): boolean {
+  void editTable(view);
+  return true;
+}
+
+async function editTable(view: EditorView) {
+  const { state } = view;
+  const lines = state.doc.toString().split('\n');
+  const cursorLine = state.doc.lineAt(state.selection.main.head).number - 1;
+  const found = findTable(lines, cursorLine);
+  const existing = found ? parseTable(lines.slice(found.start, found.end + 1)) : null;
+  const result = await dialogs.table(existing ?? emptyTable(), !existing);
+  if (!result || !view.dom.isConnected) return;
+  const md = serializeTable(result);
+  if (found && existing) {
+    const from = view.state.doc.line(found.start + 1).from;
+    const to = view.state.doc.line(found.end + 1).to;
+    // Only replace if the table wasn't changed in the meantime.
+    if (view.state.sliceDoc(from, to) !== lines.slice(found.start, found.end + 1).join('\n'))
+      return;
+    view.dispatch({
+      changes: { from, to, insert: md },
+      selection: { anchor: from },
+      userEvent: 'input.format',
+      scrollIntoView: true,
+    });
+    view.focus();
+    return;
+  }
   const line = view.state.doc.lineAt(view.state.selection.main.from);
   const lead = line.text.trim() ? '\n\n' : '';
-  insertText(view, `${lead}| Column | Column |\n| --- | --- |\n|  |  |\n`);
-  return true;
+  insertText(view, `${lead}${md}\n`);
 }
 
 /** Inserts a display-math block with the cursor inside it. */

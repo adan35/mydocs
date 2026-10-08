@@ -1,13 +1,15 @@
 import { useMemo, useRef, useState } from 'react';
 import { ChevronRight, Home } from 'lucide-react';
 import { useDialogs, type DialogRequest } from '@/app/dialog-store';
-import { TEMPLATES } from '@/domain/templates';
+import { TEMPLATES, type Template } from '@/domain/templates';
+import { TEMPLATES_FOLDER, workspaceTemplates } from '@/app/actions';
 import type { EntryId } from '@/domain/types';
 import { Dialog } from '../components/Dialog';
 import { FileIcon } from '../components/FileIcon';
 import { useTree } from '../hooks';
 import { HistoryDialog } from './HistoryDialog';
 import { ShortcutsDialog } from './ShortcutsDialog';
+import { TableDialog } from './TableDialog';
 
 export function DialogHost() {
   const stack = useDialogs((s) => s.stack);
@@ -36,6 +38,8 @@ function DialogFor({ req }: { req: DialogRequest }) {
       return <HistoryDialog entryId={req.entryId} onClose={() => req.resolve()} />;
     case 'shortcuts':
       return <ShortcutsDialog onClose={() => req.resolve()} />;
+    case 'table':
+      return <TableDialog initial={req.table} isNew={req.isNew} onClose={req.resolve} />;
   }
 }
 
@@ -288,21 +292,32 @@ function FolderPicker({ req }: { req: Extract<DialogRequest, { kind: 'pick-folde
 }
 
 function TemplateDialog({ req }: { req: Extract<DialogRequest, { kind: 'template' }> }) {
+  const mine = workspaceTemplates();
+  const card = (t: Template) => (
+    <button
+      key={t.id}
+      type="button"
+      className="card flex flex-col items-start gap-1 p-4 text-left transition-colors hover:bg-hover"
+      onClick={() => req.resolve(t.id)}
+    >
+      <span className="font-medium text-ink">{t.name}</span>
+      <span className="line-clamp-2 text-caption text-steel">{t.description}</span>
+    </button>
+  );
   return (
     <Dialog title="New from template" onClose={() => req.resolve(null)} size="lg">
-      <div className="grid grid-cols-1 gap-2 pb-3 sm:grid-cols-2">
-        {TEMPLATES.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            className="card flex flex-col items-start gap-1 p-4 text-left transition-colors hover:bg-hover"
-            onClick={() => req.resolve(t.id)}
-          >
-            <span className="font-medium text-ink">{t.name}</span>
-            <span className="text-caption text-steel">{t.description}</span>
-          </button>
-        ))}
-      </div>
+      <h3 className="section-label mb-2">Your templates</h3>
+      {mine.length ? (
+        <div className="mb-5 grid grid-cols-1 gap-2 sm:grid-cols-2">{mine.map(card)}</div>
+      ) : (
+        <p className="mb-5 text-caption text-steel">
+          Any Markdown file in a top-level <strong>{TEMPLATES_FOLDER}</strong> folder becomes a
+          template. Use <strong>Save as template</strong> from a document's menu or the command
+          palette. {'{{title}}'}, {'{{date}}'} and {'{{time}}'} are filled in for you.
+        </p>
+      )}
+      <h3 className="section-label mb-2">Built in</h3>
+      <div className="grid grid-cols-1 gap-2 pb-3 sm:grid-cols-2">{TEMPLATES.map(card)}</div>
     </Dialog>
   );
 }
