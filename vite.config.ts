@@ -17,7 +17,8 @@ const CSP = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
-  "connect-src 'self'",
+  // The desktop app talks to its native side over Tauri's IPC protocol.
+  `connect-src 'self'${process.env.TAURI_ENV_PLATFORM ? ' ipc: http://ipc.localhost' : ''}`,
   "object-src 'none'",
   "frame-src 'none'",
   "base-uri 'none'",

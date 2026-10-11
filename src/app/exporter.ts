@@ -1,19 +1,13 @@
 import { zipSync } from 'fflate';
 import type { Entry, EntryId } from '@/domain/types';
 import { baseName, isMarkdownName } from '@/domain/names';
+import { saveFile } from '@/platform';
 import type { Workspace } from './workspace';
 import { markdownToPlainText } from './search';
 
-export function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.rel = 'noopener';
-  document.body.append(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+/** Hands an export to the platform: a download on the web, a Save dialog or share sheet in the apps. */
+export function downloadBlob(blob: Blob, filename: string): Promise<boolean> {
+  return saveFile(blob, filename);
 }
 
 /** Builds a zip of `rootId` (or the whole workspace when null), preserving structure. */
@@ -40,7 +34,7 @@ export async function buildZip(ws: Workspace, rootId: EntryId | null): Promise<U
 export async function exportZip(ws: Workspace, rootId: EntryId | null) {
   const data = await buildZip(ws, rootId);
   const name = rootId ? ws.get(rootId)!.name : ws.name;
-  downloadBlob(
+  await downloadBlob(
     new Blob([data as Uint8Array<ArrayBuffer>], { type: 'application/zip' }),
     `${name}.zip`,
   );
@@ -50,7 +44,7 @@ export async function exportFile(ws: Workspace, id: EntryId) {
   const e = ws.get(id);
   if (!e) return;
   const blob = await ws.readBlob(id);
-  if (blob) downloadBlob(blob, e.name);
+  if (blob) await downloadBlob(blob, e.name);
 }
 
 const HTML_STYLES = `
@@ -91,7 +85,7 @@ export async function exportHtml(ws: Workspace, id: EntryId) {
   const html = isMarkdownName(e.name)
     ? await documentHtml(baseName(e.name), text)
     : await documentHtml(e.name, '~~~~~~~~\n' + text + '\n~~~~~~~~');
-  downloadBlob(new Blob([html], { type: 'text/html' }), `${baseName(e.name)}.html`);
+  await downloadBlob(new Blob([html], { type: 'text/html' }), `${baseName(e.name)}.html`);
 }
 
 /** Plain text: Markdown syntax is dropped so the words read cleanly anywhere. */

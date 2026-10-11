@@ -46,7 +46,7 @@ Install the browser once with `npx playwright install chromium`. If Chromium is 
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on every pull request and on pushes to `main`. The `check` job runs lint, format check, typecheck, unit tests and build. The `e2e` job runs Playwright and uploads traces when a test fails.
+`.github/workflows/ci.yml` runs on every pull request and on pushes to `main`. The `check` job runs lint, format check, typecheck, unit tests and build. The `e2e` job runs Playwright and uploads traces when a test fails. `.github/workflows/apps.yml` builds the desktop and mobile apps; see [APPS.md](APPS.md).
 
 ## Conventions
 

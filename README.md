@@ -85,16 +85,19 @@ npm run build      # production build in dist/
 npm run preview    # serve the production build
 ```
 
+Desktop (Windows, macOS, Linux) and mobile (Android, iOS) apps are built from the same code; see [docs/APPS.md](docs/APPS.md).
+
 See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for tests and tooling, and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the code is organized.
 
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Development](docs/DEVELOPMENT.md)
+- [Desktop and mobile apps](docs/APPS.md)
 - [Security](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)
 - [Engineering brief](docs/ENGINEERING_BRIEF.md): the original plan and decisions
 
 ## Not yet built
 
-These are planned and are not in the app today: opening a folder on disk as a live workspace (new files and changes made outside My Doc), cloud storage and sync, accounts, sharing, comments and collaboration, a Typora-style live preview editing mode, two different documents side by side, configurable shortcuts, and AI features.
+These are planned and are not in the app today: opening a folder on disk as a live workspace (new files and changes made outside My Doc, through the File System Access API or a folder-backed store in the desktop app), cloud storage and sync, accounts, sharing, comments and collaboration, a Typora-style live preview editing mode, two different documents side by side, configurable shortcuts, and AI features.

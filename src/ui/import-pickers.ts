@@ -7,17 +7,24 @@ type PickerWindow = Window & {
   showDirectoryPicker(opts?: { mode?: 'read' | 'readwrite' }): Promise<FileSystemDirectoryHandle>;
 };
 
+/** A picker that aborts sooner than this never showed its dialog. */
+const INSTANT_ABORT_MS = 300;
+
 /** Opens the browser's file/folder picker and imports the selection. */
 export function pickImport(kind: 'files' | 'folder' | 'zip', targetId?: string | null) {
   const target = targetId === undefined ? undefined : targetId;
   // Where the browser allows it, keep a handle to each picked file so edits are saved
   // back to the original file on disk.
   if (kind !== 'zip' && canSaveToDisk()) {
+    const started = performance.now();
     void pickWithHandles(kind).then(
       (items) => items.length && void runImport(items, target),
       (err: unknown) => {
-        // Cancelled pickers reject with AbortError; anything else falls back to the input.
-        if (!(err instanceof DOMException && err.name === 'AbortError'))
+        // Cancelled pickers reject with AbortError. Some browsers (automation-controlled
+        // or policy-restricted ones) abort at once without showing a dialog; nobody can
+        // cancel a real dialog that fast, so fall back to the input like any other error.
+        const cancelled = err instanceof DOMException && err.name === 'AbortError';
+        if (!cancelled || performance.now() - started < INSTANT_ABORT_MS)
           pickWithInput(kind, target);
       },
     );

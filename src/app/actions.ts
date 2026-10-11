@@ -23,6 +23,7 @@ import { useUi } from './ui-store';
 import { useSettings } from './settings-store';
 import { exportFile, exportHtml, exportText, exportZip } from './exporter';
 import { importItems, type ImportItem } from './importer';
+import { canPrint } from '@/platform';
 import { diskLinks } from './disk-links';
 
 /**
@@ -431,6 +432,13 @@ export async function exportEntry(
     if (format === 'html') return exportHtml(ws(), id);
     if (format === 'txt') return exportText(ws(), id);
     if (format === 'pdf') {
+      if (!canPrint) {
+        // Mobile web views have no print dialog; share a print-ready HTML file instead.
+        toast({
+          message: "PDF export isn't available in the mobile app. Sharing as HTML instead.",
+        });
+        return exportHtml(ws(), id);
+      }
       await openEntry(id);
       useUi.getState().setReadingMode(true);
       setTimeout(() => window.print(), 400);
