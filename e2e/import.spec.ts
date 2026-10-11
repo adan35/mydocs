@@ -56,3 +56,24 @@ test('binary files show details instead of pretending to be text', async ({ page
   await expect(page.getByText("My Doc can store this file but can't edit it.")).toBeVisible();
   await expect(page.getByRole('button', { name: 'Download' })).toBeVisible();
 });
+
+test('dropping files anywhere shows an overlay and imports them', async ({ page }) => {
+  await freshApp(page);
+  const dt = await page.evaluateHandle(() => {
+    const d = new DataTransfer();
+    d.items.add(
+      new File(['# Dropped\n\nHello from a drop.'], 'dropped.md', { type: 'text/markdown' }),
+    );
+    d.items.add(new File(['plain'], 'notes.txt', { type: 'text/plain' }));
+    return d;
+  });
+  const main = page.locator('#main');
+  await main.dispatchEvent('dragenter', { dataTransfer: dt });
+  await main.dispatchEvent('dragover', { dataTransfer: dt });
+  await expect(page.getByTestId('drop-overlay')).toContainText('Drop files or folders to import');
+  await main.dispatchEvent('drop', { dataTransfer: dt });
+  await expect(page.getByTestId('drop-overlay')).toBeHidden();
+  await expect(page.getByText(/Imported 2 files/)).toBeVisible();
+  await page.getByRole('treeitem', { name: 'dropped.md' }).click();
+  await expect(page.locator('.cm-content')).toContainText('Hello from a drop.');
+});

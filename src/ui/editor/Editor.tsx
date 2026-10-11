@@ -455,5 +455,13 @@ export function Editor({
     return true;
   }
 
-  return <div ref={host} className="h-full min-h-0" data-testid="editor" />;
+  return (
+    <div
+      ref={host}
+      className="h-full min-h-0"
+      data-testid="editor"
+      // Files dropped on a Markdown document become attachments, not imports.
+      data-attach-drop={isMarkdownName(name) ? '' : undefined}
+    />
+  );
 }

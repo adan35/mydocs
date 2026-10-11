@@ -3,6 +3,7 @@ import type { EntryId, FileContent } from '@/domain/types';
 import { fileTypeOf, isTextType, sanitizeName, extensionOf } from '@/domain/names';
 import { normalizePath } from '@/domain/paths';
 import type { ConflictChoice } from './dialog-store';
+import { canSaveToDisk } from './disk-links';
 import { MAX_TEXT_BYTES, type Workspace } from './workspace';
 
 export const MAX_IMPORT_FILE_BYTES = 100 * 1024 * 1024;
@@ -27,7 +28,13 @@ export interface ImportItem {
   file: Blob & { name?: string };
   /** The file on disk, when the browser gave us a writable handle (File System Access API). */
   handle?: FileSystemFileHandle;
+  /** The browser refused to open the file while listing the folder. */
+  unreadable?: boolean;
 }
+
+/** Shown when a file can't be read; the import carries on without it. */
+export const UNREADABLE_REASON =
+  'Could not be read. It may be open in another app, not downloaded from cloud storage yet, or blocked by permissions.';
 
 export interface ImportResult {
   files: number;
@@ -44,10 +51,14 @@ export type ConflictResolver = (name: string, count: number) => Promise<Conflict
 /** Decides whether a file is text: by extension, then by sniffing for binary bytes. */
 export async function readAsTextIfText(blob: Blob, name: string): Promise<string | null> {
   if (blob.size > MAX_TEXT_BYTES) return null;
+  return textFromBytes(new Uint8Array(await blob.arrayBuffer()), name);
+}
+
+function textFromBytes(buf: Uint8Array, name: string): string | null {
+  if (buf.byteLength > MAX_TEXT_BYTES) return null;
   const type = fileTypeOf(name);
   if (type === 'image' || type === 'pdf') return null;
   const known = isTextType(type) && extensionOf(name) !== '';
-  const buf = new Uint8Array(await blob.arrayBuffer());
   if (!known) {
     const sample = buf.subarray(0, 8192);
     if (sample.includes(0)) return null;
@@ -100,6 +111,35 @@ export async function expandZips(
 }
 
 /**
+ * Reads a file into memory. A `File` from disk is only a reference: if the file changed,
+ * was locked or went offline since it was listed, reading it throws NotReadableError.
+ * A file with a disk handle gets one fresh read through the handle; otherwise it's skipped.
+ * Reading up front also means IndexedDB never has to read the disk file lazily, where one
+ * failure would abort a whole batch.
+ */
+async function readItem(
+  file: Blob,
+  handle: FileSystemFileHandle | undefined,
+  unreadable: boolean,
+): Promise<{ bytes: Uint8Array; type: string } | null> {
+  if (!unreadable) {
+    try {
+      return { bytes: new Uint8Array(await file.arrayBuffer()), type: file.type };
+    } catch {
+      // Fall through to a fresh read.
+    }
+  }
+  if (!handle) return null;
+  try {
+    const fresh = await handle.getFile();
+    if (fresh.size > MAX_IMPORT_FILE_BYTES) return null;
+    return { bytes: new Uint8Array(await fresh.arrayBuffer()), type: fresh.type };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Imports files into `targetId`, recreating their folder structure. Never overwrites
  * silently: name conflicts are resolved through `resolveConflict`.
  */
@@ -115,7 +155,12 @@ export async function importItems(
   result.skipped.push(...expanded.skipped);
 
   // Normalize and validate paths before touching the workspace.
-  const items: { segments: string[]; file: Blob; handle?: FileSystemFileHandle }[] = [];
+  const items: {
+    segments: string[];
+    file: Blob;
+    handle?: FileSystemFileHandle;
+    unreadable?: boolean;
+  }[] = [];
   let total = 0;
   for (const item of expanded.items) {
     const normalized = normalizePath(item.path);
@@ -134,7 +179,7 @@ export async function importItems(
       result.skipped.push({ path: normalized, reason: 'Import is larger than 1 GB.' });
       continue;
     }
-    items.push({ segments, file: item.file, handle: item.handle });
+    items.push({ segments, file: item.file, handle: item.handle, unreadable: item.unreadable });
   }
 
   const folderCache = new Map<string, EntryId | null>([['', targetId]]);
@@ -164,6 +209,9 @@ export async function importItems(
   // New files are created in batches: one commit and one tree event per batch keeps
   // large imports linear instead of rebuilding indexes after every file.
   const BATCH = 250;
+  /** Batches also flush by size, since file contents are held in memory until written. */
+  const BATCH_BYTES = 64 * 1024 * 1024;
+  let pendingBytes = 0;
   let done = 0;
   let pending: {
     parentId: EntryId | null;
@@ -186,16 +234,23 @@ export async function importItems(
     result.firstFileId ??= created[0]?.id;
     done += created.length;
     pending = [];
+    pendingBytes = 0;
     pendingNames.clear();
     onProgress?.(done, items.length);
   };
 
   let applyAll: ConflictChoice | null = null;
-  for (const { segments, file, handle } of items) {
+  for (const { segments, file, handle, unreadable } of items) {
     const name = segments[segments.length - 1]!;
+    const read = await readItem(file, handle, !!unreadable);
+    if (!read) {
+      result.skipped.push({ path: segments.join('/'), reason: UNREADABLE_REASON });
+      done++;
+      continue;
+    }
     const parentId = await folderFor(segments.slice(0, -1));
-    const text = await readAsTextIfText(file, name);
-    const content = text ?? (file.type ? file : new Blob([file], { type: '' }));
+    const text = textFromBytes(read.bytes, name);
+    const content = text ?? new Blob([read.bytes as Uint8Array<ArrayBuffer>], { type: read.type });
     // A clash with a file queued in this batch is resolved like any other clash.
     if (pendingNames.has(`${parentId}/${name.toLowerCase()}`)) await flush();
     const clash = ws.tree
@@ -228,29 +283,91 @@ export async function importItems(
       }
     }
     pending.push({ parentId, name, content, handle });
+    pendingBytes += read.bytes.byteLength;
     pendingNames.add(`${parentId}/${name.toLowerCase()}`);
-    if (pending.length >= BATCH) await flush();
+    if (pending.length >= BATCH || pendingBytes >= BATCH_BYTES) await flush();
   }
   await flush();
   return result;
 }
 
-/** Reads a drag-and-drop DataTransfer, walking dropped folders recursively. */
-export async function itemsFromDataTransfer(dt: DataTransfer): Promise<ImportItem[]> {
-  const entries = [...dt.items]
-    .filter((i) => i.kind === 'file')
-    .map((i) => i.webkitGetAsEntry?.())
-    .filter((e): e is FileSystemEntry => !!e);
-  if (!entries.length) return [...dt.files].map((file) => ({ path: file.name, file }));
+type HandleItem = DataTransferItem & {
+  getAsFileSystemHandle?(): Promise<FileSystemHandle | null>;
+};
+
+/** A file from a picked or dropped handle; a file the browser can't open is kept as unreadable. */
+async function itemFromFileHandle(handle: FileSystemFileHandle, path: string): Promise<ImportItem> {
+  try {
+    return { path, file: await handle.getFile(), handle };
+  } catch {
+    return { path, file: new Blob(), handle, unreadable: true };
+  }
+}
+
+/** Lists a folder picked or dropped as a File System Access handle, recursively. */
+export async function itemsFromHandles(handles: FileSystemHandle[]): Promise<ImportItem[]> {
+  const out: ImportItem[] = [];
+  const walk = async (handle: FileSystemHandle, prefix: string): Promise<void> => {
+    if (IGNORED_SEGMENTS.has(handle.name)) return;
+    if (handle.kind === 'file') {
+      out.push(await itemFromFileHandle(handle as FileSystemFileHandle, prefix + handle.name));
+      return;
+    }
+    const dir = handle as FileSystemDirectoryHandle & {
+      values(): AsyncIterable<FileSystemHandle>;
+    };
+    for await (const child of dir.values()) await walk(child, `${prefix}${dir.name}/`);
+  };
+  for (const h of handles) await walk(h, '');
+  return out;
+}
+
+/**
+ * Reads a drag-and-drop DataTransfer, walking dropped folders recursively. Where the
+ * browser can save back to disk, dropped files keep their handles like picked ones do.
+ * Must be called synchronously from the drop event: the items are gone after it returns.
+ */
+export function itemsFromDataTransfer(
+  dt: DataTransfer,
+  withHandles = canSaveToDisk(),
+): Promise<ImportItem[]> {
+  const items = [...dt.items].filter((i) => i.kind === 'file') as HandleItem[];
+  const files = [...dt.files];
+  if (withHandles && items.length && items.every((i) => i.getAsFileSystemHandle)) {
+    const handles = items.map((i) => i.getAsFileSystemHandle!());
+    const entries = items.map((i) => i.webkitGetAsEntry?.() ?? null);
+    return Promise.all(handles).then(
+      (hs) =>
+        hs.every((h) => h)
+          ? itemsFromHandles(hs as FileSystemHandle[])
+          : itemsFromEntries(entries, files),
+      () => itemsFromEntries(entries, files),
+    );
+  }
+  const entries = items.map((i) => i.webkitGetAsEntry?.() ?? null);
+  return itemsFromEntries(entries, files);
+}
+
+async function itemsFromEntries(
+  maybeEntries: (FileSystemEntry | null)[],
+  files: File[],
+): Promise<ImportItem[]> {
+  const entries = maybeEntries.filter((e): e is FileSystemEntry => !!e);
+  if (!entries.length) return files.map((file) => ({ path: file.name, file }));
   const out: ImportItem[] = [];
   const walk = async (entry: FileSystemEntry, prefix: string): Promise<void> => {
+    if (IGNORED_SEGMENTS.has(entry.name)) return;
     if (entry.isFile) {
-      const file = await new Promise<File>((res, rej) =>
-        (entry as FileSystemFileEntry).file(res, rej),
-      );
-      out.push({ path: prefix + entry.name, file });
+      const path = prefix + entry.name;
+      try {
+        const file = await new Promise<File>((res, rej) =>
+          (entry as FileSystemFileEntry).file(res, rej),
+        );
+        out.push({ path, file });
+      } catch {
+        out.push({ path, file: new Blob(), unreadable: true });
+      }
     } else if (entry.isDirectory) {
-      if (IGNORED_SEGMENTS.has(entry.name)) return;
       const reader = (entry as FileSystemDirectoryEntry).createReader();
       // readEntries returns results in batches; keep reading until empty.
       for (;;) {

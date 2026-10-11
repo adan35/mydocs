@@ -5,7 +5,8 @@ import { useUi } from '@/app/ui-store';
 import { useEditor } from '@/app/editor-store';
 import { useSettings } from '@/app/settings-store';
 import { itemsFromDataTransfer } from '@/app/importer';
-import { runImport } from '@/app/actions';
+import { contextFolderId, runImport } from '@/app/actions';
+import { ws } from '@/app/app-store';
 import { Sidebar } from './Sidebar';
 import { TabBar } from './TabBar';
 import { MobileNav } from './MobileNav';
@@ -45,6 +46,52 @@ const SIDEBAR_KEY = 'mydoc:sidebar-width';
 
 const isFileDrag = (e: React.DragEvent) =>
   e.dataTransfer.types.includes('Files') && !e.dataTransfer.types.includes(TREE_DRAG_TYPE);
+
+/** What a file drop does where the pointer is: import into a folder, or attach to a doc. */
+type DropHint = { attach: true } | { attach: false; folder: string };
+
+function dropHintAt(target: EventTarget | null): DropHint {
+  if (target instanceof Element && target.closest('[data-attach-drop]')) return { attach: true };
+  const id = contextFolderId();
+  return { attach: false, folder: (id && ws().get(id)?.name) || 'All files' };
+}
+
+const sameHint = (a: DropHint, b: DropHint) =>
+  a.attach || b.attach ? a.attach === b.attach : a.folder === b.folder;
+
+function DropOverlay({ hint }: { hint: DropHint }) {
+  return (
+    <div
+      className="pointer-events-none fixed inset-0 z-[55] bg-[color-mix(in_srgb,var(--primary)_6%,transparent)] p-3 no-print"
+      data-testid="drop-overlay"
+      aria-hidden
+    >
+      <div className="flex h-full items-center justify-center rounded-xl border-2 border-dashed border-primary px-4">
+        <div className="flex max-w-sm flex-col items-center gap-2 rounded-xl bg-canvas px-6 py-5 text-center shadow-2">
+          <span className="flex size-11 items-center justify-center rounded-full bg-primary-soft text-primary-soft-ink">
+            <Upload size={20} aria-hidden />
+          </span>
+          {hint.attach ? (
+            <>
+              <p className="text-[16px] font-medium text-ink">Drop to attach to this document</p>
+              <p className="text-caption text-steel">
+                To import instead, drop onto a folder in the sidebar.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-[16px] font-medium text-ink">Drop files or folders to import</p>
+              <p className="text-caption text-steel">
+                They go into <span className="font-medium text-ink">{hint.folder}</span>. Drop onto
+                a folder in the sidebar to choose another.
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function RouteView() {
   const route = useRouter((s) => s.route);
@@ -91,14 +138,14 @@ export function AppShell() {
   const hasTabs = useEditor((s) => s.tabs.length > 0);
   const density = useSettings((s) => s.density);
   const [width, setWidth] = useState(() => Number(localStorage.getItem(SIDEBAR_KEY)) || 264);
-  const [fileDrag, setFileDrag] = useState(false);
+  const [fileDrag, setFileDrag] = useState<DropHint | null>(null);
   const dragDepth = useRef(0);
   useGlobalShortcuts();
 
   useEffect(() => {
     const reset = () => {
       dragDepth.current = 0;
-      setFileDrag(false);
+      setFileDrag(null);
     };
     addEventListener('drop', reset, true);
     addEventListener('dragend', reset, true);
@@ -130,17 +177,19 @@ export function AppShell() {
       onDragEnter={(e) => {
         if (!isFileDrag(e)) return;
         dragDepth.current++;
-        setFileDrag(true);
+        setFileDrag(dropHintAt(e.target));
       }}
       onDragLeave={(e) => {
         if (!isFileDrag(e)) return;
         dragDepth.current = Math.max(0, dragDepth.current - 1);
-        if (!dragDepth.current) setFileDrag(false);
+        if (!dragDepth.current) setFileDrag(null);
       }}
       onDragOver={(e) => {
         if (!isFileDrag(e)) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = 'copy';
+        const hint = dropHintAt(e.target);
+        setFileDrag((h) => (h && sameHint(h, hint) ? h : hint));
       }}
       onDrop={async (e) => {
         if (!isFileDrag(e)) return;
@@ -254,19 +303,7 @@ export function AppShell() {
       </div>
       {overlay === 'palette' && <CommandPalette />}
       {overlay === 'quickopen' && <QuickOpen />}
-      {fileDrag && (
-        <div
-          className="pointer-events-none fixed inset-x-0 bottom-6 z-[55] flex justify-center px-4"
-          aria-hidden
-        >
-          <div className="flex items-center gap-3 rounded-lg border border-dashed border-primary bg-canvas px-5 py-3 shadow-2">
-            <Upload size={18} className="text-primary" />
-            <p className="text-[14px] text-ink">
-              Drop to import. Drop onto a folder to import into it.
-            </p>
-          </div>
-        </div>
-      )}
+      {fileDrag && <DropOverlay hint={fileDrag} />}
     </div>
   );
 }
