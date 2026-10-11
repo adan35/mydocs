@@ -3,7 +3,7 @@ import { MemoryProvider, type MemoryWorkspaceStore } from '@/storage/memory';
 import { IndexedDbProvider } from '@/storage/indexeddb';
 import { Workspace, MAX_VERSIONS_PER_DOC } from './workspace';
 import { WorkspaceSession } from './session';
-import { importItems, readAsTextIfText } from './importer';
+import { importItems, readAsTextIfText, UNREADABLE_REASON } from './importer';
 import { buildZip } from './exporter';
 import { unzipSync, strFromU8, zipSync, strToU8 } from 'fflate';
 
@@ -257,6 +257,39 @@ describe('import / export', () => {
     expect(await ws.readText(ws.tree.findByPath('n/299.md')!.id)).toBe('299');
     // One folder plus a handful of batches, not one event per file.
     expect(treeEvents).toBeLessThan(10);
+  });
+
+  it('skips files that cannot be read instead of stopping the import', async () => {
+    const { ws } = await openWs();
+    // A File whose disk contents changed or got locked after it was listed.
+    const stale = (size: number) =>
+      Object.assign(new Blob(['x'.repeat(size)]), {
+        arrayBuffer: () =>
+          Promise.reject(
+            new DOMException('The requested file could not be read', 'NotReadableError'),
+          ),
+      });
+    const fresh = { getFile: async () => new File(['# Fresh'], 'fresh.md') };
+    const locked = {
+      getFile: () => Promise.reject(new DOMException('locked', 'NotReadableError')),
+    };
+    const items = [
+      { path: 'f/a.md', file: new Blob(['# A']) },
+      { path: 'f/locked.md', file: stale(3), handle: locked as unknown as FileSystemFileHandle },
+      { path: 'f/fresh.md', file: stale(3), handle: fresh as unknown as FileSystemFileHandle },
+      { path: 'f/listed.md', file: new Blob(), unreadable: true },
+      { path: 'f/image.png', file: stale(10) },
+      { path: 'f/z.md', file: new Blob(['# Z']) },
+    ];
+    const r = await importItems(ws, null, items, async () => ({
+      action: 'skip',
+      applyToAll: true,
+    }));
+    expect(r.files).toBe(3);
+    expect(r.skipped.map((s) => s.path)).toEqual(['f/locked.md', 'f/listed.md', 'f/image.png']);
+    expect(r.skipped.every((s) => s.reason === UNREADABLE_REASON)).toBe(true);
+    expect(await ws.readText(ws.tree.findByPath('f/fresh.md')!.id)).toBe('# Fresh');
+    expect(await ws.readText(ws.tree.findByPath('f/z.md')!.id)).toBe('# Z');
   });
 
   it('imports zip archives without zip-slip', async () => {

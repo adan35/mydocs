@@ -102,6 +102,7 @@ export function HomeView() {
         <QuickAction
           icon={<Upload />}
           label="Import"
+          hint="or drag in"
           onClick={(el) => openMenuAt(el, importSubmenu(null), 'Import')}
         />
       </section>

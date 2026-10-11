@@ -1,5 +1,5 @@
 import { runImport } from '@/app/actions';
-import { IGNORED_SEGMENTS, itemsFromFileList, type ImportItem } from '@/app/importer';
+import { itemsFromFileList, itemsFromHandles, type ImportItem } from '@/app/importer';
 import { canSaveToDisk } from '@/app/disk-links';
 
 type PickerWindow = Window & {
@@ -51,24 +51,6 @@ function pickWithInput(kind: 'files' | 'folder' | 'zip', targetId?: string | nul
 
 async function pickWithHandles(kind: 'files' | 'folder'): Promise<ImportItem[]> {
   const w = window as unknown as PickerWindow;
-  if (kind === 'files') {
-    const handles = await w.showOpenFilePicker({ multiple: true });
-    return Promise.all(
-      handles.map(async (handle) => ({ path: handle.name, file: await handle.getFile(), handle })),
-    );
-  }
-  const root = await w.showDirectoryPicker({ mode: 'readwrite' });
-  const out: ImportItem[] = [];
-  const walk = async (dir: FileSystemDirectoryHandle, prefix: string): Promise<void> => {
-    for await (const child of dir.values()) {
-      if (IGNORED_SEGMENTS.has(child.name)) continue;
-      if (child.kind === 'file') {
-        out.push({ path: prefix + child.name, file: await child.getFile(), handle: child });
-      } else {
-        await walk(child, `${prefix}${child.name}/`);
-      }
-    }
-  };
-  await walk(root, `${root.name}/`);
-  return out;
+  if (kind === 'files') return itemsFromHandles(await w.showOpenFilePicker({ multiple: true }));
+  return itemsFromHandles([await w.showDirectoryPicker({ mode: 'readwrite' })]);
 }
