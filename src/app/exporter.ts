@@ -2,7 +2,8 @@ import { zipSync } from 'fflate';
 import type { Entry, EntryId } from '@/domain/types';
 import { baseName, isMarkdownName } from '@/domain/names';
 import { saveFile } from '@/platform';
-import type { Workspace } from './workspace';
+import { resolveWikiLink, type Workspace } from './workspace';
+import { encodeHrefPath, relativePath } from '@/domain/paths';
 import { markdownToPlainText } from './search';
 
 /** Hands an export to the platform: a download on the web, a Save dialog or share sheet in the apps. */
@@ -61,11 +62,27 @@ blockquote.callout{border-left-color:#5645d4;background:#f4f2fc;color:#1a1a1a;bo
 `;
 
 /** Standalone HTML (sanitized, no scripts) that opens anywhere. */
-export async function documentHtml(title: string, markdown: string): Promise<string> {
+export async function documentHtml(
+  title: string,
+  markdown: string,
+  /** Relative href for a [[wiki link]] target, so links keep working next to the exported file. */
+  resolveWiki?: (target: string) => string | null,
+): Promise<string> {
   // Loaded on demand: the renderer is large and only needed for exports and the preview.
   const { renderMarkdown } = await import('@/lib/markdown/render');
   // Headings carry data-heading in the app; real ids make anchors work in the exported file.
-  const html = renderMarkdown(markdown).html.replace(/ data-heading="/g, ' id="');
+  let html = renderMarkdown(markdown).html.replace(/ data-heading="/g, ' id="');
+  if (resolveWiki && html.includes('data-wiki=')) {
+    const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
+    for (const el of doc.querySelectorAll<HTMLElement>('[data-wiki]')) {
+      const href = resolveWiki(el.dataset.wiki!);
+      if (!href) continue;
+      const attr = el.tagName === 'IMG' ? 'src' : 'href';
+      const fragment = el.getAttribute(attr)?.match(/#.*$/)?.[0] ?? '';
+      el.setAttribute(attr, href + (attr === 'href' ? fragment : ''));
+    }
+    html = doc.body.innerHTML;
+  }
   const safeTitle = title.replace(
     /[&<>"]/g,
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!,
@@ -73,7 +90,7 @@ export async function documentHtml(title: string, markdown: string): Promise<str
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${safeTitle}</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.19.0/dist/katex.min.css">
 <style>${HTML_STYLES}</style></head>
 <body><main>${html}</main></body></html>`;
 }
@@ -82,8 +99,14 @@ export async function exportHtml(ws: Workspace, id: EntryId) {
   const e = ws.get(id);
   if (!e) return;
   const text = await ws.readText(id);
+  const tree = ws.tree;
+  const fromDir = tree.dirOf(id);
+  const resolveWiki = (target: string) => {
+    const hit = resolveWikiLink(tree, target);
+    return hit ? encodeHrefPath(relativePath(fromDir, tree.pathOf(hit.id))) : null;
+  };
   const html = isMarkdownName(e.name)
-    ? await documentHtml(baseName(e.name), text)
+    ? await documentHtml(baseName(e.name), text, resolveWiki)
     : await documentHtml(e.name, '~~~~~~~~\n' + text + '\n~~~~~~~~');
   await downloadBlob(new Blob([html], { type: 'text/html' }), `${baseName(e.name)}.html`);
 }

@@ -71,7 +71,7 @@ function Segmented<T extends string | number>({
           type="button"
           role="radio"
           aria-checked={value === v}
-          className={`h-7 rounded-[5px] px-3 text-caption font-medium ${value === v ? 'bg-canvas text-ink shadow-1' : 'text-steel hover:text-ink'}`}
+          className={`tap h-7 rounded-[5px] px-3 text-caption font-medium ${value === v ? 'bg-canvas text-ink shadow-1' : 'text-steel hover:text-ink'}`}
           onClick={() => onChange(v)}
         >
           {l}

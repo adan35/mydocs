@@ -124,7 +124,7 @@ export function FormatToolbar({ getView }: { getView(): EditorView | null }) {
       ref={ref}
       role="toolbar"
       aria-label="Formatting"
-      className="flex h-10 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-hairline-soft px-2 [scrollbar-width:none] no-print"
+      className="flex min-h-10 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-hairline-soft px-2 py-1 [scrollbar-width:none] no-print sm:flex-wrap sm:overflow-visible"
       onKeyDown={onKeyDown}
     >
       {GROUPS.map((group, g) => (

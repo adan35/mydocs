@@ -46,7 +46,7 @@ import { dialogs } from '@/app/dialog-store';
 import { SHORTCUTS } from '@/app/shortcuts';
 import { isMarkdownName } from '@/domain/names';
 import { pickImport } from './import-pickers';
-import { reopenClosedTab, sendDocCommand } from './doc-commands';
+import { reopenClosedTab, sendDocCommand, toggleSidePanel } from './doc-commands';
 import { canInstall, installApp } from '@/pwa/register';
 
 export interface Command {
@@ -330,14 +330,14 @@ export function getCommands(): Command[] {
         title: 'Close other tabs',
         group: 'Document',
         icon: <X />,
-        run: () => void editorActions.closeOthers(doc.id),
+        run: () => void A.closeOtherTabs(doc.id),
       },
       {
         id: 'close-right',
         title: 'Close tabs to the right',
         group: 'Document',
         icon: <X />,
-        run: () => void editorActions.closeToRight(doc.id),
+        run: () => void A.closeTabsToRight(doc.id),
       },
       {
         id: 'favorite',
@@ -435,7 +435,7 @@ export function getCommands(): Command[] {
           icon: <PanelRight />,
           shortcut: SHORTCUTS.togglePanel,
           keywords: 'outline backlinks',
-          run: () => ui.setRightPanel(!ui.rightPanelOpen),
+          run: toggleSidePanel,
         },
         {
           id: 'history',

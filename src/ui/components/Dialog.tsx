@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
+import { create } from 'zustand';
 import { restoreFocus } from '../focus';
 
 interface Props {
@@ -17,6 +18,10 @@ interface Props {
 const FOCUSABLE =
   'a[href],button:not([disabled]),input:not([disabled]),select,textarea,[tabindex]:not([tabindex="-1"])';
 
+const useOpenDialogs = create<{ count: number }>(() => ({ count: 0 }));
+/** True while any modal dialog is open (toasts move out of its way). */
+export const useDialogOpen = () => useOpenDialogs((s) => s.count > 0);
+
 /** Accessible modal: focus trap, Esc to close, focus restored on close. */
 export function Dialog({
   title,
@@ -32,6 +37,11 @@ export function Dialog({
   const descId = useId();
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+
+  useEffect(() => {
+    useOpenDialogs.setState((s) => ({ count: s.count + 1 }));
+    return () => useOpenDialogs.setState((s) => ({ count: s.count - 1 }));
+  }, []);
 
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
@@ -81,7 +91,7 @@ export function Dialog({
         aria-labelledby={titleId}
         aria-describedby={description ? descId : undefined}
         tabIndex={-1}
-        className={`popover animate-in safe-bottom relative flex max-h-[90vh] w-full flex-col rounded-b-none sm:rounded-b-xl ${width} sm:mx-4`}
+        className={`popover animate-in safe-bottom relative flex max-h-[90dvh] w-full flex-col rounded-b-none sm:max-h-[calc(88vh-24px)] sm:rounded-b-xl ${width} sm:mx-4`}
       >
         <div className="flex items-start gap-3 px-5 pt-5 pb-2">
           <div className="min-w-0 flex-1">

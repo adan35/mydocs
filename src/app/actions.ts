@@ -94,6 +94,8 @@ export function workspaceTemplates(): Template[] {
     );
 }
 
+let creating: Promise<void> = Promise.resolve();
+
 export async function newDocument(
   parentId: EntryId | null = contextFolderId(),
   templateId?: string,
@@ -104,18 +106,23 @@ export async function newDocument(
   const title = expandTemplate(template.fileName, { title: '' }) || 'Untitled';
   // Keys typed while the document is created must not press the "New document" button again.
   if (document.activeElement instanceof HTMLButtonElement) document.activeElement.blur();
-  return guard('Unable to create the document.', async () => {
-    const name = ws().freeName(parentId, `${title}.md`);
-    const body = expandTemplate(template.body, { title: baseName(name), date: isoDate() });
-    const entry = await ws().createFile(parentId, name, body);
-    if (parentId) appActions.setExpanded(parentId, true);
-    // A new document is for writing: open it in the editor with the cursor in place.
-    if (useSettings.getState().defaultViewMode === 'preview')
-      useUi.getState().setViewMode(entry.id, 'edit');
-    editorActions.requestFocus(entry.id, { end: true });
-    await openEntry(entry.id);
-    return entry;
-  });
+  // One at a time: the name (and the heading made from it) must be free when the file is created.
+  const run = creating.then(() =>
+    guard('Unable to create the document.', async () => {
+      const name = ws().freeName(parentId, `${title}.md`);
+      const body = expandTemplate(template.body, { title: baseName(name), date: isoDate() });
+      const entry = await ws().createFile(parentId, name, body);
+      if (parentId) appActions.setExpanded(parentId, true);
+      // A new document is for writing: open it in the editor with the cursor in place.
+      if (useSettings.getState().defaultViewMode === 'preview')
+        useUi.getState().setViewMode(entry.id, 'edit');
+      editorActions.requestFocus(entry.id, { end: true });
+      await openEntry(entry.id);
+      return entry;
+    }),
+  );
+  creating = run.then(() => undefined);
+  return run;
 }
 
 export async function newFromTemplate(parentId: EntryId | null = contextFolderId()) {
@@ -220,7 +227,8 @@ export async function renameEntry(id: EntryId) {
  */
 async function keepExtension(oldName: string, newName: string): Promise<string> {
   const oldExt = extensionOf(oldName);
-  if (!oldExt) return newName;
+  // Dotfiles (".dockerignore", ".env") are kept exactly as typed.
+  if (!oldExt || (newName.startsWith('.') && !newName.slice(1).includes('.'))) return newName;
   const newExt = extensionOf(newName);
   // "Report 2.0" or "v1.final" have a dot but no real extension.
   if (!/^[a-z][a-z0-9]{0,7}$/.test(newExt)) return `${newName}.${oldExt}`;
@@ -252,6 +260,42 @@ export async function closeTab(id: EntryId) {
     navigate(next ? { name: 'doc', id: next } : { name: 'home' }, { replace: true });
   }
   await editorActions.close(id);
+}
+
+/**
+ * Closes several tabs. When the document on screen is among them, it moves to `keep`
+ * (or the last remaining tab, or Home) first so the view doesn't reopen it.
+ */
+export async function closeTabs(ids: EntryId[], keep?: EntryId) {
+  const { pinned } = useEditor.getState();
+  const closing = ids.filter((t) => !pinned.includes(t));
+  if (!closing.length) return;
+  await editorActions.flushAll();
+  const route = useRouter.getState().route;
+  if (route.name === 'doc' && closing.includes(route.id)) {
+    const rest = useEditor.getState().tabs.filter((t) => !closing.includes(t));
+    const next = keep && rest.includes(keep) ? keep : rest[rest.length - 1];
+    navigate(next ? { name: 'doc', id: next } : { name: 'home' }, { replace: true });
+  }
+  for (const t of closing) await editorActions.close(t);
+}
+
+/** Closes every unpinned tab except `id`, which ends up on screen. */
+export async function closeOtherTabs(id: EntryId) {
+  await closeTabs(
+    useEditor.getState().tabs.filter((t) => t !== id),
+    id,
+  );
+  if (useEditor.getState().tabs.includes(id)) await openEntry(id);
+}
+
+export function closeTabsToRight(id: EntryId) {
+  const { tabs } = useEditor.getState();
+  return closeTabs(tabs.slice(tabs.indexOf(id) + 1), id);
+}
+
+export function closeAllTabs() {
+  return closeTabs(useEditor.getState().tabs);
 }
 
 export async function moveEntries(ids: EntryId[], targetId?: EntryId | null) {
@@ -313,13 +357,25 @@ export async function trashEntries(ids: EntryId[]) {
   }
   if (route.name === 'folder' && route.id && ws().tree.isTrashed(route.id))
     navigate({ name: 'home' }, { replace: true });
-  toast({
-    message:
-      trashed.length === 1
-        ? `"${first?.name}" moved to Trash.`
-        : `${trashed.length} items moved to Trash.`,
-    action: { label: 'Undo', run: () => void restoreEntries(trashed, true) },
-  });
+  undoTrashToast = {
+    ids: trashed,
+    toast: toast({
+      message:
+        trashed.length === 1
+          ? `"${first?.name}" moved to Trash.`
+          : `${trashed.length} items moved to Trash.`,
+      action: { label: 'Undo', run: () => void restoreEntries(trashed, true) },
+    }),
+  };
+}
+
+/** The latest "moved to Trash · Undo" toast, closed once its items are deleted for good. */
+let undoTrashToast: { ids: EntryId[]; toast: number } | null = null;
+function dropStaleUndo() {
+  if (undoTrashToast?.ids.some((id) => !ws().get(id))) {
+    useToasts.getState().dismiss(undoTrashToast.toast);
+    undoTrashToast = null;
+  }
 }
 
 export async function restoreEntries(ids: EntryId[], quiet = false) {
@@ -355,6 +411,7 @@ export async function deletePermanently(ids: EntryId[]) {
   });
   if (!ok) return;
   await guard('Unable to delete.', () => ws().deletePermanently(ids));
+  dropStaleUndo();
 }
 
 export async function emptyTrash() {
@@ -368,6 +425,7 @@ export async function emptyTrash() {
   });
   if (!ok) return;
   await guard('Unable to empty the Trash.', () => ws().emptyTrash());
+  dropStaleUndo();
 }
 
 export async function toggleFavorite(id: EntryId) {

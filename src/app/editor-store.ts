@@ -250,23 +250,6 @@ export const editorActions = {
     persistTabs();
   },
 
-  async closeOthers(id: EntryId) {
-    const { tabs, pinned } = get();
-    for (const t of tabs) if (t !== id && !pinned.includes(t)) await editorActions.close(t);
-  },
-
-  /** Closes every unpinned tab. */
-  async closeAll() {
-    const { tabs, pinned } = get();
-    for (const t of tabs) if (!pinned.includes(t)) await editorActions.close(t);
-  },
-
-  async closeToRight(id: EntryId) {
-    const { tabs, pinned } = get();
-    for (const t of tabs.slice(tabs.indexOf(id) + 1))
-      if (!pinned.includes(t)) await editorActions.close(t);
-  },
-
   togglePin(id: EntryId) {
     set((s) => {
       if (!s.tabs.includes(id)) return s;
@@ -284,7 +267,8 @@ export const editorActions = {
   async reopenClosed(): Promise<EntryId | null> {
     const tree = ws().tree;
     const closed = get().closed;
-    const id = closed.find((c) => tree.get(c) && !tree.isTrashed(c));
+    const open = get().tabs;
+    const id = closed.find((c) => !open.includes(c) && tree.get(c) && !tree.isTrashed(c));
     if (!id) return null;
     set({ closed: closed.filter((c) => c !== id) });
     await editorActions.open(id);

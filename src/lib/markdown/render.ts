@@ -51,6 +51,15 @@ function createRenderer(): MarkdownIt {
   });
   md.use(plugin(footnote));
   md.use(plugin(taskLists), { enabled: true, label: false });
+  // An empty task ("- [ ]", e.g. from a template) is still a checkbox.
+  md.core.ruler.before('github-task-lists', 'empty-tasks', (state) => {
+    for (const t of state.tokens) {
+      if (t.type !== 'inline' || !/^\[[ xX]\]$/.test(t.content)) continue;
+      t.content += ' ';
+      const first = t.children?.[0];
+      if (first?.type === 'text') first.content += ' ';
+    }
+  });
   md.use(plugin(katex), {
     throwOnError: false,
     trust: false,

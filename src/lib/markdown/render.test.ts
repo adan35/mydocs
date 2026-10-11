@@ -19,6 +19,12 @@ describe('renderMarkdown', () => {
     expect(out).toContain('hljs-keyword');
     expect(out).toMatch(/<div class="mermaid-block" data-line="\d+"><pre><code>graph TD; A--&gt;B/);
   });
+  it('renders an empty task as a checkbox', () => {
+    expect(html('- [ ] \n- [x]')).toMatch(/task-list-item-checkbox[\s\S]*task-list-item-checkbox/);
+  });
+  it('keeps the relative positioning KaTeX needs for operator limits', () => {
+    expect(html('$$\\int_0^1 x\\,dx$$')).toMatch(/style="[^"]*position:relative/);
+  });
   it('keeps line numbers correct after front matter', () => {
     const out = html('---\ntags: [a]\n---\n# H');
     expect(out).toContain('<h1 data-line="3"');

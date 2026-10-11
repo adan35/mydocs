@@ -100,6 +100,9 @@ function PaletteFrame({
                 e.preventDefault();
                 e.stopPropagation();
                 close();
+              } else if (e.key === 'Tab') {
+                // Modal: focus stays in the search field; the list follows the arrow keys.
+                e.preventDefault();
               }
             }}
           />

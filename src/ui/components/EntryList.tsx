@@ -50,10 +50,10 @@ export function EntryList({
     return (
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4" role="list">
         {entries.map((e) => (
-          <li key={e.id}>
+          <li key={e.id} className="group relative">
             <button
               type="button"
-              className={`card group flex h-full w-full flex-col items-start gap-3 p-4 text-left transition-colors hover:bg-surface-soft ${selected?.has(e.id) ? 'ring-2 ring-[var(--primary)]' : ''}`}
+              className={`card flex h-full w-full flex-col items-start gap-3 p-4 text-left transition-colors hover:bg-surface-soft ${selected?.has(e.id) ? 'ring-2 ring-[var(--primary)]' : ''}`}
               onClick={(ev) => onClick(e, ev)}
               onContextMenu={ctx(e)}
               title={tree.pathOf(e.id)}
@@ -63,13 +63,28 @@ export function EntryList({
                 <FileIcon entry={e} size={18} />
               </span>
               <span className="w-full min-w-0">
-                <span className="line-clamp-2 text-[14px] font-medium break-words text-ink">
+                <span className="line-clamp-2 pr-6 text-[14px] font-medium break-words text-ink">
+                  {e.favorite && (
+                    <Star
+                      size={12}
+                      aria-label="Favorite"
+                      className="mr-1 inline align-[-1px] fill-[#f5c84c] text-[#e0a800]"
+                    />
+                  )}
                   {e.name}
                 </span>
                 <span className="mt-0.5 block truncate text-xs text-steel">
                   {meta ? meta(e) : relativeTime(e.updatedAt)}
                 </span>
               </span>
+            </button>
+            <button
+              type="button"
+              className="icon-btn absolute top-2 right-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+              aria-label={`Actions for ${e.name}`}
+              onClick={(ev) => openMenuAt(ev.currentTarget, menu(e), e.name)}
+            >
+              <MoreHorizontal size={16} />
             </button>
           </li>
         ))}
@@ -92,7 +107,7 @@ export function EntryList({
         >
           <button
             type="button"
-            className={`flex min-w-0 flex-1 items-center gap-3 pl-3 text-left ${compact ? 'py-1.5' : 'py-2.5'}`}
+            className={`entry-row flex min-w-0 flex-1 items-center gap-3 pl-3 text-left ${compact ? 'py-1.5' : 'py-2.5'}`}
             onClick={(ev) => onClick(e, ev)}
             title={tree.pathOf(e.id)}
           >

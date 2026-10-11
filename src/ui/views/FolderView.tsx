@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowDownUp,
   ChevronRight,
@@ -47,6 +47,19 @@ export function FolderView({ id }: { id: EntryId | null }) {
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [selected, setSelected] = useState<Set<EntryId>>(new Set());
   const [dropping, setDropping] = useState(false);
+  const hasSelection = selected.size > 0;
+
+  // Escape clears a multi-selection (when no menu or dialog is using the key).
+  useEffect(() => {
+    if (!hasSelection) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (document.querySelector('[role="dialog"], [role="menu"]')) return;
+      setSelected(new Set());
+    };
+    addEventListener('keydown', onKey);
+    return () => removeEventListener('keydown', onKey);
+  }, [hasSelection]);
 
   const live = !id || (folder && folder.kind === 'folder' && !tree.isTrashed(id));
   const entries = useMemo(() => {
@@ -257,7 +270,7 @@ export function FolderView({ id }: { id: EntryId | null }) {
                 type="button"
                 aria-pressed={settings.explorerView === v}
                 aria-label={`${v} view`}
-                className={`flex size-7 items-center justify-center rounded-[5px] ${settings.explorerView === v ? 'bg-canvas text-ink shadow-1' : 'text-steel'}`}
+                className={`tap flex size-7 items-center justify-center rounded-[5px] ${settings.explorerView === v ? 'bg-canvas text-ink shadow-1' : 'text-steel'}`}
                 onClick={() => settings.update({ explorerView: v })}
               >
                 {icon}

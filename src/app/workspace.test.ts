@@ -132,6 +132,16 @@ describe('Workspace', () => {
     expect(restored?.name).toBe('n (2).md');
   });
 
+  it('restores a separately trashed child into its folder when both come back together', async () => {
+    const g = await ws.createFolder(null, 'Guides');
+    const d = await ws.createFile(g.id, 'guide.md', 'x');
+    await ws.trash([d.id]);
+    await ws.trash([g.id]);
+    await ws.restore([d.id, g.id]);
+    expect(ws.get(d.id)?.parentId).toBe(g.id);
+    expect(ws.tree.isTrashed(d.id)).toBe(false);
+  });
+
   it('duplicates folders deeply', async () => {
     const f = await ws.createFolder(null, 'F');
     await ws.createFile(f.id, 'a.md', 'A');

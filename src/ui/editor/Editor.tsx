@@ -71,6 +71,14 @@ interface Props {
   ref?: Ref<EditorHandle>;
 }
 
+/**
+ * Shared by every editor instance, so a cached state from an earlier instance can
+ * still be reconfigured when it is shown again.
+ */
+const settingsComp = new Compartment();
+const langComp = new Compartment();
+const readOnlyComp = new Compartment();
+
 /** Per-document editor state (selection, undo history) survives tab switches. */
 const stateCache = new Map<string, { state: EditorState; rev: number }>();
 const scrollCache = new Map<string, number>();
@@ -148,16 +156,16 @@ const dedupeListMarker = EditorView.inputHandler.of((view, from, to, text) => {
 });
 
 /**
- * Fonts and gutter colors come from CSS variables set by the app theme and document view.
- * They live in an editor theme because CodeMirror's base theme assumes a light editor
- * (light grey gutters) and outranks plain stylesheet rules.
+ * Fonts and editor chrome (gutter, cursor, find bar, tooltips) come from CSS variables
+ * set by the app theme and document view. They live in an editor theme because
+ * CodeMirror's base theme outranks plain stylesheet rules.
  */
 const fontTheme = EditorView.theme({
   '.cm-scroller': {
     fontFamily: 'var(--editor-font, var(--font-mono))',
     lineHeight: 'var(--editor-line-height, 1.7)',
   },
-  '.cm-content': { fontVariantLigatures: 'none' },
+  '.cm-content': { fontVariantLigatures: 'none', caretColor: 'var(--ink)' },
   '.cm-gutters': {
     backgroundColor: 'var(--canvas)',
     color: 'var(--stone)',
@@ -165,7 +173,96 @@ const fontTheme = EditorView.theme({
   },
   '.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'var(--ink)' },
   '.cm-activeLine': { backgroundColor: 'color-mix(in srgb, var(--hover) 60%, transparent)' },
+  '.cm-cursor, .cm-dropCursor': { borderLeft: '2px solid var(--ink)' },
+  '.cm-selectionMatch': { backgroundColor: 'color-mix(in srgb, var(--mark) 70%, transparent)' },
+  '.cm-searchMatch': {
+    backgroundColor: 'var(--mark)',
+    outline: '1px solid color-mix(in srgb, var(--warning) 40%, transparent)',
+    borderRadius: '2px',
+  },
+  '.cm-searchMatch.cm-searchMatch-selected': {
+    backgroundColor: 'color-mix(in srgb, var(--warning) 35%, transparent)',
+  },
+  '.cm-panels': {
+    backgroundColor: 'var(--surface-soft)',
+    color: 'var(--charcoal)',
+    borderColor: 'var(--hairline)',
+  },
+  '.cm-panels.cm-panels-top': { borderBottom: '1px solid var(--hairline)' },
+  '.cm-panel.cm-search': {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '8px 48px 8px 12px',
+    fontFamily: 'var(--font-sans)',
+    fontSize: '13px',
+  },
+  '.cm-panel.cm-search br': { flexBasis: '100%', height: '0' },
+  '.cm-panel.cm-search input[type=checkbox]': { accentColor: 'var(--primary)' },
+  '.cm-panel.cm-search label': {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    color: 'var(--slate)',
+    fontSize: '12px',
+  },
+  '.cm-textfield': {
+    height: '32px',
+    margin: '0',
+    padding: '0 10px',
+    border: '1px solid var(--hairline-strong)',
+    borderRadius: 'var(--radius-md)',
+    backgroundColor: 'var(--canvas)',
+    color: 'var(--ink)',
+    fontSize: '13px',
+    minWidth: '140px',
+    flex: '1 1 160px',
+    maxWidth: '280px',
+  },
+  '.cm-textfield:focus': { outline: 'none', borderColor: 'var(--primary)' },
+  '.cm-button': {
+    height: '32px',
+    margin: '0',
+    padding: '0 10px',
+    backgroundColor: 'var(--canvas)',
+    backgroundImage: 'none',
+    border: '1px solid var(--hairline)',
+    borderRadius: 'var(--radius-sm)',
+    color: 'var(--charcoal)',
+    fontSize: '12px',
+    textTransform: 'capitalize',
+  },
+  '.cm-button:hover': { backgroundColor: 'var(--hover)' },
+  '.cm-button:active': { backgroundImage: 'none', backgroundColor: 'var(--active)' },
+  '.cm-panel.cm-search [name=close]': {
+    position: 'absolute',
+    top: '8px',
+    right: '10px',
+    width: '32px',
+    height: '32px',
+    borderRadius: 'var(--radius-sm)',
+    color: 'var(--steel)',
+    fontSize: '20px',
+  },
+  '.cm-tooltip': {
+    backgroundColor: 'var(--canvas)',
+    color: 'var(--charcoal)',
+    border: 'none',
+    borderRadius: 'var(--radius-md)',
+    boxShadow: 'var(--shadow-3)',
+    overflow: 'hidden',
+  },
+  '.cm-foldPlaceholder': {
+    backgroundColor: 'var(--surface)',
+    border: '1px solid var(--hairline)',
+    color: 'var(--steel)',
+  },
 });
+
+/** CodeMirror's own defaults (selection, panels, autocomplete) follow the app theme too. */
+const themeComp = new Compartment();
+const isDark = () => document.documentElement.dataset.theme === 'dark';
 
 /** Typewriter scrolling: the line being edited stays near the middle of the screen. */
 const typewriter: Extension = [
@@ -217,9 +314,6 @@ export function Editor({
 }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
-  const settingsComp = useRef(new Compartment());
-  const langComp = useRef(new Compartment());
-  const readOnlyComp = useRef(new Compartment());
   const callbacks = useRef({ onChange, onSave, onScrollLine });
   callbacks.current = { onChange, onSave, onScrollLine };
   const docRef = useRef(docId);
@@ -316,6 +410,14 @@ export function Editor({
       state = createState(text);
     }
     view.setState(state);
+    // Settings may have changed while this document's state sat in the cache.
+    view.dispatch({
+      effects: [
+        settingsComp.reconfigure(settingsExtensions()),
+        readOnlyComp.reconfigure(EditorState.readOnly.of(!!readOnly)),
+        themeComp.reconfigure(EditorView.darkTheme.of(isDark())),
+      ],
+    });
     view.dom.dataset.docId = docId;
     view.dom.dataset.rev = String(rev);
     const top = scrollCache.get(docId);
@@ -330,12 +432,23 @@ export function Editor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docId, name]);
 
+  // Light and dark switch without reopening the document.
+  useEffect(() => {
+    const obs = new MutationObserver(() =>
+      viewRef.current?.dispatch({
+        effects: themeComp.reconfigure(EditorView.darkTheme.of(isDark())),
+      }),
+    );
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => obs.disconnect();
+  }, []);
+
   // Live settings changes.
   useEffect(
     () =>
       useSettings.subscribe(() => {
         viewRef.current?.dispatch({
-          effects: settingsComp.current.reconfigure(settingsExtensions()),
+          effects: settingsComp.reconfigure(settingsExtensions()),
         });
       }),
     [],
@@ -343,7 +456,7 @@ export function Editor({
 
   useEffect(() => {
     viewRef.current?.dispatch({
-      effects: readOnlyComp.current.reconfigure(EditorState.readOnly.of(!!readOnly)),
+      effects: readOnlyComp.reconfigure(EditorState.readOnly.of(!!readOnly)),
     });
   }, [readOnly, docId]);
 
@@ -351,7 +464,7 @@ export function Editor({
     const label = EditorView.contentAttributes.of({ 'aria-label': `Edit ${fileName}` });
     if (isMarkdownName(fileName)) {
       view.dispatch({
-        effects: langComp.current.reconfigure([
+        effects: langComp.reconfigure([
           label,
           markdown({ base: markdownLanguage, codeLanguages: languages, addKeymap: true }),
           autocompletion({
@@ -365,11 +478,11 @@ export function Editor({
       return;
     }
     const desc = LanguageDescription.matchFilename(languages, fileName);
-    view.dispatch({ effects: langComp.current.reconfigure(label) });
+    view.dispatch({ effects: langComp.reconfigure(label) });
     if (desc) {
       void desc.load().then((support) => {
         if (viewRef.current === view && view.dom.dataset.docId === docId) {
-          view.dispatch({ effects: langComp.current.reconfigure([label, support]) });
+          view.dispatch({ effects: langComp.reconfigure([label, support]) });
         }
       });
     }
@@ -393,10 +506,11 @@ export function Editor({
         highlightSelectionMatches(),
         syntaxHighlighting(markdownHighlight),
         fontTheme,
+        themeComp.of(EditorView.darkTheme.of(isDark())),
         search({ top: true }),
-        settingsComp.current.of(settingsExtensions()),
-        langComp.current.of([]),
-        readOnlyComp.current.of(EditorState.readOnly.of(!!readOnly)),
+        settingsComp.of(settingsExtensions()),
+        langComp.of([]),
+        readOnlyComp.of(EditorState.readOnly.of(!!readOnly)),
         keymap.of([
           { key: 'Mod-s', preventDefault: true, run: () => (callbacks.current.onSave(), true) },
           { key: 'Mod-b', run: (v) => toggleWrap(v, '**') },

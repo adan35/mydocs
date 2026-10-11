@@ -31,6 +31,10 @@
   --primary: #5645d4;
   --primary-pressed: #4534b3;
   --on-primary: #ffffff;
+  /* Fills behind white text (buttons): at least 4.5:1 contrast. */
+  --primary-solid: #5645d4;
+  --primary-solid-pressed: #4534b3;
+  --danger-solid: #e03131;
   --primary-soft: #e6e0f5;
   --primary-soft-ink: #391c57;
   --link: #0075de;
@@ -74,6 +78,9 @@
   --primary: #7c6df2;
   --primary-pressed: #6a5ae6;
   --on-primary: #ffffff;
+  --primary-solid: #6352e0;
+  --primary-solid-pressed: #5544cf;
+  --danger-solid: #c92a2a;
   --primary-soft: #2c2650;
   --primary-soft-ink: #d6ceff;
   --link: #5aa9f5;
@@ -200,6 +207,22 @@
 }
 
 @layer components {
+  /* Tabs that don't fit fade out at the edge, so it's clear there are more. */
+  .tab-strip[data-overflow-right] {
+    mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+  }
+  .tab-strip[data-overflow-left] {
+    mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent);
+  }
+  .tab-strip[data-overflow-left][data-overflow-right] {
+    mask-image: linear-gradient(
+      to right,
+      transparent,
+      #000 32px,
+      #000 calc(100% - 32px),
+      transparent
+    );
+  }
   /* Buttons: 8px radius rectangles, never pills. */
   .btn {
     display: inline-flex;
@@ -224,11 +247,11 @@
     opacity: 0.5;
   }
   .btn-primary {
-    background: var(--primary);
+    background: var(--primary-solid);
     color: var(--on-primary);
   }
   .btn-primary:hover:not(:disabled) {
-    background: var(--primary-pressed);
+    background: var(--primary-solid-pressed);
   }
   .btn-secondary {
     background: var(--canvas);
@@ -247,7 +270,7 @@
     background: var(--hover);
   }
   .btn-danger {
-    background: var(--danger);
+    background: var(--danger-solid);
     color: #fff;
   }
   .btn-danger:hover:not(:disabled) {
@@ -274,10 +297,27 @@
     background: var(--active);
     color: var(--ink);
   }
+  .icon-btn-sm {
+    width: 24px;
+    height: 24px;
+  }
   @media (pointer: coarse) {
     .icon-btn {
       width: 40px;
       height: 40px;
+    }
+    .icon-btn-sm {
+      width: 34px;
+      height: 34px;
+    }
+    /* Small controls keep their look but get a finger-sized hit area. */
+    .tap {
+      min-height: 40px;
+      min-width: 40px;
+    }
+    .tap-sm {
+      min-height: 32px;
+      min-width: 32px;
     }
     .btn {
       height: 40px;
@@ -429,4 +469,15 @@
       transform: translateX(-100%);
     }
   }
+}
+
+/* Compact density tightens every list, not just the file tree (outside layers so it wins). */
+[data-density='compact'] .nav-item {
+  height: 26px;
+}
+[data-density='compact'] .entry-row {
+  padding-block: 5px;
+}
+[data-density='compact'] .menu-item {
+  min-height: 26px;
 }
