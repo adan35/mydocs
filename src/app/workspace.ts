@@ -589,15 +589,22 @@ export class Workspace {
 
   restore(ids: EntryId[]): Promise<Entry[]> {
     return this.serial(async () => {
-      const tree = this.tree;
+      const restoring = new Set(ids);
+      // A folder is live afterwards when nothing above it stays in the Trash.
+      const liveAfter = (id: EntryId | null): boolean => {
+        for (let cur = id; cur !== null;) {
+          const p = this.entries.get(cur);
+          if (!p || (p.trashedAt !== undefined && !restoring.has(cur))) return false;
+          cur = p.parentId;
+        }
+        return true;
+      };
       const restored: Entry[] = [];
       for (const id of ids) {
         const e = this.entries.get(id);
         if (!e || e.trashedAt === undefined) continue;
-        // If the original folder is gone or itself trashed, restore to the root.
-        const parentLive =
-          e.parentId !== null && this.entries.has(e.parentId) && !tree.isTrashed(e.parentId);
-        const parentId = parentLive ? e.parentId : null;
+        // If the original folder is gone or stays trashed, restore to the root.
+        const parentId = e.parentId !== null && liveAfter(e.parentId) ? e.parentId : null;
         const taken = [
           ...this.siblingNames(parentId),
           ...restored.filter((r) => r.parentId === parentId).map((r) => r.name),

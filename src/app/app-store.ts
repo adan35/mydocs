@@ -129,6 +129,7 @@ export const appActions = {
         // First launch opens the welcome guide, rendered.
         if (useRouter.getState().route.name === 'home') {
           useUi.getState().setViewMode(welcome.id, 'preview');
+          appActions.touchRecent(welcome.id);
           navigate({ name: 'doc', id: welcome.id }, { replace: true });
         }
       }
@@ -189,20 +190,27 @@ export const appActions = {
     const provider = get().provider;
     const current = get().session?.workspace.id === id;
     if (current) {
+      // Nothing may render the workspace while no session is open.
+      set({ phase: 'loading' });
       get().session?.dispose();
       set({ session: null });
     }
-    await provider.remove(id);
-    prefs.remove(recentsKey(id));
-    prefs.remove(frequencyKey(id));
-    prefs.remove(expandedKey(id));
-    let workspaces = await provider.list();
-    if (!workspaces.length) {
-      await provider.create('My Workspace');
-      workspaces = await provider.list();
+    try {
+      await provider.remove(id);
+      prefs.remove(recentsKey(id));
+      prefs.remove(frequencyKey(id));
+      prefs.remove(expandedKey(id));
+      let workspaces = await provider.list();
+      if (!workspaces.length) {
+        await provider.create('My Workspace');
+        workspaces = await provider.list();
+      }
+      set({ workspaces });
+      if (current) await openSession(workspaces[0]!);
+    } finally {
+      if (current && get().session) set({ phase: 'ready' });
+      else if (current) set({ phase: 'error', error: 'My Doc could not open the next workspace.' });
     }
-    set({ workspaces });
-    if (current) await openSession(workspaces[0]!);
   },
 
   touchRecent(id: EntryId) {

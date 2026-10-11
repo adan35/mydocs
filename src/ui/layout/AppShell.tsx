@@ -19,6 +19,7 @@ import { SettingsView } from '../views/SettingsView';
 import { useLayout } from '../hooks';
 import { TREE_DRAG_TYPE } from './FileTree';
 import { useGlobalShortcuts } from './shortcuts';
+import { closeMenu } from '../components/Menu';
 
 // The editor and Markdown renderer are the heaviest code; load them with the first document.
 const DocumentView = lazy(() =>
@@ -158,6 +159,18 @@ export function AppShell() {
   useEffect(() => {
     document.documentElement.dataset.density = density;
   }, [density]);
+
+  // The Back button (Android, browser) closes the drawer, menus and palette with the page it leaves.
+  useEffect(() => {
+    const onPop = () => {
+      const ui = useUi.getState();
+      if (ui.drawerOpen) ui.setDrawer(false);
+      if (ui.overlay) ui.setOverlay(null);
+      closeMenu();
+    };
+    addEventListener('popstate', onPop);
+    return () => removeEventListener('popstate', onPop);
+  }, []);
 
   // Leaving a document exits focus/reading modes.
   useEffect(() => {

@@ -20,6 +20,7 @@ import {
   Focus,
   ChevronRight,
   FileQuestion,
+  BookOpenCheck,
 } from 'lucide-react';
 import type { Entry, EntryId } from '@/domain/types';
 import { isMarkdownName } from '@/domain/names';
@@ -42,7 +43,7 @@ import { formatShortcut, useLayout, useTree } from '../hooks';
 import { exportSubmenu } from '../entry-menu';
 import { sendDocCommand } from '../doc-commands';
 import { Preview, type PreviewHandle } from './Preview';
-import { RightPanel, Outline } from './RightPanel';
+import { RightPanel } from './RightPanel';
 import { DiskStatus, SaveStatus } from './SaveStatus';
 import { BinaryView } from './BinaryView';
 
@@ -129,6 +130,8 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
   const [activeLine, setActiveLine] = useState(0);
   const [progress, setProgress] = useState(0);
   const [outlineSheet, setOutlineSheet] = useState(false);
+  // Following a link from the details sheet shows the new document, not the sheet.
+  useEffect(() => setOutlineSheet(false), [id]);
   const focusRequest = useEditor((s) => s.focusRequest);
 
   let mode: ViewMode = isMd ? (storedMode ?? defaultMode) : 'edit';
@@ -193,6 +196,7 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
       } else if (cmd === 'toggle-mode' && isMd) setMode(mode === 'edit' ? 'preview' : 'edit');
       else if (cmd === 'split' && isMd && desktop) setMode(mode === 'split' ? 'edit' : 'split');
       else if (cmd === 'focus-editor') editorRef.current?.focus();
+      else if (cmd === 'panel-sheet' && isMd && !readingMode) setOutlineSheet((v) => !v);
       else if (cmd === 'insert-table' && isMd) {
         if (mode === 'preview') setMode('edit');
         setTimeout(() => {
@@ -262,7 +266,16 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
           text={text}
           className=""
           onVisibleLine={onPreviewScroll}
-          onToggleTask={(line) => editorActions.setText(id, toggleTaskAt(text, line))}
+          onToggleTask={(line) => {
+            const next = toggleTaskAt(text, line);
+            const view = editorRef.current?.view;
+            // In split view the editor holds the text; change it there so it isn't overwritten.
+            if (view && view.dom.dataset.docId === id && line < view.state.doc.lines) {
+              const l = view.state.doc.line(line + 1);
+              const insert = next.split('\n')[line] ?? l.text;
+              view.dispatch({ changes: { from: l.from, to: l.to, insert }, userEvent: 'input' });
+            } else editorActions.setText(id, next);
+          }}
         />
         <style>{`.prose{--prose-size:${fontSize}px}`}</style>
       </div>
@@ -327,7 +340,13 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
       )}
       {outlineSheet && (
         <OutlineSheet onClose={() => setOutlineSheet(false)}>
-          <Outline text={text} activeLine={activeLine} onJump={jumpTo} />
+          <RightPanel
+            docId={id}
+            text={text}
+            activeLine={activeLine}
+            onJump={jumpTo}
+            onClose={() => setOutlineSheet(false)}
+          />
         </OutlineSheet>
       )}
     </div>
@@ -345,12 +364,11 @@ function OutlineSheet({ children, onClose }: { children: React.ReactNode; onClos
       <div className="absolute inset-0 bg-[var(--scrim)]" aria-hidden />
       <div
         role="dialog"
-        aria-label="Outline"
+        aria-label="Document details"
         aria-modal="true"
-        className="animate-in safe-bottom relative h-full w-[min(320px,85vw)] overflow-y-auto bg-canvas p-3 shadow-3"
+        className="animate-in safe-bottom relative flex h-full w-[min(340px,88vw)] flex-col bg-canvas shadow-3"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="section-label mb-2 px-1">Outline</h2>
         {children}
       </div>
     </div>
@@ -460,22 +478,51 @@ function DocHeader({
           <ArrowLeft size={18} />
         </button>
       )}
-      {readingMode && (
-        <button
-          type="button"
-          className="btn btn-ghost h-8 text-steel"
-          onClick={() => useUi.getState().setReadingMode(false)}
-        >
-          <ArrowLeft size={15} aria-hidden /> Exit reading
-        </button>
-      )}
+      {readingMode &&
+        (phone ? (
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Exit reading"
+            title="Exit reading"
+            onClick={() => useUi.getState().setReadingMode(false)}
+          >
+            <BookOpenCheck size={18} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-ghost h-8 text-steel"
+            onClick={() => useUi.getState().setReadingMode(false)}
+          >
+            <ArrowLeft size={15} aria-hidden /> Exit reading
+          </button>
+        ))}
       <nav aria-label="Breadcrumb" className="flex min-w-0 flex-1 items-center gap-0.5 text-[14px]">
+        {!phone && ancestors.length > 3 && (
+          <span className="flex shrink-0 items-center gap-0.5">
+            <button
+              type="button"
+              className="rounded px-1.5 py-0.5 text-steel hover:bg-hover hover:text-ink"
+              title={ancestors
+                .slice(0, -3)
+                .map((a) => a.name)
+                .join(' / ')}
+              aria-label={`Open ${ancestors[ancestors.length - 4]!.name}`}
+              onClick={() => navigate({ name: 'folder', id: ancestors[ancestors.length - 4]!.id })}
+            >
+              …
+            </button>
+            <ChevronRight size={13} className="shrink-0 text-muted" aria-hidden />
+          </span>
+        )}
         {!phone &&
           ancestors.slice(-3).map((a) => (
             <span key={a.id} className="flex min-w-0 shrink items-center gap-0.5">
               <button
                 type="button"
                 className="max-w-[160px] truncate rounded px-1.5 py-0.5 text-steel hover:bg-hover hover:text-ink"
+                title={a.name}
                 onClick={() => navigate({ name: 'folder', id: a.id })}
               >
                 {a.name}
@@ -535,13 +582,13 @@ function DocHeader({
       >
         <Star size={16} className={entry.favorite ? 'fill-[#f5c84c] text-[#e0a800]' : ''} />
       </button>
-      {readingMode && <FullscreenButton />}
+      {readingMode && !phone && <FullscreenButton />}
       {isMd && !wide && onOutline && (
         <button
           type="button"
           className="icon-btn"
-          aria-label="Outline"
-          title="Outline"
+          aria-label="Document details"
+          title="Outline, links and info"
           onClick={onOutline}
         >
           <PanelRight size={16} />
@@ -591,7 +638,7 @@ function ModeButton({
       type="button"
       aria-pressed={active}
       title={`${label} (${formatShortcut(shortcut)})`}
-      className={`flex h-7 items-center gap-1.5 rounded-[5px] px-2 text-caption font-medium ${active ? 'bg-canvas text-ink shadow-1' : 'text-steel hover:text-ink'}`}
+      className={`tap flex h-7 items-center gap-1.5 rounded-[5px] px-2 text-caption font-medium ${active ? 'bg-canvas text-ink shadow-1' : 'text-steel hover:text-ink'}`}
       onClick={onClick}
     >
       {icon}

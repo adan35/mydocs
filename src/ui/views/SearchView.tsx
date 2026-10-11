@@ -144,14 +144,14 @@ export function SearchView({ q }: { q: string }) {
             key={f.label}
             type="button"
             aria-pressed={typeIdx === i}
-            className={`h-7 rounded-full border px-3 text-caption ${typeIdx === i ? 'border-ink bg-ink text-canvas' : 'border-hairline text-steel hover:bg-hover'}`}
+            className={`tap h-7 rounded-full border px-3 text-caption ${typeIdx === i ? 'border-ink bg-ink text-canvas' : 'border-hairline text-steel hover:bg-hover'}`}
             onClick={() => setTypeIdx(typeIdx === i ? null : i)}
           >
             {f.label}
           </button>
         ))}
         <select
-          className="input h-7 w-auto max-w-[180px] rounded-full py-0 text-caption"
+          className="tap input h-7 w-auto max-w-[180px] rounded-full py-0 text-caption"
           aria-label="Filter by tag"
           value={tag}
           onChange={(e) => setTag(e.target.value)}
@@ -164,7 +164,7 @@ export function SearchView({ q }: { q: string }) {
           ))}
         </select>
         <select
-          className="input h-7 w-auto max-w-[220px] rounded-full py-0 text-caption"
+          className="tap input h-7 w-auto max-w-[220px] rounded-full py-0 text-caption"
           aria-label="Filter by folder"
           value={folderId}
           onChange={(e) => setFolderId(e.target.value)}
@@ -177,7 +177,7 @@ export function SearchView({ q }: { q: string }) {
           ))}
         </select>
         <select
-          className="input h-7 w-auto max-w-[160px] rounded-full py-0 text-caption"
+          className="tap input h-7 w-auto max-w-[160px] rounded-full py-0 text-caption"
           aria-label="Filter by date modified"
           value={days}
           onChange={(e) => setDays(Number(e.target.value))}
@@ -192,7 +192,7 @@ export function SearchView({ q }: { q: string }) {
         {hasFilters && (
           <button
             type="button"
-            className="h-7 rounded-full px-2 text-caption text-steel hover:bg-hover hover:text-ink"
+            className="tap h-7 rounded-full px-2 text-caption text-steel hover:bg-hover hover:text-ink"
             onClick={clearFilters}
           >
             Clear filters

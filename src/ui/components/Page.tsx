@@ -24,7 +24,7 @@ export function Page({
   return (
     <div className="scroll-area h-full">
       <div className="mx-auto w-full max-w-[960px] px-4 pt-4 pb-24 sm:px-8 sm:pt-10">
-        <header className="mb-6 flex items-start gap-2">
+        <header className="mb-6 flex flex-wrap items-start gap-2">
           {back ? (
             <button
               type="button"
@@ -48,7 +48,8 @@ export function Page({
               </button>
             )
           )}
-          <div className="min-w-0 flex-1">
+          {/* Actions drop to their own row before the title gets squeezed. */}
+          <div className="min-w-0 flex-[1_1_14rem]">
             <h1 className="flex items-center gap-2.5 text-[26px] leading-tight font-semibold tracking-[-0.01em] text-ink sm:text-[30px]">
               {icon && <span className="text-stone [&>svg]:size-6">{icon}</span>}
               <span className="min-w-0 break-words">{title}</span>
@@ -56,7 +57,7 @@ export function Page({
             {subtitle && <div className="mt-1 text-[14px] text-steel">{subtitle}</div>}
           </div>
           {actions && (
-            <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+            <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-1.5">
               {actions}
             </div>
           )}

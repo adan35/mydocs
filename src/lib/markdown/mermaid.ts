@@ -21,6 +21,7 @@ export async function renderMermaidIn(root: HTMLElement, dark: boolean): Promise
       securityLevel: 'strict',
       theme,
       fontFamily: 'inherit',
+      suppressErrorRendering: true,
     });
     currentTheme = theme;
     cache.clear();
@@ -28,10 +29,11 @@ export async function renderMermaidIn(root: HTMLElement, dark: boolean): Promise
   for (const block of blocks) {
     if (block.dataset.rendered) continue;
     const src = block.querySelector('code')?.textContent ?? '';
+    const id = `mermaid-${++counter}`;
     try {
       let svg = cache.get(src);
       if (!svg) {
-        ({ svg } = await mermaid.render(`mermaid-${++counter}`, src));
+        ({ svg } = await mermaid.render(id, src));
         cache.set(src, svg);
         if (cache.size > 100) cache.delete(cache.keys().next().value!);
       }
@@ -50,8 +52,9 @@ export async function renderMermaidIn(root: HTMLElement, dark: boolean): Promise
       code.textContent = src;
       pre.append(code);
       block.replaceChildren(note, pre);
-      // Mermaid leaves an error element behind on failure.
-      document.getElementById(`dmermaid-${counter}`)?.remove();
+      // Mermaid can leave its scratch element behind on failure.
+      document.getElementById(`d${id}`)?.remove();
+      document.getElementById(id)?.remove();
     }
   }
 }

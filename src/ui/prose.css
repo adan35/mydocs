@@ -222,6 +222,10 @@
   .prose .copy-code {
     opacity: 1;
   }
+  /* The always-visible button gets its own row instead of covering the first line. */
+  .prose .code-block pre {
+    padding-top: 40px;
+  }
 }
 .prose pre {
   font-family: var(--font-mono);

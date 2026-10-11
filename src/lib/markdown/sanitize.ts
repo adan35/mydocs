@@ -3,7 +3,13 @@ import DOMPurify from 'dompurify';
 let configured = false;
 
 /** CSS properties that could be used to overlay or spoof the app's UI. */
-const UNSAFE_STYLE = /(position|url\s*\(|expression|behavio(u)?r|-moz-binding|@import|z-index)/i;
+const UNSAFE_STYLE =
+  /(position|url\s*\(|expression|behavio(u)?r|-moz-binding|@import|z-index|\\|\/\*)/i;
+/**
+ * Plain `position: relative` is allowed (KaTeX uses it for operator limits); it can't
+ * escape the preview's scroll clip. It's removed before the check above.
+ */
+const RELATIVE = /(^|;)\s*position\s*:\s*relative\s*(?=;|$)/gi;
 
 function configure() {
   if (configured) return;
@@ -24,7 +30,7 @@ function configure() {
     }
     if (node instanceof Element && node.hasAttribute('style')) {
       const style = node.getAttribute('style') ?? '';
-      if (UNSAFE_STYLE.test(style)) node.removeAttribute('style');
+      if (UNSAFE_STYLE.test(style.replace(RELATIVE, '$1'))) node.removeAttribute('style');
     }
   });
 }

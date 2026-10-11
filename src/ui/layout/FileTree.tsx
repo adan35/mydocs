@@ -10,13 +10,15 @@ import { itemsFromDataTransfer } from '@/app/importer';
 import { FileIcon } from '../components/FileIcon';
 import { openMenu, openMenuAt } from '../components/Menu';
 import { entryMenu } from '../entry-menu';
-import { useTree } from '../hooks';
+import { useMediaQuery, useTree } from '../hooks';
 
 interface Row {
   entry: Entry;
   depth: number;
   expanded: boolean;
   hasChildren: boolean;
+  posinset: number;
+  setsize: number;
 }
 
 const OVERSCAN = 12;
@@ -33,7 +35,8 @@ export function FileTree() {
   const density = useSettings((s) => s.density);
   const sortKey = useSettings((s) => s.explorerSort);
   const sortDir = useSettings((s) => s.explorerSortDir);
-  const rowHeight = density === 'compact' ? 26 : 30;
+  const touch = useMediaQuery('(pointer: coarse)');
+  const rowHeight = touch ? (density === 'compact' ? 36 : 40) : density === 'compact' ? 26 : 30;
   const scrollRef = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState({ top: 0, height: 600 });
   const [focusId, setFocusId] = useState<EntryId | null>(null);
@@ -43,16 +46,19 @@ export function FileTree() {
     const out: Row[] = [];
     const walk = (parentId: EntryId | null, depth: number) => {
       const children = sortEntries(tree.childrenOf(parentId), sortKey, sortDir);
-      for (const entry of children) {
+      children.forEach((entry, index) => {
         const isOpen = entry.kind === 'folder' && !!expanded[entry.id];
         out.push({
           entry,
           depth,
+          // Position among its siblings, for screen readers.
+          posinset: index + 1,
+          setsize: children.length,
           expanded: isOpen,
           hasChildren: entry.kind === 'folder' && tree.childrenOf(entry.id).length > 0,
         });
         if (isOpen) walk(entry.id, depth + 1);
-      }
+      });
     };
     walk(null, 0);
     return out;
@@ -200,8 +206,6 @@ export function FileTree() {
             active={row.entry.id === activeId}
             tabbable={row.entry.id === tabStop}
             dropping={dropTarget === row.entry.id}
-            setsize={rows.length}
-            posinset={start + i + 1}
             onFocus={setFocusId}
             dropProps={
               row.entry.kind === 'folder' ? dropProps(row.entry.id) : dropProps(row.entry.parentId)
@@ -220,8 +224,6 @@ interface RowProps {
   active: boolean;
   tabbable: boolean;
   dropping: boolean;
-  setsize: number;
-  posinset: number;
   onFocus(id: EntryId): void;
   dropProps: object;
 }
@@ -233,7 +235,6 @@ const TreeRow = memo(function TreeRow({
   active,
   tabbable,
   dropping,
-  posinset,
   onFocus,
   dropProps,
 }: RowProps) {
@@ -245,7 +246,8 @@ const TreeRow = memo(function TreeRow({
       aria-level={depth + 1}
       aria-expanded={isFolder ? expanded : undefined}
       aria-selected={active}
-      aria-posinset={posinset}
+      aria-posinset={row.posinset}
+      aria-setsize={row.setsize}
       aria-label={entry.name}
       data-id={entry.id}
       tabIndex={tabbable ? 0 : -1}
@@ -289,12 +291,12 @@ const TreeRow = memo(function TreeRow({
       </span>
       <FileIcon entry={entry} open={expanded} className="shrink-0 text-steel" />
       <span className="ml-1 min-w-0 flex-1 truncate">{entry.name}</span>
-      <span className="hidden shrink-0 items-center group-focus-within:flex group-hover:flex">
+      <span className="hidden shrink-0 items-center group-focus-within:flex group-hover:flex [@media(pointer:coarse)]:flex">
         {isFolder && (
           <button
             type="button"
             tabIndex={-1}
-            className="icon-btn !h-6 !w-6"
+            className="icon-btn icon-btn-sm"
             aria-label={`New document in ${entry.name}`}
             onClick={(e) => {
               e.stopPropagation();
@@ -307,7 +309,7 @@ const TreeRow = memo(function TreeRow({
         <button
           type="button"
           tabIndex={-1}
-          className="icon-btn !h-6 !w-6"
+          className="icon-btn icon-btn-sm"
           aria-label={`Actions for ${entry.name}`}
           onClick={(e) => {
             e.stopPropagation();

@@ -13,6 +13,7 @@ import {
   Star,
   Trash2,
   LayoutTemplate,
+  Command,
   Network,
   Upload,
   Keyboard,
@@ -106,7 +107,7 @@ export function Sidebar({ onClose, drawer }: { onClose?: () => void; drawer?: bo
         />
         <button
           type="button"
-          className="flex h-[30px] w-full items-center gap-2 rounded-md px-2 text-left text-[14px] hover:bg-hover"
+          className="nav-item flex h-[30px] w-full items-center gap-2 rounded-md px-2 text-left text-[14px] hover:bg-hover"
           onClick={() => {
             useUi.getState().setDrawer(false);
             void A.newFromTemplate();
@@ -116,6 +117,20 @@ export function Sidebar({ onClose, drawer }: { onClose?: () => void; drawer?: bo
             <LayoutTemplate size={16} />
           </span>
           <span className="flex-1">Templates</span>
+        </button>
+        <button
+          type="button"
+          className="nav-item flex h-[30px] w-full items-center gap-2 rounded-md px-2 text-left text-[14px] hover:bg-hover"
+          onClick={() => {
+            useUi.getState().setDrawer(false);
+            useUi.getState().setOverlay('palette');
+          }}
+        >
+          <span className="text-steel" aria-hidden>
+            <Command size={16} />
+          </span>
+          <span className="flex-1">Commands</span>
+          <kbd className="kbd hidden md:inline-flex">{formatShortcut(SHORTCUTS.palette)}</kbd>
         </button>
         <NavItem
           icon={<Trash2 size={16} />}
@@ -154,7 +169,7 @@ export function Sidebar({ onClose, drawer }: { onClose?: () => void; drawer?: bo
         </button>
         <button
           type="button"
-          className="icon-btn !h-6 !w-6"
+          className="icon-btn icon-btn-sm"
           aria-label="Import"
           title="Import files or folders"
           onClick={(e) => openMenuAt(e.currentTarget, importSubmenu(null), 'Import')}
@@ -163,7 +178,7 @@ export function Sidebar({ onClose, drawer }: { onClose?: () => void; drawer?: bo
         </button>
         <button
           type="button"
-          className="icon-btn !h-6 !w-6"
+          className="icon-btn icon-btn-sm"
           aria-label="New folder"
           title={`New folder (${formatShortcut(SHORTCUTS.newFolder)})`}
           onClick={() => void A.newFolder(null)}
@@ -172,7 +187,7 @@ export function Sidebar({ onClose, drawer }: { onClose?: () => void; drawer?: bo
         </button>
         <button
           type="button"
-          className="icon-btn !h-6 !w-6"
+          className="icon-btn icon-btn-sm"
           aria-label="New document"
           title={`New document (${formatShortcut(SHORTCUTS.newDoc)})`}
           onClick={() => void A.newDocument(null)}
@@ -218,7 +233,7 @@ function NavItem({
     <button
       type="button"
       aria-current={current ? 'page' : undefined}
-      className={`flex h-[30px] w-full items-center gap-2 rounded-md px-2 text-left text-[14px] ${current ? 'bg-active font-medium text-ink' : 'hover:bg-hover'}`}
+      className={`nav-item flex h-[30px] w-full items-center gap-2 rounded-md px-2 text-left text-[14px] ${current ? 'bg-active font-medium text-ink' : 'hover:bg-hover'}`}
       onClick={() => {
         useUi.getState().setDrawer(false);
         navigate(route);

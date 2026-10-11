@@ -15,6 +15,8 @@ import {
   Upload,
   Moon,
   Sun,
+  Command,
+  CalendarDays,
 } from 'lucide-react';
 import { useResolvedTheme } from '../hooks';
 import { toggleTheme } from '../components/ThemeToggle';
@@ -65,7 +67,7 @@ export function MobileNav() {
           key={it.label}
           type="button"
           aria-current={it.active ? 'page' : undefined}
-          className={`flex h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium ${it.active ? 'text-ink' : 'text-stone'}`}
+          className={`flex h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium ${it.active ? 'text-ink' : 'text-steel'}`}
           onClick={it.onClick}
         >
           {it.icon}
@@ -74,7 +76,7 @@ export function MobileNav() {
       ))}
       <button
         type="button"
-        className="flex h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium text-stone"
+        className="flex h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium text-steel"
         onClick={(e) =>
           openMenuAt(
             e.currentTarget,
@@ -82,7 +84,17 @@ export function MobileNav() {
               { label: 'New document', icon: <FilePlus2 />, onSelect: () => void A.newDocument() },
               { label: 'New folder', icon: <FolderPlus />, onSelect: () => void A.newFolder() },
               { label: 'Import', icon: <Upload />, submenu: importSubmenu(null) },
+              {
+                label: "Today's note",
+                icon: <CalendarDays />,
+                onSelect: () => void A.openDailyNote(),
+              },
               'separator',
+              {
+                label: 'All commands…',
+                icon: <Command />,
+                onSelect: () => useUi.getState().setOverlay('palette'),
+              },
               { label: 'Recent', icon: <Clock />, onSelect: () => navigate({ name: 'recent' }) },
               {
                 label: 'Favorites',

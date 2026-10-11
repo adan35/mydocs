@@ -6,10 +6,24 @@ import { dialogs } from '@/app/dialog-store';
 /** Wraps each selection with `marker` (or unwraps if already wrapped). */
 export function toggleWrap(view: EditorView, marker: string, placeholder = 'text'): boolean {
   const { state } = view;
+  // How many marker characters touch the selection on one side ("**" around "*" is bold, not italic).
+  const run = (pos: number, dir: -1 | 1) => {
+    let n = 0;
+    while (
+      n < 3 &&
+      state.sliceDoc(pos + (dir < 0 ? -n - 1 : n), pos + (dir < 0 ? -n : n + 1)) === marker
+    )
+      n++;
+    return n;
+  };
   const tr = state.changeByRange((range) => {
     const before = state.sliceDoc(range.from - marker.length, range.from);
     const after = state.sliceDoc(range.to, range.to + marker.length);
-    if (before === marker && after === marker) {
+    const wrapped =
+      marker.length === 1
+        ? run(range.from, -1) % 2 === 1 && run(range.to, 1) % 2 === 1
+        : before === marker && after === marker;
+    if (wrapped) {
       return {
         changes: [
           { from: range.from - marker.length, to: range.from },
@@ -62,23 +76,28 @@ export function toggleLinePrefix(view: EditorView, prefix: string): boolean {
   const changes: ChangeSpec[] = [];
   const seen = new Set<number>();
   const strip = /^(\s*)(#{1,6}\s+|[-*+]\s+\[[ xX]\]\s+|[-*+]\s+|\d+[.)]\s+|>\s?)?/;
+  const lines: { from: number; indent: string; existing: string }[] = [];
   for (const range of state.selection.ranges) {
     for (let pos = range.from; pos <= range.to;) {
       const line = state.doc.lineAt(pos);
+      // A selection ending at the very start of a line doesn't include that line.
+      if (!range.empty && line.from === range.to && line.from > range.from) break;
       if (!seen.has(line.number)) {
         seen.add(line.number);
         const m = strip.exec(line.text)!;
-        const indent = m[1] ?? '';
-        const existing = m[2] ?? '';
-        const replacement = existing.trim() === prefix.trim() ? '' : prefix;
-        changes.push({
-          from: line.from + indent.length,
-          to: line.from + indent.length + existing.length,
-          insert: replacement,
-        });
+        lines.push({ from: line.from, indent: m[1] ?? '', existing: m[2] ?? '' });
       }
       pos = line.to + 1;
     }
+  }
+  // One decision for all lines: remove only when every line already has this prefix.
+  const remove = lines.every((l) => l.existing.trim() === prefix.trim());
+  for (const l of lines) {
+    changes.push({
+      from: l.from + l.indent.length,
+      to: l.from + l.indent.length + l.existing.length,
+      insert: remove ? '' : prefix,
+    });
   }
   const changeSet = state.changes(changes);
   view.dispatch({
@@ -156,7 +175,8 @@ async function editTable(view: EditorView) {
   }
   const line = view.state.doc.lineAt(view.state.selection.main.from);
   const lead = line.text.trim() ? '\n\n' : '';
-  insertText(view, `${lead}${md}\n`);
+  // A blank line after the table, so the next line typed isn't another row.
+  insertText(view, `${lead}${md}\n\n`);
 }
 
 /** Inserts a display-math block with the cursor inside it. */
