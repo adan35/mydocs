@@ -6,6 +6,7 @@ import { dialogs } from '@/app/dialog-store';
 import * as A from '@/app/actions';
 import { formatBytes } from '@/domain/names';
 import { Page } from '../components/Page';
+import { PaletteGrid } from '../components/ThemePicker';
 import { useEffect, useState } from 'react';
 
 function Section({
@@ -133,6 +134,14 @@ export function SettingsView() {
             ]}
           />
         </Row>
+        <div className="px-1 pt-2">
+          <p className="px-3 text-[14px] text-ink">Color palette</p>
+          <p className="px-3 text-caption text-steel">
+            Each palette has a light and a dark version. Switch quickly from the palette button next
+            to the sidebar's theme button.
+          </p>
+          <PaletteGrid />
+        </div>
         <Row label="Density" hint="Spacing in the sidebar and lists.">
           <Segmented
             label="Density"
@@ -168,6 +177,7 @@ export function SettingsView() {
               ['narrow', 'Narrow'],
               ['normal', 'Normal'],
               ['wide', 'Wide'],
+              ['full', 'Full'],
             ]}
           />
         </Row>

@@ -38,12 +38,14 @@ import {
   CalendarDays,
   Network,
   Type,
+  Palette,
 } from 'lucide-react';
 import * as A from '@/app/actions';
 import { ws } from '@/app/app-store';
 import { editorActions, useEditor } from '@/app/editor-store';
 import { navigate, useRouter } from '@/app/router';
 import { useSettings } from '@/app/settings-store';
+import { PALETTES } from '@/app/themes';
 import { useUi } from '@/app/ui-store';
 import { dialogs } from '@/app/dialog-store';
 import { SHORTCUTS } from '@/app/shortcuts';
@@ -262,6 +264,14 @@ export function getCommands(): Command[] {
       keywords: 'appearance color mode auto',
       run: () => settings.update({ theme: 'system' }),
     },
+    ...PALETTES.map((p) => ({
+      id: `palette-${p.id}`,
+      title: `Color palette: ${p.label}`,
+      group: 'View' as const,
+      icon: <Palette />,
+      keywords: `appearance theme colors ${p.hint}`,
+      run: () => settings.update({ palette: p.id }),
+    })),
     {
       id: 'settings',
       title: 'Open settings',

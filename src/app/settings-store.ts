@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { SortDir, SortKey } from '@/domain/tree';
 import { prefs } from './prefs';
+import { isPaletteId, type PaletteId } from './themes';
 
 export type ThemePref = 'light' | 'dark' | 'system';
 /** Source (`edit`), source and preview side by side, rich editing, and reading (`preview`). */
@@ -10,6 +11,8 @@ export type ExplorerView = 'list' | 'compact' | 'grid';
 
 export interface Settings {
   theme: ThemePref;
+  /** Color palette; each has a light and a dark variant. */
+  palette: PaletteId;
   density: Density;
   /** Base font size of the editor and reader, in px. */
   fontSize: number;
@@ -19,7 +22,8 @@ export interface Settings {
   tabSize: 2 | 4;
   autosaveDelay: number;
   defaultViewMode: ViewMode;
-  readingWidth: 'narrow' | 'normal' | 'wide';
+  /** Text column width. `full` uses the whole pane with a small margin. */
+  readingWidth: 'narrow' | 'normal' | 'wide' | 'full';
   explorerSort: SortKey;
   explorerSortDir: SortDir;
   explorerView: ExplorerView;
@@ -36,6 +40,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
+  palette: 'classic',
   density: 'comfortable',
   fontSize: 16,
   editorFont: 'mono',
@@ -44,7 +49,7 @@ export const DEFAULT_SETTINGS: Settings = {
   tabSize: 2,
   autosaveDelay: 700,
   defaultViewMode: 'edit',
-  readingWidth: 'normal',
+  readingWidth: 'full',
   explorerSort: 'name',
   explorerSortDir: 'asc',
   explorerView: 'list',
@@ -62,16 +67,27 @@ interface SettingsState extends Settings {
   reset(): void;
 }
 
+/** Saved settings, upgraded from earlier versions. */
+function load(): Partial<Settings> {
+  const saved = prefs.get<Partial<Settings> & { v?: number }>(KEY, {});
+  // Version 2 made the full-width text column the default; earlier saves stored the old
+  // default ("normal") whether or not it was picked, so they move to the new one.
+  if ((saved.v ?? 1) < 2 && saved.readingWidth === 'normal') saved.readingWidth = 'full';
+  delete saved.v;
+  if (saved.palette !== undefined && !isPaletteId(saved.palette)) delete saved.palette;
+  return saved;
+}
+
 export const useSettings = create<SettingsState>((set) => ({
   ...DEFAULT_SETTINGS,
-  ...prefs.get<Partial<Settings>>(KEY, {}),
+  ...load(),
   update(patch) {
     set(patch);
     const { update: _u, reset: _r, ...rest } = useSettings.getState();
-    prefs.set(KEY, rest);
+    prefs.set(KEY, { ...rest, v: 2 });
   },
   reset() {
     set(DEFAULT_SETTINGS);
-    prefs.set(KEY, DEFAULT_SETTINGS);
+    prefs.set(KEY, { ...DEFAULT_SETTINGS, v: 2 });
   },
 }));

@@ -18,7 +18,7 @@
   padding: 24px 0 40vh;
 }
 .cm-editor .cm-content .cm-line {
-  padding: 0 clamp(16px, 4vw, 48px);
+  padding: 0 clamp(12px, 2.5vw, 32px);
 }
 /* With line numbers on, text starts a short step after them, like a code editor. */
 .cm-editor .cm-gutters ~ .cm-content .cm-line {
@@ -110,7 +110,8 @@
   color: var(--steel);
 }
 .cm-md-list {
-  color: var(--primary);
+  /* The whole list item, not just its marker: keep the text its normal color. */
+  color: inherit;
 }
 .cm-md-meta {
   color: var(--stone);

@@ -17,9 +17,11 @@ import {
   Sun,
   Command,
   CalendarDays,
+  Palette,
 } from 'lucide-react';
 import { useResolvedTheme } from '../hooks';
 import { toggleTheme } from '../components/ThemeToggle';
+import { themeMenuItems } from '../components/ThemePicker';
 import { importSubmenu } from '../entry-menu';
 
 /** Phone navigation: Documents, Search, the open document, and More. */
@@ -109,6 +111,7 @@ export function MobileNav() {
                 icon: theme === 'dark' ? <Sun /> : <Moon />,
                 onSelect: () => toggleTheme(theme),
               },
+              { label: 'Theme', icon: <Palette />, submenu: themeMenuItems() },
               {
                 label: 'Settings',
                 icon: <Settings />,
