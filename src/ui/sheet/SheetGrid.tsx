@@ -4,7 +4,8 @@ import {
   addr,
   colName,
   displayValue,
-  editValue,
+  editValue as cellEditValue,
+  textValue,
   isError,
   type Cell,
   type Sheet,
@@ -36,6 +37,13 @@ export interface SheetGridProps {
   pad?: { rows: number; cols: number };
   /** Accessible name. */
   label: string;
+  /**
+   * Every cell is text (CSV, TSV, Markdown tables): cells are edited exactly as written,
+   * without the leading apostrophe a spreadsheet uses to mark text that looks like a number.
+   */
+  textOnly?: boolean;
+  /** Column alignment, as a Markdown table declares it. */
+  align?: readonly ('left' | 'center' | 'right' | null)[];
 }
 
 /**
@@ -54,7 +62,10 @@ export function SheetGrid({
   onSelect,
   pad = { rows: 20, cols: 4 },
   label,
+  textOnly,
+  align,
 }: SheetGridProps) {
+  const editValue = textOnly ? textValue : cellEditValue;
   const scroller = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState<{ value: string; from: 'cell' | 'bar' } | null>(null);
   const [view, setView] = useState({ top: 0, height: 600 });
@@ -316,7 +327,7 @@ export function SheetGrid({
                       aria-colindex={c + 1}
                       data-cell={addr(r, c)}
                       title={cellTitle(v)}
-                      className={`sheet-cell ${isActive ? 'is-active' : ''} ${numeric ? 'text-right' : ''} ${v && isError(v.v) ? 'text-danger' : ''} ${headerRow && r === 0 ? 'font-semibold' : ''} ${v?.stale ? 'is-stale' : ''}`}
+                      className={`sheet-cell ${isActive ? 'is-active' : ''} ${numeric || align?.[c] === 'right' ? 'text-right' : align?.[c] === 'center' ? 'text-center' : ''} ${v && isError(v.v) ? 'text-danger' : ''} ${headerRow && r === 0 ? 'font-semibold' : ''} ${v?.stale ? 'is-stale' : ''}`}
                       style={{ width: w }}
                       onMouseDown={(e) => {
                         if (editing && isActive) return;

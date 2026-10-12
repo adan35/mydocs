@@ -191,6 +191,10 @@ test('Markdown tables edit as a sheet, with a picker for several tables', async 
   await mode(page, 'Sheet');
   const grid = page.getByTestId('sheet-grid');
   await expect(grid.locator('[data-cell="B2"]')).toHaveText('007');
+  // Table cells are text: shown and edited exactly as written, aligned as declared.
+  await grid.locator('[data-cell="B2"]').click();
+  await expect(page.getByTestId('formula-bar')).toHaveValue('007');
+  await expect(grid.locator('[data-cell="B2"]')).toHaveClass(/text-right/);
   await page.getByRole('combobox', { name: 'Table' }).selectOption({ index: 1 });
   await expect(grid.locator('[data-cell="A2"]')).toHaveText('Ada');
   await grid.locator('[data-cell="B2"]').click();

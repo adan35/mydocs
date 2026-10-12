@@ -105,7 +105,7 @@ export function TextSheetView({
       });
       return;
     }
-    const value = input.startsWith("'") ? input.slice(1) : input;
+    const value = input; // cells are text, kept exactly as typed
     const rows = rowsOf(sheet!);
     while (rows.length <= r) rows.push([]);
     const row = rows[r]!;
@@ -283,6 +283,8 @@ export function TextSheetView({
             onPaste={onPaste}
             onClear={(r, c) => onEdit(r, c, '')}
             pad={markdown ? { rows: 0, cols: 0 } : undefined}
+            textOnly
+            align={markdown ? table?.table.align : undefined}
           />
         </div>
       )}
