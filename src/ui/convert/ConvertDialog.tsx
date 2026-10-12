@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { canPrint } from '@/platform';
 import { AlertTriangle, ArrowRight, Download, FilePlus2, Printer } from 'lucide-react';
 import type { EntryId } from '@/domain/types';
 import { ws } from '@/app/app-store';
@@ -146,7 +147,7 @@ export function ConvertDialog({
                 void exportEntry(entryId, 'pdf');
               }}
             >
-              <Printer size={15} aria-hidden /> Print to PDF…
+              <Printer size={15} aria-hidden /> {canPrint ? 'Print to PDF…' : 'Share as HTML'}
             </button>
           ) : (
             <>
@@ -220,8 +221,9 @@ export function ConvertDialog({
           )}
           {to === 'pdf' && (
             <p className="text-caption text-charcoal">
-              PDF uses your system's print dialog with the reading view, so what you see is what is
-              printed. Choose “Save as PDF” as the printer.
+              {canPrint
+                ? 'PDF uses your system’s print dialog with the reading view, so what you see is what is printed. Choose “Save as PDF” as the printer.'
+                : 'The mobile app has no print dialog, so it can’t make a PDF. It shares a print-ready HTML file instead, which you can print or save as PDF from another app.'}
             </p>
           )}
           {error && (

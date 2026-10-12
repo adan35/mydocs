@@ -60,6 +60,22 @@ These steps can't be done from the repository; they need your accounts and keys.
 | **Apple Developer ID certificate and notarization** for the macOS app ([Tauri guide](https://tauri.app/distribute/sign/macos/)).                                                                                                                                                                                                                                                                         | Opening without a Gatekeeper warning                        | Right-click → Open the first time |
 | **Windows code-signing certificate** ([Tauri guide](https://tauri.app/distribute/sign/windows/)).                                                                                                                                                                                                                                                                                                        | No SmartScreen "unknown publisher" warning                  | Click **More info → Run anyway**  |
 
+## Editor and formats in the apps
+
+The editing modes, ribbon, conversions, sheet views, PDF viewer and graph are web code, so the
+desktop and mobile apps get them unchanged. Platform differences:
+
+- **Saving exports**: the desktop app uses the native save dialog; the mobile apps use the share
+  sheet; the browser downloads (`src/platform/`).
+- **PDF export** uses the print dialog, which the mobile web views don't have. The mobile apps
+  share a print-ready HTML file instead and the conversion dialog says so.
+- **PDF viewing** uses pdf.js's legacy build so it works in older Android WebViews and WKWebView.
+- **Conversions** run in a Web Worker in every shell, with an in-thread fallback.
+
+Verified in this repository: the web app in Chromium (unit and e2e tests, a production build with
+its Content-Security-Policy, screenshots at phone, tablet, laptop and desktop sizes). The shells
+are built by CI (below); running them on real devices needs the accounts listed further down.
+
 ## Not in the apps yet
 
 - Editing a real folder on disk (the desktop app still stores documents in its own database, like the browser). The storage layer is ready for it: a folder-backed `WorkspaceProvider` in `src/storage/` would plug in without UI changes.

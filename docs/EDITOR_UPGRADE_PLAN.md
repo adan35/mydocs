@@ -57,3 +57,27 @@ decided and how each part is accepted.
 | 4. Conversion             | 1          | Capability matrix in the UI and docs; DOCX, XLSX, CSV, TSV, HTML, TXT, PDF (print) export; DOCX, XLSX, CSV, TSV, HTML import; table picker; conversion summary; original always kept; exports open in LibreOffice.                   |
 | 5. Knowledge graph        | 1          | Search, folder/tag/type/depth filters, selection with neighbours highlighted, unresolved and suggested links shown distinctly, duplicate titles disambiguated, rename/move/delete handled, positions kept across updates.            |
 | 6. Platform polish, tests | all        | Resizable panels remembered; mobile ribbon stays above the keyboard; e2e for the ten workflows in the brief; screenshots at phone, tablet, laptop and desktop sizes.                                                                 |
+
+## Status (October 12, 2026)
+
+All six phases are implemented. Phase 3 (contextual controls) shipped with phase 2.
+
+| Requirement                           | Where                                                                                | Verified by                                                    |
+| ------------------------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------- |
+| One document model, undo across modes | `src/app/doc-model.ts`                                                               | `e2e/document-model.spec.ts`, `rich-editing.spec.ts`           |
+| Rich editing keeps block identity     | `src/ui/document/rich-editing.ts`                                                    | `e2e/rich-editing.spec.ts` (H2, lists, cells, links, code)     |
+| Split-view scroll sync                | `src/ui/document/scroll-sync.ts`                                                     | `scroll-sync.test.ts`, `e2e/scroll-sync.spec.ts`               |
+| Contextual ribbon                     | `src/ui/editor/Ribbon.tsx`, `tools.tsx`, `src/ui/sheet/SheetRibbon.tsx`, PDF toolbar | `e2e/workflows.spec.ts` (controls per format)                  |
+| Conversion and capability matrix      | `src/lib/convert/`, `src/app/convert.ts`, `docs/FORMATS.md`                          | `docx.test.ts`, `sheet.test.ts`, `e2e/formats.spec.ts`         |
+| Exports open in other apps            | DOCX in python-docx and LibreOffice; XLSX in openpyxl and LibreOffice                | Checked by hand during development (fixtures in `fixtures/`)   |
+| Knowledge graph                       | `src/app/graph.ts`, `knowledge.ts`, `src/ui/views/GraphView.tsx`                     | `graph.test.ts`, `e2e/knowledge.spec.ts`, `workflows.spec.ts`  |
+| Layout at four sizes                  | Phone 390×844, tablet 820×1180, laptop 1366×768, desktop 1920×1080                   | Screenshots; `e2e/responsive.spec.ts` (no horizontal overflow) |
+
+Known limits:
+
+- Word documents are read-only in place; editing means converting to Markdown. Equations, comments,
+  tracked changes and page layout are reported, not converted (see `docs/FORMATS.md`).
+- The formula engine covers common functions; others keep their saved value and are marked.
+- MyDocs has no accounts or shared workspaces, so there are no document permissions to respect in
+  the graph, search or previews: everything shown is the user's own local data.
+- Sync and sharing are out of scope.

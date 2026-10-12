@@ -142,7 +142,10 @@ export const CONVERSIONS: Conversion[] = [
     to: 'pdf',
     kinds: ['export'],
     keeps: ['The reading view, as printed by your system'],
-    loses: ['Links between documents'],
+    loses: [
+      'Links between documents',
+      'Not available in the Android and iOS apps (no print dialog): they share HTML instead',
+    ],
   },
   {
     from: 'md',
