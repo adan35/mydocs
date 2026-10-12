@@ -35,6 +35,7 @@ import { navigate } from '@/app/router';
 import { SHORTCUTS } from '@/app/shortcuts';
 import { dialogs } from '@/app/dialog-store';
 import * as A from '@/app/actions';
+import '../editor/setup';
 import { Editor, type EditorHandle } from '../editor/Editor';
 import { FormatToolbar } from '../editor/FormatToolbar';
 import { insertTable } from '../editor/commands';
@@ -268,13 +269,17 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
           onVisibleLine={onPreviewScroll}
           onToggleTask={(line) => {
             const next = toggleTaskAt(text, line);
-            const view = editorRef.current?.view;
-            // In split view the editor holds the text; change it there so it isn't overwritten.
-            if (view && view.dom.dataset.docId === id && line < view.state.doc.lines) {
-              const l = view.state.doc.line(line + 1);
-              const insert = next.split('\n')[line] ?? l.text;
-              view.dispatch({ changes: { from: l.from, to: l.to, insert }, userEvent: 'input' });
-            } else editorActions.setText(id, next);
+            // One transaction on the document model, so it is undoable from any mode.
+            const from = lineStart(text, line);
+            const to = text.indexOf('\n', from);
+            editorActions.edit(id, {
+              changes: {
+                from,
+                to: to < 0 ? text.length : to,
+                insert: next.split('\n')[line] ?? '',
+              },
+              userEvent: 'input.toggle',
+            });
           }}
         />
         <style>{`.prose{--prose-size:${fontSize}px}`}</style>
@@ -313,9 +318,6 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
                   docId={id}
                   name={entry.name}
                   text={text}
-                  rev={buffer.rev}
-                  onChange={(t) => editorActions.setText(id, t)}
-                  onSave={() => void editorActions.flush(id)}
                   onScrollLine={(line) => {
                     if (mode === 'edit') setActiveLine(line);
                     if (mode === 'split') previewRef.current?.scrollToLine(line);
@@ -668,4 +670,15 @@ function FullscreenButton() {
       {full ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
     </button>
   );
+}
+
+/** Offset of the start of 0-based `line`. */
+function lineStart(text: string, line: number): number {
+  let pos = 0;
+  for (let i = 0; i < line; i++) {
+    const nl = text.indexOf('\n', pos);
+    if (nl < 0) return text.length;
+    pos = nl + 1;
+  }
+  return pos;
 }

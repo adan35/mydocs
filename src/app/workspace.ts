@@ -16,6 +16,7 @@ import { encodeHrefPath, relativePath, resolvePath } from '@/domain/paths';
 import { addTag, removeTag, replaceTag } from '@/domain/tags';
 import { linkFirstMention } from '@/domain/mentions';
 import type { ChangeSet, WorkspaceStore } from '@/storage/types';
+import { migrateWorkspace } from './migrations';
 
 /** Snapshot the previous content when the last snapshot is older than this. */
 export const VERSION_INTERVAL_MS = 5 * 60 * 1000;
@@ -57,6 +58,7 @@ export class Workspace {
   private constructor(readonly store: WorkspaceStore) {}
 
   static async open(store: WorkspaceStore): Promise<Workspace> {
+    await migrateWorkspace(store);
     const ws = new Workspace(store);
     const [entries, texts] = await Promise.all([store.listEntries(), store.readAllText()]);
     for (const e of entries) ws.entries.set(e.id, e);

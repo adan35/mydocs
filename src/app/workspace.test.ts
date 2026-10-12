@@ -350,3 +350,13 @@ describe('IndexedDB provider', () => {
     expect((await provider.list()).map((w) => w.id)).not.toContain(info.id);
   });
 });
+
+describe('schema migrations', () => {
+  it('stamps the schema version and refuses workspaces from a newer version', async () => {
+    const { SCHEMA_VERSION } = await import('./migrations');
+    const { store } = await openWs();
+    expect(await store.getMeta('schemaVersion')).toBe(SCHEMA_VERSION);
+    await store.setMeta('schemaVersion', SCHEMA_VERSION + 1);
+    await expect(Workspace.open(store)).rejects.toThrow(/newer version/);
+  });
+});
