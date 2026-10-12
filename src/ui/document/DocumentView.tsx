@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BookOpen,
   Columns2,
@@ -21,6 +21,12 @@ import {
   ChevronRight,
   FileQuestion,
   BookOpenCheck,
+  FileCode2,
+  Link2,
+  Link2Off,
+  FileOutput,
+  Table2,
+  FileText,
 } from 'lucide-react';
 import type { Entry, EntryId } from '@/domain/types';
 import { isMarkdownName } from '@/domain/names';
@@ -35,9 +41,15 @@ import { navigate } from '@/app/router';
 import { SHORTCUTS } from '@/app/shortcuts';
 import { dialogs } from '@/app/dialog-store';
 import * as A from '@/app/actions';
+import '../editor/setup';
 import { Editor, type EditorHandle } from '../editor/Editor';
-import { FormatToolbar } from '../editor/FormatToolbar';
 import { insertTable } from '../editor/commands';
+import { Ribbon } from '../editor/Ribbon';
+import { TOOLS, applyBlockStyle, type EditSurface, type ToolContext } from '../editor/tools';
+import type { BlockType } from '@/domain/source-edit';
+import { baseName } from '@/domain/names';
+import { ScrollSync } from './scroll-sync';
+import type { RichFocus } from './rich-editing';
 import { openMenuAt, type MenuEntry } from '../components/Menu';
 import { formatShortcut, useLayout, useTree } from '../hooks';
 import { exportSubmenu } from '../entry-menu';
@@ -46,6 +58,8 @@ import { Preview, type PreviewHandle } from './Preview';
 import { RightPanel } from './RightPanel';
 import { DiskStatus, SaveStatus } from './SaveStatus';
 import { BinaryView } from './BinaryView';
+import { formatOf, conversionsFrom } from '@/lib/convert/capabilities';
+import { DocxView, PdfView, TextSheetView, XlsxView } from '../lazy-views';
 
 export function DocumentView({ id, anchor }: { id: EntryId; anchor?: string }) {
   const tree = useTree()!;
@@ -65,13 +79,22 @@ export function DocumentView({ id, anchor }: { id: EntryId; anchor?: string }) {
     return null;
   }
   const textual = ws().isEditable(entry);
-  return textual ? (
-    <TextDocument entry={entry} anchor={anchor} />
-  ) : (
+  if (textual) return <TextDocument entry={entry} anchor={anchor} />;
+  const format = formatOf(entry.name)?.id;
+  const onConvert = () => void dialogs.convert(entry.id);
+  return (
     <div className="flex h-full min-h-0 flex-col">
       <DocHeader entry={entry} mode="edit" setMode={() => {}} />
       <div className="min-h-0 flex-1">
-        <BinaryView entry={entry} />
+        {format === 'xlsx' ? (
+          <XlsxView entry={entry} onConvert={onConvert} />
+        ) : format === 'docx' ? (
+          <DocxView entry={entry} onConvert={onConvert} />
+        ) : format === 'pdf' ? (
+          <PdfView entry={entry} />
+        ) : (
+          <BinaryView entry={entry} />
+        )}
       </div>
     </div>
   );
@@ -124,17 +147,46 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
   const focusMode = useUi((s) => s.focusMode);
   const readingMode = useUi((s) => s.readingMode);
   const panelOpen = useUi((s) => s.rightPanelOpen);
+  const syncScroll = useSettings((s) => s.syncScroll);
+  const splitRatio = useUi((s) => s.splitRatio);
+  const panelWidth = useUi((s) => s.rightPanelWidth);
   const { wide, desktop } = useLayout();
   const editorRef = useRef<EditorHandle>(null);
   const previewRef = useRef<PreviewHandle>(null);
+  const previewScroller = useRef<HTMLDivElement>(null);
+  const splitRef = useRef<HTMLDivElement>(null);
   const [activeLine, setActiveLine] = useState(0);
+  const [tick, setTick] = useState(0);
+  const tickRaf = useRef(0);
+  const bumpTick = useCallback(() => {
+    cancelAnimationFrame(tickRaf.current);
+    tickRaf.current = requestAnimationFrame(() => setTick((t) => t + 1));
+  }, []);
+  const [richFocus, setRichFocus] = useState<RichFocus | null>(null);
+  const sync = useMemo(
+    () =>
+      new ScrollSync(
+        () => editorRef.current?.view ?? null,
+        () =>
+          previewRef.current?.element && previewScroller.current
+            ? { root: previewRef.current.element, scroller: previewScroller.current }
+            : null,
+      ),
+    [],
+  );
   const [progress, setProgress] = useState(0);
   const [outlineSheet, setOutlineSheet] = useState(false);
   // Following a link from the details sheet shows the new document, not the sheet.
   useEffect(() => setOutlineSheet(false), [id]);
   const focusRequest = useEditor((s) => s.focusRequest);
 
-  let mode: ViewMode = isMd ? (storedMode ?? defaultMode) : 'edit';
+  const delimited = /\.(csv|tsv|tab)$/i.test(entry.name);
+  let mode: ViewMode = isMd
+    ? (storedMode ?? defaultMode)
+    : delimited
+      ? (storedMode ?? 'sheet')
+      : 'edit';
+  if (!isMd && mode !== 'sheet') mode = 'edit';
   if (mode === 'split' && !desktop) mode = 'edit';
   if (readingMode && isMd) mode = 'preview';
   const setMode = (m: ViewMode) => useUi.getState().setViewMode(id, m);
@@ -143,19 +195,36 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
   const jumpTo = useCallback(
     (line: number) => {
       setOutlineSheet(false);
-      if (mode === 'edit') editorRef.current?.scrollToLine(line);
+      if (mode === 'split') {
+        // The editor leads; the preview follows through scroll sync (or directly if it's off).
+        sync.authority = 'editor';
+        editorRef.current?.scrollToLine(line);
+        if (!syncScroll) previewRef.current?.scrollToLine(line);
+      } else if (mode === 'edit') editorRef.current?.scrollToLine(line);
       else previewRef.current?.scrollToLine(line, true);
-      if (mode === 'split') editorRef.current?.scrollToLine(line);
     },
-    [mode],
+    [mode, sync, syncScroll],
   );
+
+  // Two-way scroll sync in split view.
+  const bufferReady = !!buffer && buffer.status !== 'loading';
+  useEffect(() => {
+    sync.enabled = syncScroll;
+    if (mode !== 'split' || !bufferReady) {
+      sync.disconnect();
+      return;
+    }
+    sync.connect();
+    sync.invalidate();
+    return () => sync.disconnect();
+  }, [mode, id, sync, syncScroll, bufferReady]);
 
   // Deep links to a heading (#/doc/id?h=slug).
   useEffect(() => {
     if (!anchor || buffer?.status === 'loading' || !buffer) return;
     const h = extractHeadings(buffer.text).find((x) => x.slug === anchor);
     const t = setTimeout(() => {
-      if (mode === 'edit') {
+      if (mode === 'edit' || mode === 'split') {
         if (h) editorRef.current?.scrollToLine(h.line);
       } else previewRef.current?.scrollToSlug(anchor);
     }, 50);
@@ -168,11 +237,12 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
   useEffect(() => {
     if (focusRequest?.id !== id || !buffer || buffer.status === 'loading') return;
     // Focus right away so early keystrokes land in the editor, then finish a frame later.
-    if (mode !== 'preview') editorRef.current?.focus();
+    const hasEditor = mode === 'edit' || mode === 'split';
+    if (hasEditor) editorRef.current?.focus();
     const raf = requestAnimationFrame(() => {
       const req = editorActions.takeFocusRequest(id);
       if (!req) return;
-      if (mode !== 'preview') {
+      if (hasEditor) {
         editorRef.current?.focus({ find: req.find, end: req.end });
         return;
       }
@@ -191,14 +261,20 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
     const onCmd = (e: Event) => {
       const cmd = (e as CustomEvent<string>).detail;
       if (cmd === 'find') {
-        if (mode === 'preview') setMode('edit');
+        if (mode === 'preview' || mode === 'rich') setMode('edit');
         setTimeout(() => editorRef.current?.openSearch(), 0);
       } else if (cmd === 'toggle-mode' && isMd) setMode(mode === 'edit' ? 'preview' : 'edit');
+      else if (cmd === 'rich' && isMd) setMode(mode === 'rich' ? 'edit' : 'rich');
+      else if (cmd === 'sync-scroll') useSettings.getState().update({ syncScroll: !syncScroll });
+      else if (cmd.startsWith('tool:')) {
+        const tool = TOOLS.find((t) => t.id === cmd.slice(5));
+        if (tool && tool.when(toolCtx) && !tool.disabled?.(toolCtx)) tool.run(toolCtx);
+      } else if (cmd.startsWith('style:')) applyBlockStyle(toolCtx, cmd.slice(6) as BlockType);
       else if (cmd === 'split' && isMd && desktop) setMode(mode === 'split' ? 'edit' : 'split');
       else if (cmd === 'focus-editor') editorRef.current?.focus();
       else if (cmd === 'panel-sheet' && isMd && !readingMode) setOutlineSheet((v) => !v);
       else if (cmd === 'insert-table' && isMd) {
-        if (mode === 'preview') setMode('edit');
+        if (mode === 'preview' || mode === 'rich') setMode('edit');
         setTimeout(() => {
           const view = editorRef.current?.view;
           if (view) insertTable(view);
@@ -212,6 +288,18 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
   const onPreviewScroll = (line: number) => {
     if (mode !== 'edit') setActiveLine(line);
   };
+
+  const surface: EditSurface | null =
+    mode === 'edit' || mode === 'split' ? 'source' : mode === 'rich' ? 'rich' : null;
+  const toolCtx: ToolContext = {
+    docId: id,
+    kind: isMd ? 'markdown' : 'text',
+    surface: surface ?? 'source',
+    view: surface === 'source' ? (editorRef.current?.view ?? null) : null,
+    rich: surface === 'rich' ? (previewRef.current?.rich ?? null) : null,
+    richFocus,
+  };
+  const showRibbon = !!surface && showToolbar && !focusMode && (isMd || mode === 'edit');
 
   if (!buffer || buffer.status === 'loading') {
     return (
@@ -242,7 +330,9 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
 
   const preview = (
     <div
+      ref={previewScroller}
       className="scroll-area h-full min-w-0 flex-1 print-source"
+      data-testid="preview-pane"
       onScroll={
         readingMode
           ? (e) => {
@@ -260,21 +350,43 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
         className="mx-auto px-5 pt-8 pb-[30vh] sm:px-10 sm:pt-12"
         style={{ maxWidth: widthPx + 80 }}
       >
+        {mode === 'rich' && !text.trim() && (
+          <button
+            type="button"
+            className="mb-4 text-[15px] text-stone hover:text-steel"
+            onClick={() => {
+              editorActions.edit(id, {
+                changes: { from: 0, insert: '# ' + baseName(entry.name) + '\n' },
+              });
+            }}
+          >
+            This document is empty. Click to add a title, or switch to Source to write Markdown.
+          </button>
+        )}
         <Preview
           ref={previewRef}
           docId={id}
           text={text}
           className=""
+          rich={mode === 'rich'}
+          onRichFocus={(f) => {
+            setRichFocus(f);
+            bumpTick();
+          }}
           onVisibleLine={onPreviewScroll}
           onToggleTask={(line) => {
             const next = toggleTaskAt(text, line);
-            const view = editorRef.current?.view;
-            // In split view the editor holds the text; change it there so it isn't overwritten.
-            if (view && view.dom.dataset.docId === id && line < view.state.doc.lines) {
-              const l = view.state.doc.line(line + 1);
-              const insert = next.split('\n')[line] ?? l.text;
-              view.dispatch({ changes: { from: l.from, to: l.to, insert }, userEvent: 'input' });
-            } else editorActions.setText(id, next);
+            // One transaction on the document model, so it is undoable from any mode.
+            const from = lineStart(text, line);
+            const to = text.indexOf('\n', from);
+            editorActions.edit(id, {
+              changes: {
+                from,
+                to: to < 0 ? text.length : to,
+                insert: next.split('\n')[line] ?? '',
+              },
+              userEvent: 'input.toggle',
+            });
           }}
         />
         <style>{`.prose{--prose-size:${fontSize}px}`}</style>
@@ -299,36 +411,57 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
           setMode={setMode}
           onOutline={() => setOutlineSheet(true)}
         />
-        <div className="flex min-h-0 flex-1" style={editorStyle}>
-          {mode !== 'preview' && (
-            <div
-              className={`flex h-full min-w-0 flex-1 flex-col ${mode === 'split' ? 'border-r border-hairline' : ''}`}
-            >
-              {isMd && showToolbar && !focusMode && (
-                <FormatToolbar getView={() => editorRef.current?.view ?? null} />
-              )}
-              <div className="min-h-0 flex-1">
-                <Editor
-                  ref={editorRef}
-                  docId={id}
-                  name={entry.name}
-                  text={text}
-                  rev={buffer.rev}
-                  onChange={(t) => editorActions.setText(id, t)}
-                  onSave={() => void editorActions.flush(id)}
-                  onScrollLine={(line) => {
-                    if (mode === 'edit') setActiveLine(line);
-                    if (mode === 'split') previewRef.current?.scrollToLine(line);
-                  }}
-                />
+        {showRibbon && mode !== 'sheet' && <Ribbon ctx={toolCtx} tick={tick} />}
+        {mode === 'sheet' ? (
+          <div className="min-h-0 flex-1">
+            <TextSheetView
+              docId={id}
+              name={entry.name}
+              text={text}
+              onConvert={() => void dialogs.convert(id, 'xlsx')}
+            />
+          </div>
+        ) : (
+          <div ref={splitRef} className="flex min-h-0 flex-1" style={editorStyle}>
+            {(mode === 'edit' || mode === 'split') && (
+              <div
+                className="flex h-full min-w-0 flex-col"
+                style={mode === 'split' ? { flex: `0 0 ${splitRatio * 100}%` } : { flex: '1 1 0%' }}
+              >
+                <div className="min-h-0 flex-1">
+                  <Editor
+                    ref={editorRef}
+                    docId={id}
+                    name={entry.name}
+                    text={text}
+                    onUpdate={bumpTick}
+                    onScrollLine={(line) => {
+                      if (mode === 'edit') setActiveLine(line);
+                    }}
+                  />
+                </div>
               </div>
-            </div>
-          )}
-          {mode !== 'edit' && preview}
-        </div>
+            )}
+            {mode === 'split' && (
+              <SplitHandle
+                ratio={splitRatio}
+                containerRef={splitRef}
+                onChange={(r) => {
+                  useUi.getState().setSplitRatio(r);
+                  sync.invalidate();
+                }}
+              />
+            )}
+            {mode !== 'edit' && preview}
+          </div>
+        )}
       </div>
       {showPanel && (
-        <div className="w-[272px] shrink-0 border-l border-hairline no-print">
+        <div
+          className="relative shrink-0 border-l border-hairline no-print"
+          style={{ width: panelWidth }}
+        >
+          <PanelResizeHandle />
           <RightPanel
             docId={id}
             text={text}
@@ -350,6 +483,91 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
         </OutlineSheet>
       )}
     </div>
+  );
+}
+
+/** Draggable divider between the source and preview panes (also arrow keys). */
+function SplitHandle({
+  ratio,
+  containerRef,
+  onChange,
+}: {
+  ratio: number;
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  onChange(r: number): void;
+}) {
+  const clamp = (r: number) => Math.min(0.8, Math.max(0.2, r));
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize source and preview"
+      aria-valuemin={20}
+      aria-valuemax={80}
+      aria-valuenow={Math.round(ratio * 100)}
+      tabIndex={0}
+      title="Drag to resize. Double-click to reset."
+      className="group relative z-10 -mx-1 w-2 shrink-0 cursor-col-resize touch-none no-print"
+      onDoubleClick={() => onChange(0.5)}
+      onKeyDown={(e) => {
+        if (e.key === 'ArrowLeft') onChange(clamp(ratio - 0.05));
+        else if (e.key === 'ArrowRight') onChange(clamp(ratio + 0.05));
+        else return;
+        e.preventDefault();
+      }}
+      onPointerDown={(e) => {
+        const box = containerRef.current?.getBoundingClientRect();
+        if (!box) return;
+        e.currentTarget.setPointerCapture(e.pointerId);
+        const move = (ev: PointerEvent) => onChange(clamp((ev.clientX - box.left) / box.width));
+        const up = () => {
+          removeEventListener('pointermove', move);
+          removeEventListener('pointerup', up);
+        };
+        addEventListener('pointermove', move);
+        addEventListener('pointerup', up);
+      }}
+    >
+      <div className="mx-auto h-full w-px bg-hairline group-hover:bg-primary group-focus-visible:bg-primary" />
+    </div>
+  );
+}
+
+/** Drag the side panel's left edge to resize it. */
+function PanelResizeHandle() {
+  const width = useUi((s) => s.rightPanelWidth);
+  const clamp = (w: number) => Math.min(480, Math.max(220, Math.round(w)));
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize side panel"
+      aria-valuemin={220}
+      aria-valuemax={480}
+      aria-valuenow={width}
+      tabIndex={0}
+      className="absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize touch-none hover:bg-[color-mix(in_srgb,var(--primary)_25%,transparent)] focus-visible:bg-[color-mix(in_srgb,var(--primary)_25%,transparent)]"
+      onDoubleClick={() => useUi.getState().setRightPanelWidth(272)}
+      onKeyDown={(e) => {
+        if (e.key === 'ArrowLeft') useUi.getState().setRightPanelWidth(clamp(width + 16));
+        else if (e.key === 'ArrowRight') useUi.getState().setRightPanelWidth(clamp(width - 16));
+        else return;
+        e.preventDefault();
+      }}
+      onPointerDown={(e) => {
+        const startX = e.clientX;
+        const startW = width;
+        e.currentTarget.setPointerCapture(e.pointerId);
+        const move = (ev: PointerEvent) =>
+          useUi.getState().setRightPanelWidth(clamp(startW + (startX - ev.clientX)));
+        const up = () => {
+          removeEventListener('pointermove', move);
+          removeEventListener('pointerup', up);
+        };
+        addEventListener('pointermove', move);
+        addEventListener('pointerup', up);
+      }}
+    />
   );
 }
 
@@ -394,6 +612,12 @@ function DocHeader({
   const isMd = isMarkdownName(entry.name);
   const textual = ws().isEditable(entry);
   const ancestors = tree.ancestors(entry.id);
+  const delimited = /\.(csv|tsv|tab)$/i.test(entry.name);
+  const format = formatOf(entry.name)?.id;
+  const canConvert = !!format && conversionsFrom(format).length > 0;
+  const hasTables = useEditor((s) =>
+    isMd ? /^\s*\|?.*\|.*\n\s*\|?\s*:?-+:?\s*\|/m.test(s.buffers[entry.id]?.text ?? '') : false,
+  );
 
   const menu: MenuEntry[] = [
     { label: 'Rename…', icon: <PencilLine />, onSelect: () => void A.renameEntry(entry.id) },
@@ -416,6 +640,24 @@ function DocHeader({
             icon: <Search />,
             shortcut: SHORTCUTS.find,
             onSelect: () => sendDocCommand('find'),
+          },
+        ] as MenuEntry[])
+      : []),
+    ...(canConvert
+      ? ([
+          {
+            label: 'Convert or export…',
+            icon: <FileOutput />,
+            onSelect: () => void dialogs.convert(entry.id),
+          },
+        ] as MenuEntry[])
+      : []),
+    ...(!isMd && (format === 'xlsx' || textual)
+      ? ([
+          {
+            label: 'Version history',
+            icon: <History />,
+            onSelect: () => void dialogs.history(entry.id),
           },
         ] as MenuEntry[])
       : []),
@@ -548,15 +790,17 @@ function DocHeader({
           className="ml-1 flex items-center rounded-md bg-surface p-0.5"
         >
           <ModeButton
-            label="Edit"
+            label="Source"
+            hint="Edit the Markdown source"
             active={mode === 'edit'}
             onClick={() => setMode('edit')}
-            icon={<PencilLine size={14} />}
+            icon={<FileCode2 size={14} />}
             shortcut={SHORTCUTS.toggleMode}
           />
           {desktop && (
             <ModeButton
               label="Split"
+              hint="Source and preview side by side"
               active={mode === 'split'}
               onClick={() => setMode('split')}
               icon={<Columns2 size={14} />}
@@ -564,14 +808,65 @@ function DocHeader({
             />
           )}
           <ModeButton
-            label="Preview"
+            label="Rich"
+            hint="Edit the formatted document directly"
+            active={mode === 'rich'}
+            onClick={() => setMode('rich')}
+            icon={<PencilLine size={14} />}
+            shortcut={SHORTCUTS.richMode}
+          />
+          <ModeButton
+            label="Read"
+            hint="Read without editing"
             active={mode === 'preview'}
             onClick={() => setMode('preview')}
             icon={<Eye size={14} />}
             shortcut={SHORTCUTS.toggleMode}
           />
+          {hasTables && (
+            <ModeButton
+              label="Sheet"
+              hint="Edit this document's tables as a spreadsheet"
+              active={mode === 'sheet'}
+              onClick={() => setMode('sheet')}
+              icon={<Table2 size={14} />}
+            />
+          )}
         </div>
       )}
+      {delimited && (
+        <div
+          role="group"
+          aria-label="View mode"
+          className="ml-1 flex items-center rounded-md bg-surface p-0.5"
+        >
+          <ModeButton
+            label="Sheet"
+            hint="Edit as a spreadsheet"
+            active={mode === 'sheet'}
+            onClick={() => setMode('sheet')}
+            icon={<Table2 size={14} />}
+          />
+          <ModeButton
+            label="Text"
+            hint="Edit the raw text"
+            active={mode !== 'sheet'}
+            onClick={() => setMode('edit')}
+            icon={<FileText size={14} />}
+          />
+        </div>
+      )}
+      {canConvert && !readingMode && !phone && (
+        <button
+          type="button"
+          className="btn btn-ghost h-8 shrink-0 px-2 text-steel"
+          title="Convert to another format, or export a copy"
+          onClick={() => void dialogs.convert(entry.id)}
+        >
+          <FileOutput size={15} aria-hidden /> Convert
+        </button>
+      )}
+      {isMd && mode === 'split' && !readingMode && <SyncScrollButton />}
       <button
         type="button"
         className="icon-btn"
@@ -620,24 +915,46 @@ function DocHeader({
   );
 }
 
+function SyncScrollButton() {
+  const on = useSettings((s) => s.syncScroll);
+  return (
+    <button
+      type="button"
+      className="icon-btn"
+      aria-pressed={on}
+      aria-label="Sync scrolling"
+      title={
+        on
+          ? 'Scrolling is synced between source and preview'
+          : 'Scroll source and preview separately'
+      }
+      onClick={() => useSettings.getState().update({ syncScroll: !on })}
+    >
+      {on ? <Link2 size={16} /> : <Link2Off size={16} />}
+    </button>
+  );
+}
+
 function ModeButton({
   label,
+  hint,
   active,
   onClick,
   icon,
   shortcut,
 }: {
   label: string;
+  hint: string;
   active: boolean;
   onClick(): void;
   icon: React.ReactNode;
-  shortcut: string;
+  shortcut?: string;
 }) {
   return (
     <button
       type="button"
       aria-pressed={active}
-      title={`${label} (${formatShortcut(shortcut)})`}
+      title={shortcut ? `${hint} (${formatShortcut(shortcut)})` : hint}
       className={`tap flex h-7 items-center gap-1.5 rounded-[5px] px-2 text-caption font-medium ${active ? 'bg-canvas text-ink shadow-1' : 'text-steel hover:text-ink'}`}
       onClick={onClick}
     >
@@ -668,4 +985,15 @@ function FullscreenButton() {
       {full ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
     </button>
   );
+}
+
+/** Offset of the start of 0-based `line`. */
+function lineStart(text: string, line: number): number {
+  let pos = 0;
+  for (let i = 0; i < line; i++) {
+    const nl = text.indexOf('\n', pos);
+    if (nl < 0) return text.length;
+    pos = nl + 1;
+  }
+  return pos;
 }

@@ -57,7 +57,8 @@ export function extractLinks(src: string): RawLink[] {
       });
     }
   }
-  return links;
+  // Markdown and wiki links are found in separate passes; callers rewrite in text order.
+  return links.sort((a, b) => a.start - b.start);
 }
 
 /** Resolves a link to a workspace path (markdown/image) or returns null (wiki links resolve by name). */
@@ -71,7 +72,7 @@ export function resolveLinkPath(fromDir: string, link: RawLink): string | null {
  * Used to keep links working when documents are renamed or moved.
  */
 export function rewriteLinks(src: string, replace: (link: RawLink) => string | null): string {
-  const links = extractLinks(src);
+  const links = extractLinks(src); // in text order, so `last` only moves forward
   let out = '';
   let last = 0;
   for (const link of links) {

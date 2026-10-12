@@ -10,6 +10,7 @@ import { useTree } from '../hooks';
 import { HistoryDialog } from './HistoryDialog';
 import { ShortcutsDialog } from './ShortcutsDialog';
 import { TableDialog } from './TableDialog';
+import { ConvertDialog, FormatsDialog } from '../lazy-views';
 
 export function DialogHost() {
   const stack = useDialogs((s) => s.stack);
@@ -40,6 +41,10 @@ function DialogFor({ req }: { req: DialogRequest }) {
       return <ShortcutsDialog onClose={() => req.resolve()} />;
     case 'table':
       return <TableDialog initial={req.table} isNew={req.isNew} onClose={req.resolve} />;
+    case 'convert':
+      return <ConvertDialog entryId={req.entryId} initial={req.to} onClose={() => req.resolve()} />;
+    case 'formats':
+      return <FormatsDialog onClose={() => req.resolve()} />;
   }
 }
 

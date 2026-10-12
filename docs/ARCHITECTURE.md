@@ -80,6 +80,10 @@ A future store (real folders on disk, or a server) only has to implement these t
 - `router.ts`: hash routes (`#/doc/<id>`, `#/folder/<id>`, `#/search`, …).
 - `dialog-store.ts`, `toast-store.ts`: promise-based dialogs and toasts.
 
+**Document model** (`doc-model.ts`): every open text document has exactly one CodeMirror `EditorState`, whether or not an editor is on screen. Source editing, rich editing in the preview, sheet edits of Markdown tables, ribbon commands, task toggles and external changes (restores, link rewrites) are all transactions on that state, so undo and redo cover every mode and there is no second copy of the text to drift. The visible editor attaches to the model's state; `editor-store.ts` saves the model's text.
+
+**Schema** (`migrations.ts`): the stored workspace format has a version stamp and a step per version. A workspace saved by a newer app refuses to open rather than risk writing records it doesn't understand. Documents themselves are plain files and never migrate.
+
 **`actions.ts`** holds every user command (open, create, rename, move, trash with undo, export…) so the sidebar, menus, palette and shortcuts share one implementation and one error handling path.
 
 **Import and export**: `importer.ts` reads picked files, dropped folders and zips, validates every path, skips ignored folders, applies size limits, asks about conflicts and creates new files in batches of 250 per commit. `exporter.ts` builds zips with fflate and standalone HTML documents. `attachments.ts` saves pasted and dropped images.
@@ -88,17 +92,34 @@ A future store (real folders on disk, or a server) only has to implement these t
 
 `renderMarkdown()` uses markdown-it with footnotes, task lists, KaTeX and highlight.js, plus custom rules for wiki links, source line numbers (`data-line`, used for scroll sync and task toggling), heading slugs (`data-heading`) and Mermaid placeholders. The output always passes through `sanitizeHtml()` (DOMPurify) before it reaches the DOM. Mermaid is loaded only when a document contains a diagram, and renders with `securityLevel: 'strict'`.
 
+## Conversion (`src/lib/convert`, `src/app/convert.ts`)
+
+Text formats share one intermediate model, `DocAst` (`doc-ast.ts`): headings, paragraphs with marked inline runs, lists with nesting, start numbers and task state, quotes, code with language, tables with alignment, images, rules and metadata. Adapters read and write it: `markdown.ts` (its own markdown-it instance, so the AST holds what the author wrote), `docx.ts` (WordprocessingML with styles, numbering, hyperlinks, images and core properties), `html.ts` (sanitized DOM) and plain text. Spreadsheets use a separate `Workbook` model (`workbook.ts`) because cells are not prose: typed values, formulas with cached values, number formats, sheet names and column widths, with adapters for XLSX (`xlsx.ts`), CSV/TSV (`delimited.ts`) and Markdown tables.
+
+- `xml.ts` is a small XML reader and writer that runs in workers (which have no `DOMParser`) and never resolves entities or DTDs. `package.ts` wraps `fflate` for the zip containers, with a size cap.
+- `formula.ts` parses and evaluates the supported functions (see `docs/FORMATS.md`). A formula it can't evaluate keeps the value the file was saved with and is marked "Not recalculated"; nothing is invented. `sheet-ops.ts` inserts and deletes rows and columns and rewrites references on every sheet, as Excel does.
+- Every conversion returns a `ConversionReport` (what was kept, and a note for everything that was not). `capabilities.ts` is the single source for what each format can do; the Formats dialog, the conversion dialog and `docs/FORMATS.md` (checked by a test) all read it.
+- Conversions run in a Web Worker (`worker.ts`, `client.ts`, falling back to the main thread where workers are unavailable). The preview in the conversion dialog is the converted file read back through the same pipeline, so it shows what the file holds.
+- `app/convert.ts` routes a conversion, saves extracted images to an `assets` folder with relative links, and creates the new file next to the original. Converting never changes the original; exporting saves a copy outside the workspace.
+- Editing an `.xlsx` in place writes a new workbook and keeps the previous bytes as a version (`Workspace.saveBlob`). CSV and TSV edits rewrite only the edited rows, keeping quoting and line endings elsewhere.
+
+## Knowledge graph (`src/app/graph.ts`, `src/app/knowledge.ts`)
+
+`KnowledgeIndex` keeps links and tags per Markdown document, updated from workspace events. Link resolution is cached per immutable `Tree` snapshot and backlinks come from a reverse index rebuilt only when the tree or a document's links change, so panels and the graph don't rescan every document. Links refer to entry ids once resolved, and rename and move rewrite the link text in the same commit, so relationships survive both. `buildGraph` builds nodes for documents of any supported type that are linked from Markdown, optional nodes for missing targets, and optional suggested edges from plain-text mentions (never stored, never shown as links). Wiki links that match several documents are reported in the Links panel and the graph card.
+
 ## UI (`src/ui`)
 
 - `layout/`: `AppShell` (responsive frame, drawer, file drop target), `Sidebar`, `FileTree` (virtualized ARIA tree), `TabBar`, `Palette` (command palette and quick open), `MobileNav`, global shortcuts.
-- `document/`: `DocumentView` (edit, split and preview modes), `Preview`, `RightPanel` (outline, links, info), `SaveStatus`, `BinaryView`.
-- `editor/`: the CodeMirror setup and the formatting toolbar. One `EditorState` is cached per open document, so switching tabs keeps undo history, selection and scroll.
+- `document/`: `DocumentView` (Source, Split, Rich, Read and Sheet modes), `Preview`, `rich-editing.ts` (edits rendered blocks through their source ranges: `data-line`, `data-line-end` and `data-inline` attributes from the renderer; a block that wouldn't serialize back to equivalent Markdown opens as source in place), `scroll-sync.ts` (two-way split-view sync by block anchors, with the pane under the user's hand authoritative), `RightPanel` (outline, links, info), `SaveStatus`, `BinaryView`.
+- `editor/`: the CodeMirror setup, `tools.tsx` (every formatting command, shared by the ribbon, shortcuts, slash menu and palette) and `Ribbon.tsx` (controls chosen by the document's format and the selection; one tab stop with arrow-key navigation; sits above the keyboard on phones).
+- `sheet/`: `SheetGrid` (virtualized grid with formula bar and keyboard editing), `SheetRibbon`, `XlsxView` and `TextSheetView` (CSV, TSV and Markdown tables as a sheet).
+- `convert/`: `ConvertDialog`, `FormatsDialog`, `DocxView` (formatted, read-only) and `PdfView` (pdf.js legacy build, loaded on demand: lazy pages, text layer, search, zoom).
 - `views/`: Home, Folder, Search, Favorites, Recent, Tags, Trash, Settings.
 - `components/` and `dialogs/`: menus (popover on desktop, bottom sheet on phones), dialogs, toasts, empty states, version history, shortcuts help.
 
 Layout tiers: phone below 768px (bottom navigation, full-screen views), tablet from 768px to 1099px (sidebar as a drawer), desktop from 1100px, and wide from 1280px (right panel shown beside the document).
 
-`DocumentView` and the Markdown renderer are split into a lazily loaded chunk, as are Mermaid and KaTeX.
+`DocumentView` and the Markdown renderer are split into a lazily loaded chunk, as are Mermaid and KaTeX. The format views and conversion dialogs (`ui/lazy-views.tsx`), the conversion worker and pdf.js load on first use.
 
 ## Offline (`src/pwa`)
 

@@ -191,10 +191,18 @@ export function SettingsView() {
             value={s.defaultViewMode}
             onChange={(defaultViewMode) => set({ defaultViewMode })}
             options={[
-              ['edit', 'Edit'],
+              ['edit', 'Source'],
               ['split', 'Split'],
-              ['preview', 'Preview'],
+              ['rich', 'Rich'],
+              ['preview', 'Read'],
             ]}
+          />
+        </Row>
+        <Row label="Sync scrolling in split view" htmlFor="sync-scroll">
+          <Toggle
+            id="sync-scroll"
+            checked={s.syncScroll}
+            onChange={(syncScroll) => set({ syncScroll })}
           />
         </Row>
         <Row label="Formatting toolbar" htmlFor="toolbar">

@@ -5,6 +5,8 @@ import { useSettings } from './settings-store';
 import { prefs } from './prefs';
 import { toastError, toast } from './toast-store';
 import { ownership } from './ownership';
+import { docModel } from './doc-model';
+import type { TransactionSpec } from '@codemirror/state';
 
 export type SaveStatus = 'loading' | 'saved' | 'unsaved' | 'saving' | 'error';
 
@@ -148,6 +150,33 @@ export const editorActions = {
     persistTabs();
   },
 
+  /**
+   * Applies an edit to an open document through its document model (so it joins the
+   * undo history of every mode). Returns false if the document isn't loaded.
+   */
+  edit(id: EntryId, spec: TransactionSpec): boolean {
+    const b = get().buffers[id];
+    if (!b || b.status === 'loading') return false;
+    docModel.state(id, b.text);
+    return docModel.dispatch(id, spec);
+  },
+
+  /** The current text of an open document. */
+  textOf(id: EntryId): string | undefined {
+    return docModel.text(id) ?? get().buffers[id]?.text;
+  },
+
+  /** Replaces the whole text of an open document (undoable). */
+  replaceText(id: EntryId, text: string): boolean {
+    const b = get().buffers[id];
+    if (!b || b.status === 'loading' || b.text === text) return false;
+    return editorActions.edit(id, {
+      changes: { from: 0, to: docModel.state(id, b.text).doc.length, insert: text },
+      userEvent: 'input.replace',
+    });
+  },
+
+  /** Called by the document model after every change. Not for direct use. */
   setText(id: EntryId, text: string) {
     const b = get().buffers[id];
     if (!b || b.text === text) return;
@@ -213,6 +242,7 @@ export const editorActions = {
     for (const t of timers.values()) clearTimeout(t);
     timers.clear();
     retries.clear();
+    docModel.reset();
     set({ tabs: [], pinned: [], activeId: null, buffers: {}, closed: [], focusRequest: null });
   },
 
@@ -237,6 +267,7 @@ export const editorActions = {
       const tabs = s.tabs.filter((t) => t !== id);
       const buffers = { ...s.buffers };
       delete buffers[id];
+      docModel.drop(id);
       const activeId =
         s.activeId === id ? (tabs[Math.min(i, tabs.length - 1)] ?? null) : s.activeId;
       return {
@@ -296,6 +327,7 @@ export const editorActions = {
     const s = useApp.getState().session;
     if (!s) return;
     for (const id of Object.keys(get().buffers)) clearTimeout(timers.get(id));
+    docModel.reset();
     set({ tabs: [], pinned: [], activeId: null, buffers: {}, closed: [] });
     const tree = s.workspace.tree;
     const drafts = prefs.get<Record<EntryId, { text: string; at: number }>>(
@@ -352,6 +384,8 @@ export const editorActions = {
       if (text === undefined || text === b.savedText) continue;
       if (b.text === b.savedText) {
         patchBuffer(id, { text, savedText: text, status: 'saved', rev: b.rev + 1 });
+        // The open document follows (undoably); its change notification is then a no-op.
+        docModel.replaceAll(id, text);
       } else {
         // Local edits win; they'll be saved over the external change (which is versioned).
         patchBuffer(id, { savedText: text });
@@ -370,6 +404,7 @@ export const editorActions = {
       for (const id of gone) {
         clearTimeout(timers.get(id));
         delete buffers[id];
+        docModel.drop(id);
       }
       return {
         tabs,
@@ -382,3 +417,6 @@ export const editorActions = {
     persistTabs();
   },
 };
+
+// Every change to an open document, from any mode, lands in its buffer and is autosaved.
+docModel.onChange((id, text) => editorActions.setText(id, text));

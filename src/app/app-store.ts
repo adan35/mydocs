@@ -140,7 +140,8 @@ export const appActions = {
       set({
         phase: 'error',
         error:
-          err instanceof Error && err.name === 'StorageError'
+          err instanceof Error &&
+          (err.name === 'StorageError' || err.name === 'NewerWorkspaceError')
             ? err.message
             : 'My Doc could not open its local storage. This can happen in private browsing or when site data is blocked.',
       });

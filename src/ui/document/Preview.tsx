@@ -13,17 +13,20 @@ import { isExternalHref, resolvePath, safeDecode } from '@/domain/paths';
 import { renderMarkdown } from '@/lib/markdown/render';
 import { renderMermaidIn } from '@/lib/markdown/mermaid';
 import { session, ws } from '@/app/app-store';
-import { openEntry } from '@/app/actions';
+import { createLinkedDocument, openEntry } from '@/app/actions';
 import { slugify } from '@/domain/outline';
 import { resolveWikiLink } from '@/app/workspace';
 import { toast } from '@/app/toast-store';
 import { useResolvedTheme, useTree } from '../hooks';
 import { useLinkPreview } from './LinkPreview';
+import { useRichEditing, type RichApi, type RichFocus } from './rich-editing';
 
 export interface PreviewHandle {
   scrollToLine(line: number, smooth?: boolean): void;
   scrollToSlug(slug: string): void;
   element: HTMLElement | null;
+  /** Rich editing commands (when `rich` is on). */
+  rich: RichApi;
 }
 
 interface Props {
@@ -33,6 +36,9 @@ interface Props {
   /** Toggle a task checkbox on a given source line. */
   onToggleTask?(line: number): void;
   onVisibleLine?(line: number): void;
+  /** Rich editing: blocks can be edited in place. */
+  rich?: boolean;
+  onRichFocus?(f: RichFocus | null): void;
   ref?: Ref<PreviewHandle>;
 }
 
@@ -54,9 +60,20 @@ async function imageUrlFor(id: EntryId): Promise<string | null> {
   return url;
 }
 
-export function Preview({ docId, text, className = '', onToggleTask, onVisibleLine, ref }: Props) {
+export function Preview({
+  docId,
+  text,
+  className = '',
+  onToggleTask,
+  onVisibleLine,
+  rich = false,
+  onRichFocus,
+  ref,
+}: Props) {
   const root = useRef<HTMLDivElement>(null);
-  const deferred = useDeferredValue(text);
+  // While editing in place the preview must follow every change at once (the caret lives in it).
+  const deferredText = useDeferredValue(text);
+  const deferred = rich ? text : deferredText;
   const tree = useTree()!;
   const theme = useResolvedTheme();
   const [zoom, setZoom] = useState<{ src: string; alt: string } | null>(null);
@@ -70,11 +87,19 @@ export function Preview({ docId, text, className = '', onToggleTask, onVisibleLi
   });
   const callbacks = useRef({ onToggleTask, onVisibleLine });
   callbacks.current = { onToggleTask, onVisibleLine };
+  const richEditing = useRichEditing({
+    docId,
+    root,
+    rendered,
+    enabled: rich,
+    onFocusChange: onRichFocus,
+  });
 
   useImperativeHandle(ref, () => ({
     get element() {
       return root.current;
     },
+    rich: richEditing.api,
     scrollToLine(line: number, smooth = false) {
       const container = scrollParent(root.current);
       const el = nearestLineElement(root.current, line);
@@ -173,6 +198,7 @@ export function Preview({ docId, text, className = '', onToggleTask, onVisibleLi
   }, [rendered]);
 
   const onClick = (e: React.MouseEvent) => {
+    if (richEditing.onClick(e)) return;
     let target = e.target as HTMLElement;
     // On touch screens a tap anywhere on a task's own text toggles it.
     if (
@@ -204,7 +230,11 @@ export function Preview({ docId, text, className = '', onToggleTask, onVisibleLi
       );
       return;
     }
-    if (target instanceof HTMLImageElement && target.src) {
+    if (
+      target instanceof HTMLImageElement &&
+      target.src &&
+      !(rich && target.closest('[contenteditable="true"]'))
+    ) {
       setZoom({ src: target.src, alt: target.alt });
       return;
     }
@@ -223,8 +253,16 @@ export function Preview({ docId, text, className = '', onToggleTask, onVisibleLi
       e.preventDefault();
       const id = resolveWiki(a.dataset.wiki);
       if (id) void openEntry(id, a.dataset.fragment && slugify(a.dataset.fragment));
-      else
-        toast({ message: `"${a.dataset.wiki}" doesn't exist in this workspace.`, tone: 'error' });
+      else {
+        const target = a.dataset.wiki;
+        toast({
+          message: `"${target}" doesn't exist yet.`,
+          action: {
+            label: 'Create it',
+            run: () => void createLinkedDocument(docId, { kind: 'wiki', target }),
+          },
+        });
+      }
       return;
     }
     if (isExternalHref(href)) return; // target=_blank + rel=noopener from the sanitizer
@@ -232,6 +270,14 @@ export function Preview({ docId, text, className = '', onToggleTask, onVisibleLi
     const [, fragment] = href.split('#');
     const id = resolveHref(docId, href);
     if (id) void openEntry(id, fragment ? safeDecode(fragment) : undefined);
+    else if (/\.md$|\/[^./]*$|^[^./]+$/i.test(href.split('#')[0]!))
+      toast({
+        message: `"${safeDecode(href)}" doesn't exist yet.`,
+        action: {
+          label: 'Create it',
+          run: () => void createLinkedDocument(docId, { kind: 'markdown', target: href }),
+        },
+      });
     else
       toast({ message: `"${safeDecode(href)}" doesn't exist in this workspace.`, tone: 'error' });
   };
@@ -241,12 +287,13 @@ export function Preview({ docId, text, className = '', onToggleTask, onVisibleLi
       {rendered.frontMatter && <Properties data={rendered.frontMatter} className={className} />}
       <article
         ref={root}
-        className={`prose ${className}`}
+        className={`prose ${rich ? 'prose-rich' : ''} ${className}`}
         onClick={(e) => {
           linkPreview.hide();
           onClick(e);
         }}
         {...linkPreview.handlers}
+        {...richEditing.handlers}
         // Sanitized by DOMPurify in renderMarkdown.
         dangerouslySetInnerHTML={{ __html: rendered.html }}
       />

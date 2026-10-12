@@ -32,6 +32,8 @@ export interface Version {
   entryId: EntryId;
   createdAt: number;
   text: string;
+  /** Snapshot of a binary file (an edited spreadsheet). `text` is empty then. */
+  blob?: Blob;
   /** Why the snapshot was taken, shown in the history list. */
   reason: 'edit' | 'restore' | 'recovery' | 'import' | 'manual';
 }

@@ -114,8 +114,8 @@ describe('links', () => {
     expect(links.map((l) => [l.kind, l.target, l.fragment])).toEqual([
       ['markdown', './a.md', undefined],
       ['image', 'img/p.png', undefined],
-      ['markdown', 'my file.md', 'sec'],
       ['wiki', 'Wiki Page', undefined],
+      ['markdown', 'my file.md', 'sec'],
     ]);
   });
   it('treats ![[embeds]] as wiki links', () => {
@@ -130,6 +130,13 @@ describe('links', () => {
       l.kind === 'markdown' ? '../b/a.md' : 'B',
     );
     expect(out).toBe('see [a](../b/a.md#x) and [[B]]');
+  });
+  it('rewrites a wiki link that comes before a Markdown link on the same line', () => {
+    // Regression: links were rewritten out of order and the text was duplicated.
+    const out = rewriteLinks('See [[Target]] and [the target](./Target.md).', (l) =>
+      l.kind === 'wiki' ? 'Renamed' : './Renamed.md',
+    );
+    expect(out).toBe('See [[Renamed]] and [the target](./Renamed.md).');
   });
 });
 

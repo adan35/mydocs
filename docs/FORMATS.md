@@ -1,0 +1,51 @@
+<!-- Generated from src/lib/convert/capabilities.ts. Run `UPDATE_FORMATS=1 npx vitest run capabilities` after changing it. -->
+
+## Opening and editing
+
+| Format | Opens as | Edit in place |
+| --- | --- | --- |
+| Markdown (.md, .markdown, .mdx) | Source, split, rich and reading views | Everything: source, rich editing, tables as a sheet |
+| Word document (.docx) | Formatted read-only view | Not in place. Convert to Markdown to edit; the original is kept. |
+| Excel workbook (.xlsx) | Sheet view with sheet tabs and formulas | Cell values and formulas; every save keeps a version |
+| CSV (.csv) | Sheet view, or as text | Cells (only edited rows are rewritten) or raw text |
+| TSV (.tsv, .tab) | Sheet view, or as text | Cells (only edited rows are rewritten) or raw text |
+| HTML (.html, .htm) | Source with highlighting | Source text |
+| Plain text (.txt, .text, .log) | Text editor | Text |
+| PDF (.pdf) | Page viewer with search, zoom and page navigation | No |
+
+## Converting and exporting
+
+*Convert* creates a new file next to the original; the original is never changed. *Export* saves a copy outside MyDocs.
+
+| Conversion | How | Keeps | Loses |
+| --- | --- | --- | --- |
+| Markdown → Word document | convert, export | Headings (as Word heading styles); Bold, italic, strikethrough, inline code; Bulleted, numbered and nested lists; Task lists (as ☐/☒); Links and heading links; Tables with alignment and a header row; Images stored in the workspace; Quotes and code blocks; Title, author and tags | Code block languages; Equations (kept as TeX text); Raw HTML (kept as text); Images from the web (kept as their description); Front matter fields other than title, author, subject, tags and dates |
+| Markdown → HTML | convert, export | Everything the preview shows, as a standalone page; Links between documents (as relative links) | Diagrams render only when opened in MyDocs; Embedded workspace images are linked, not embedded |
+| Markdown → Plain text | convert, export | All words, in order | All formatting; Link destinations; Images |
+| Markdown → PDF | export | The reading view, as printed by your system | Links between documents; Not available in the Android and iOS apps (no print dialog): they share HTML instead |
+| Markdown → Excel workbook | convert, export (all tables) | Every table, one per sheet; Plain numbers as numbers, TRUE/FALSE as booleans; Everything else (leading zeros, dates, codes) exactly as text | Text around the tables; Inline formatting inside cells (kept as Markdown text) |
+| Markdown → CSV | convert, export (table) | One table, every cell exactly as written | Column alignment; Other tables |
+| Word document → Markdown | convert | Headings (Word heading styles and Title); Bold, italic, strikethrough, underline, superscript, subscript; Bulleted, numbered and nested lists, with start numbers; Links and bookmarks; Tables (first row as header) with alignment; Embedded images (saved to an assets folder); Quotes and monospaced paragraphs as code; Title, author, subject and keywords | Comments and footnotes; Tracked changes (imported as accepted); Merged cells (split); Headers, footers, page layout and fonts; Shapes, charts and text box positions |
+| Word document → HTML | export | Same as Word → Markdown | Same as Word → Markdown |
+| Word document → Plain text | export | All words, in order | All formatting and images |
+| Excel workbook → CSV | convert, export (sheet) | The values each cell shows (formula results, formatted dates) | Formulas (saved as their values); Other sheets; Number formats beyond the shown text |
+| Excel workbook → TSV | convert, export (sheet) | The values each cell shows | Formulas (saved as their values); Other sheets |
+| Excel workbook → Markdown | convert | Every sheet as a heading and a table of shown values | Formulas (saved as their values); Number types (cells become text) |
+| CSV → Excel workbook | convert, export | Every value; Plain numbers as numbers, TRUE/FALSE as booleans; Leading zeros, dates and codes exactly as text | Nothing |
+| CSV → Markdown | convert | Every value, as a table with the first row as header | Line breaks inside cells (become spaces) |
+| CSV → TSV | convert, export | Every value | Nothing |
+| TSV → Excel workbook | convert, export | Every value; Plain numbers as numbers | Nothing |
+| TSV → Markdown | convert | Every value, as a table | Line breaks inside cells (become spaces) |
+| TSV → CSV | convert, export | Every value | Nothing |
+| HTML → Markdown | convert | Headings, paragraphs, lists, quotes, code, tables, links, images; Bold, italic, strikethrough, underline, sub/superscript; Title, author, description and keywords | Styling and layout; Scripts, forms and embedded media; Merged table cells (split) |
+| Plain text → Markdown | convert | All text; blank lines separate paragraphs; Markdown characters are escaped so nothing changes meaning | Nothing |
+
+## Not supported
+
+| What | Why |
+| --- | --- |
+| Google Docs and Google Sheets | Not connected. Download them as .docx or .xlsx and import those; export from MyDocs as .docx or .xlsx and upload to Google Drive. |
+| Editing PDFs, or converting PDFs to text documents | PDFs have no reliable structure; text extraction would guess at headings, tables and reading order. |
+| Editing Word documents in place | Word layout features (sections, fonts, comments) have no Markdown equivalent; converting first makes every loss visible before it happens. |
+| Sync, sharing and real-time collaboration | MyDocs keeps documents on this device only. There is no server. |
+| .doc, .xls, .odt, .ods, .rtf, .pptx | Stored and downloadable, but not opened. Save them as .docx or .xlsx first. |

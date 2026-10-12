@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 import {
+  FileOutput,
+  Sheet,
   BookOpen,
   Columns2,
   Download,
@@ -35,6 +37,7 @@ import {
   AlignVerticalJustifyCenter,
   CalendarDays,
   Network,
+  Type,
 } from 'lucide-react';
 import * as A from '@/app/actions';
 import { ws } from '@/app/app-store';
@@ -45,14 +48,21 @@ import { useUi } from '@/app/ui-store';
 import { dialogs } from '@/app/dialog-store';
 import { SHORTCUTS } from '@/app/shortcuts';
 import { isMarkdownName } from '@/domain/names';
+import { conversionsFrom, formatOf } from '@/lib/convert/capabilities';
+
+const convertible = (name: string) => {
+  const f = formatOf(name)?.id;
+  return !!f && conversionsFrom(f).length > 0;
+};
 import { pickImport } from './import-pickers';
 import { reopenClosedTab, sendDocCommand, toggleSidePanel } from './doc-commands';
 import { canInstall, installApp } from '@/pwa/register';
+import { BLOCK_STYLES, TOOLS } from './editor/tools';
 
 export interface Command {
   id: string;
   title: string;
-  group: 'Create' | 'Document' | 'Navigate' | 'View' | 'Workspace';
+  group: 'Create' | 'Document' | 'Format' | 'Navigate' | 'View' | 'Workspace';
   icon: ReactNode;
   shortcut?: string;
   keywords?: string;
@@ -75,6 +85,22 @@ export function getCommands(): Command[] {
       shortcut: SHORTCUTS.newDoc,
       keywords: 'create file note page',
       run: () => void A.newDocument(),
+    },
+    {
+      id: 'new-sheet',
+      title: 'New spreadsheet',
+      group: 'Create',
+      icon: <Sheet />,
+      keywords: 'excel xlsx table grid workbook',
+      run: () => void A.newSpreadsheet(),
+    },
+    {
+      id: 'formats',
+      title: 'Supported formats and conversions',
+      group: 'Workspace',
+      icon: <FileOutput />,
+      keywords: 'docx word xlsx excel csv tsv pdf html export import capability matrix',
+      run: () => void dialogs.formats(),
     },
     {
       id: 'new-template',
@@ -366,6 +392,18 @@ export function getCommands(): Command[] {
             },
           ]
         : []),
+      ...(convertible(doc.name)
+        ? [
+            {
+              id: 'convert',
+              title: 'Convert or export…',
+              group: 'Document' as const,
+              icon: <FileOutput />,
+              keywords: 'docx word xlsx excel csv tsv html pdf markdown save as',
+              run: () => void dialogs.convert(doc.id),
+            },
+          ]
+        : []),
       {
         id: 'export-doc',
         title: 'Export document',
@@ -400,17 +438,65 @@ export function getCommands(): Command[] {
         run: () => ui.setFocusMode(!ui.focusMode),
       },
     );
+    for (const tool of TOOLS) {
+      const forMd = ![
+        'find',
+        'replace',
+        'wrap',
+        'goto-line',
+        'sort-lines',
+        'case',
+        'trim',
+      ].includes(tool.id);
+      if (tool.group === 'history' || forMd !== md || tool.id === 'find') continue;
+      cmds.push({
+        id: `tool-${tool.id}`,
+        title: `${tool.group === 'insert' ? 'Insert' : 'Format'}: ${tool.label}`,
+        group: 'Format',
+        icon: tool.icon,
+        shortcut: tool.shortcut,
+        run: () => sendDocCommand(`tool:${tool.id}`),
+      });
+    }
     if (md) {
       cmds.unshift(
         {
           id: 'toggle-preview',
-          title: 'Toggle preview',
+          title: 'Switch between source and reading',
           group: 'View',
           icon: <Eye />,
           shortcut: SHORTCUTS.toggleMode,
-          keywords: 'edit render',
+          keywords: 'edit render preview markdown',
           run: () => sendDocCommand('toggle-mode'),
         },
+        {
+          id: 'toggle-rich',
+          title: 'Rich editing (edit the formatted document)',
+          group: 'View',
+          icon: <PencilLine />,
+          shortcut: SHORTCUTS.richMode,
+          keywords: 'wysiwyg visual live preview word',
+          run: () => sendDocCommand('rich'),
+        },
+        {
+          id: 'sync-scroll',
+          title: settings.syncScroll
+            ? 'Turn off scroll sync in split view'
+            : 'Sync scrolling in split view',
+          group: 'View',
+          icon: <Columns2 />,
+          keywords: 'split scroll lock',
+          run: () => settings.update({ syncScroll: !settings.syncScroll }),
+        },
+        ...BLOCK_STYLES.slice(0, 4).map((st): Command => ({
+          id: `style-${st.type}`,
+          title: `Format: ${st.label}`,
+          group: 'Format',
+          icon: <Type />,
+          shortcut: st.shortcut,
+          keywords: 'heading paragraph style',
+          run: () => sendDocCommand(`style:${st.type}`),
+        })),
         {
           id: 'toggle-split',
           title: 'Toggle split view',

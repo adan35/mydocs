@@ -16,6 +16,11 @@ interface UiState {
   readingMode: boolean;
   /** Per-document view mode overrides. */
   viewModes: Record<string, ViewMode>;
+  /** Share of the width the source pane gets in split view. */
+  splitRatio: number;
+  rightPanelWidth: number;
+  setSplitRatio(r: number): void;
+  setRightPanelWidth(w: number): void;
   setSidebar(open: boolean): void;
   setDrawer(open: boolean): void;
   setRightPanel(open: boolean, panel?: RightPanel): void;
@@ -32,11 +37,13 @@ const saved = prefs.get<{
   sidebarOpen?: boolean;
   rightPanelOpen?: boolean;
   rightPanel?: RightPanel;
+  splitRatio?: number;
+  rightPanelWidth?: number;
 }>(KEY, {});
 
 const persist = () => {
-  const { sidebarOpen, rightPanelOpen, rightPanel } = useUi.getState();
-  prefs.set(KEY, { sidebarOpen, rightPanelOpen, rightPanel });
+  const { sidebarOpen, rightPanelOpen, rightPanel, splitRatio, rightPanelWidth } = useUi.getState();
+  prefs.set(KEY, { sidebarOpen, rightPanelOpen, rightPanel, splitRatio, rightPanelWidth });
 };
 
 export const useUi = create<UiState>((set) => ({
@@ -48,6 +55,16 @@ export const useUi = create<UiState>((set) => ({
   focusMode: false,
   readingMode: false,
   viewModes: prefs.get<Record<string, ViewMode>>(MODES_KEY, {}),
+  splitRatio: saved.splitRatio ?? 0.5,
+  rightPanelWidth: saved.rightPanelWidth ?? 272,
+  setSplitRatio(splitRatio) {
+    set({ splitRatio });
+    persist();
+  },
+  setRightPanelWidth(rightPanelWidth) {
+    set({ rightPanelWidth });
+    persist();
+  },
   setSidebar(open) {
     set({ sidebarOpen: open });
     persist();

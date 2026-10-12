@@ -40,7 +40,19 @@ export function sanitizeHtml(html: string): string {
   configure();
   return DOMPurify.sanitize(html, {
     USE_PROFILES: { html: true, svg: true, mathMl: true },
-    ADD_ATTR: ['data-line', 'data-heading', 'data-wiki', 'data-fragment', 'aria-hidden', 'target'],
+    ADD_ATTR: [
+      'data-line',
+      'data-line-end',
+      'data-inline',
+      'data-heading',
+      'data-wiki',
+      'data-fragment',
+      'aria-hidden',
+      'target',
+      // KaTeX keeps the TeX source in a MathML annotation; rich editing reads it back.
+      'encoding',
+    ],
+    ADD_TAGS: ['semantics', 'annotation'],
     FORBID_TAGS: [
       'style',
       'form',

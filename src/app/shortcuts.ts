@@ -13,6 +13,7 @@ export const SHORTCUTS = {
   link: 'Mod+Shift+K',
   toggleMode: 'Mod+E',
   splitView: 'Mod+Alt+E',
+  richMode: 'Mod+Alt+R',
   toggleSidebar: 'Mod+\\',
   togglePanel: 'Mod+Alt+\\',
   closeTab: 'Alt+W',
@@ -44,8 +45,9 @@ export const SHORTCUT_GROUPS: { title: string; items: [string, string][] }[] = [
     items: [
       ['Save now', SHORTCUTS.save],
       ['Find and replace', SHORTCUTS.find],
-      ['Switch edit / preview', SHORTCUTS.toggleMode],
+      ['Switch source / read', SHORTCUTS.toggleMode],
       ['Split view', SHORTCUTS.splitView],
+      ['Rich editing', SHORTCUTS.richMode],
       ['Focus mode', SHORTCUTS.focusMode],
       ['Reading mode', SHORTCUTS.readingMode],
       ['Close tab', SHORTCUTS.closeTab],

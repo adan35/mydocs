@@ -16,7 +16,13 @@ import { countWords } from '@/domain/tasks';
 import { formatBytes, fileTypeOf } from '@/domain/names';
 import { session } from '@/app/app-store';
 import { useUi, type RightPanel as Panel } from '@/app/ui-store';
-import { addTagTo, linkMention, openEntry, removeTagFrom } from '@/app/actions';
+import {
+  addTagTo,
+  createLinkedDocument,
+  linkMention,
+  openEntry,
+  removeTagFrom,
+} from '@/app/actions';
 import { editorActions } from '@/app/editor-store';
 import { dialogs } from '@/app/dialog-store';
 import { navigate } from '@/app/router';
@@ -164,6 +170,7 @@ function Links({ docId }: { docId: EntryId }) {
     ...new Map(outgoing.filter((o) => o.targetId).map((o) => [o.targetId!, o])).values(),
   ];
   const broken = outgoing.filter((o) => !o.targetId);
+  const ambiguous = s.knowledge.ambiguousLinks(tree, docId);
   const linkedIds = new Set([...backlinks, ...uniqueOut.map((o) => o.targetId!)]);
   const related = s.knowledge
     .related(tree, docId, 12)
@@ -196,6 +203,25 @@ function Links({ docId }: { docId: EntryId }) {
           <EntryList ids={related} />
         </section>
       )}
+      {ambiguous.length > 0 && (
+        <section>
+          <h3 className="section-label mb-1.5 flex items-center gap-1 px-1 text-warning">
+            <AlertTriangle size={12} aria-hidden /> Links matching several documents ·{' '}
+            {ambiguous.length}
+          </h3>
+          <ul className="space-y-2 px-1 text-caption text-slate">
+            {ambiguous.map((a) => (
+              <li key={a.link.target}>
+                <div className="font-mono">[[{a.link.target}]] goes to the first of:</div>
+                <EntryList ids={a.candidates} />
+              </li>
+            ))}
+          </ul>
+          <p className="px-1 text-caption text-steel">
+            Write the folder too, like [[Folder/Name]], to choose one.
+          </p>
+        </section>
+      )}
       {broken.length > 0 && (
         <section>
           <h3 className="section-label mb-1.5 flex items-center gap-1 px-1 text-warning">
@@ -203,8 +229,25 @@ function Links({ docId }: { docId: EntryId }) {
           </h3>
           <ul className="space-y-1 px-1 text-caption text-slate">
             {broken.map((b, i) => (
-              <li key={i} className="truncate font-mono" title={b.link.target}>
-                {b.link.kind === 'wiki' ? `[[${b.link.target}]]` : b.link.target}
+              <li key={i} className="flex items-center gap-1">
+                <span className="min-w-0 flex-1 truncate font-mono" title={b.link.target}>
+                  {b.link.kind === 'wiki' ? `[[${b.link.target}]]` : b.link.target}
+                </span>
+                {(b.link.kind === 'wiki' || !/^[a-z][a-z0-9+.-]*:/i.test(b.link.target)) && (
+                  <button
+                    type="button"
+                    className="h-6 shrink-0 rounded px-1.5 font-sans text-xs text-steel hover:bg-hover hover:text-ink"
+                    aria-label={`Create ${b.link.target}`}
+                    onClick={() =>
+                      void createLinkedDocument(docId, {
+                        kind: b.link.kind === 'wiki' ? 'wiki' : 'markdown',
+                        target: b.link.target,
+                      })
+                    }
+                  >
+                    Create
+                  </button>
+                )}
               </li>
             ))}
           </ul>

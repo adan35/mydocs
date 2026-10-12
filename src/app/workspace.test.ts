@@ -350,3 +350,31 @@ describe('IndexedDB provider', () => {
     expect((await provider.list()).map((w) => w.id)).not.toContain(info.id);
   });
 });
+
+describe('schema migrations', () => {
+  it('stamps the schema version and refuses workspaces from a newer version', async () => {
+    const { SCHEMA_VERSION } = await import('./migrations');
+    const { store } = await openWs();
+    expect(await store.getMeta('schemaVersion')).toBe(SCHEMA_VERSION);
+    await store.setMeta('schemaVersion', SCHEMA_VERSION + 1);
+    await expect(Workspace.open(store)).rejects.toThrow(/newer version/);
+  });
+
+  it('saves binary files with versions and restores them', async () => {
+    const { ws } = await openWs();
+    const f = await ws.createFile(null, 'book.xlsx', new Blob([new Uint8Array([1, 2, 3])]));
+    await ws.saveBlob(f.id, new Blob([new Uint8Array([4, 5])]));
+    expect(new Uint8Array(await (await ws.readBlob(f.id))!.arrayBuffer())).toEqual(
+      new Uint8Array([4, 5]),
+    );
+    const [v] = await ws.listVersions(f.id);
+    expect(v!.blob).toBeDefined();
+    await ws.restoreVersion(f.id, v!.id);
+    expect(new Uint8Array(await (await ws.readBlob(f.id))!.arrayBuffer())).toEqual(
+      new Uint8Array([1, 2, 3]),
+    );
+    expect(ws.get(f.id)!.size).toBe(3);
+    // The bytes that were replaced by the restore are kept too.
+    expect((await ws.listVersions(f.id)).filter((x) => x.blob).length).toBe(2);
+  });
+});

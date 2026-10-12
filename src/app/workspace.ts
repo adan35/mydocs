@@ -16,6 +16,7 @@ import { encodeHrefPath, relativePath, resolvePath } from '@/domain/paths';
 import { addTag, removeTag, replaceTag } from '@/domain/tags';
 import { linkFirstMention } from '@/domain/mentions';
 import type { ChangeSet, WorkspaceStore } from '@/storage/types';
+import { migrateWorkspace } from './migrations';
 
 /** Snapshot the previous content when the last snapshot is older than this. */
 export const VERSION_INTERVAL_MS = 5 * 60 * 1000;
@@ -57,6 +58,7 @@ export class Workspace {
   private constructor(readonly store: WorkspaceStore) {}
 
   static async open(store: WorkspaceStore): Promise<Workspace> {
+    await migrateWorkspace(store);
     const ws = new Workspace(store);
     const [entries, texts] = await Promise.all([store.listEntries(), store.readAllText()]);
     for (const e of entries) ws.entries.set(e.id, e);
@@ -355,6 +357,43 @@ export class Workspace {
     };
   }
 
+  /**
+   * Saves new binary content (an edited spreadsheet). The previous bytes are kept as a
+   * version on the first save and then at most every few minutes, like text.
+   */
+  saveBlob(id: EntryId, blob: Blob): Promise<Entry> {
+    return this.serial(async () => {
+      const entry = this.entries.get(id);
+      if (!entry || entry.kind !== 'file') throw new WorkspaceError('This file no longer exists.');
+      const changes: ChangeSet = {};
+      const previous = await this.readBlob(id);
+      const now = Date.now();
+      const last = this.snapshotAt.get(id);
+      if (previous && previous.size && (last === undefined || now - last >= VERSION_INTERVAL_MS)) {
+        const versions = await this.store.listVersions(id);
+        const version: Version = {
+          id: createId(),
+          entryId: id,
+          createdAt: entry.updatedAt,
+          text: '',
+          blob: previous,
+          reason: 'edit',
+        };
+        this.snapshotAt.set(id, now);
+        const sorted = [...versions].sort((a, b) => a.createdAt - b.createdAt);
+        const excess = sorted.length + 1 - MAX_VERSIONS_PER_DOC;
+        changes.putVersions = [version];
+        changes.deleteVersions = excess > 0 ? sorted.slice(0, excess).map((v) => v.id) : [];
+      }
+      const next: Entry = { ...entry, updatedAt: now, size: blob.size, encoding: 'binary' };
+      changes.putEntries = [next];
+      changes.putContents = [{ id, data: blob }];
+      await this.apply(changes);
+      this.emit({ type: 'content', ids: [id], source: 'save' });
+      return next;
+    });
+  }
+
   async listVersions(id: EntryId): Promise<Version[]> {
     const versions = await this.store.listVersions(id);
     return versions.sort((a, b) => b.createdAt - a.createdAt);
@@ -368,6 +407,29 @@ export class Workspace {
       const versions = await this.store.listVersions(id);
       const version = versions.find((v) => v.id === versionId);
       if (!version) throw new WorkspaceError('That version is no longer available.');
+      if (version.blob) {
+        // A binary version: keep the current bytes as a version too, then swap.
+        const current = await this.readBlob(id);
+        const keep: Version | null = current
+          ? {
+              id: createId(),
+              entryId: id,
+              createdAt: entry.updatedAt,
+              text: '',
+              blob: current,
+              reason: 'restore',
+            }
+          : null;
+        const next: Entry = { ...entry, updatedAt: Date.now(), size: version.blob.size };
+        await this.apply({
+          putVersions: keep ? [keep] : [],
+          putEntries: [next],
+          putContents: [{ id, data: version.blob }],
+        });
+        this.snapshotAt.set(id, Date.now());
+        this.emit({ type: 'content', ids: [id], source: 'external' });
+        return next;
+      }
       const current = await this.readText(id);
       const snapshot = await this.maybeSnapshot(entry, current, 'restore', true);
       const next: Entry = { ...entry, updatedAt: Date.now(), size: textBytes(version.text) };
@@ -709,6 +771,16 @@ function wikiIndex(tree: Tree): Map<string, Entry[]> {
   }
   wikiIndexes.set(tree, index);
   return index;
+}
+
+/** Every live entry a wiki target could mean (more than one means the link is ambiguous). */
+export function wikiCandidates(tree: Tree, target: string): Entry[] {
+  const t = target.trim().toLowerCase();
+  if (t.includes('/')) {
+    const hit = tree.findByPath(t) ?? tree.findByPath(`${t}.md`);
+    return hit ? [hit] : [];
+  }
+  return [...(wikiIndex(tree).get(t) ?? [])];
 }
 
 /** Resolves `[[Name]]` / `[[Folder/Name]]` to a live document. */
