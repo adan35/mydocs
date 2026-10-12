@@ -69,6 +69,11 @@ export function PdfView({ entry }: { entry: Entry }) {
         task = loading;
         const loaded = await loading.promise;
         if (cancelled) return;
+        // On narrow screens start at the page width instead of cutting the page off.
+        const first = (await loaded.getPage(1)).getViewport({ scale: 96 / 72 });
+        const room = (scroller.current?.clientWidth ?? 0) - 32;
+        if (cancelled) return;
+        setZoom(room > 0 && first.width > room ? Math.max(0.25, room / first.width) : 1);
         setDoc(loaded);
         setPage(1);
       } catch (e) {
@@ -182,7 +187,7 @@ export function PdfView({ entry }: { entry: Entry }) {
           className="icon-btn size-8"
           aria-label="Zoom out"
           disabled={zoom <= ZOOMS[0]!}
-          onClick={() => setZoom(ZOOMS[Math.max(0, ZOOMS.indexOf(zoom) - 1)]!)}
+          onClick={() => setZoom([...ZOOMS].reverse().find((z) => z < zoom - 0.001) ?? ZOOMS[0]!)}
         >
           <Minus size={16} />
         </button>
@@ -194,7 +199,7 @@ export function PdfView({ entry }: { entry: Entry }) {
           className="icon-btn size-8"
           aria-label="Zoom in"
           disabled={zoom >= ZOOMS[ZOOMS.length - 1]!}
-          onClick={() => setZoom(ZOOMS[Math.min(ZOOMS.length - 1, ZOOMS.indexOf(zoom) + 1)]!)}
+          onClick={() => setZoom(ZOOMS.find((z) => z > zoom + 0.001) ?? ZOOMS[ZOOMS.length - 1]!)}
         >
           <Plus size={16} />
         </button>
@@ -267,7 +272,8 @@ export function PdfView({ entry }: { entry: Entry }) {
           />
         )}
         {doc && (
-          <div className="flex flex-col items-center gap-4 py-4">
+          // w-max + min-w-full: a page wider than the view scrolls from its left edge.
+          <div className="flex w-max min-w-full flex-col items-center gap-4 p-4">
             {Array.from({ length: doc.numPages }, (_, i) => (
               <PdfPage key={`${i}-${zoom}`} doc={doc} n={i + 1} zoom={zoom} query={query.trim()} />
             ))}

@@ -25,6 +25,7 @@ import { exportFile, exportHtml, exportText, exportZip } from './exporter';
 import { importItems, type ImportItem } from './importer';
 import { canPrint } from '@/platform';
 import { diskLinks } from './disk-links';
+import { resolvePath } from '@/domain/paths';
 
 /**
  * User-facing commands. Each one handles its own confirmation, errors and
@@ -651,4 +652,56 @@ export async function deleteWorkspace() {
     await editorActions.restoreSession();
     navigate({ name: 'home' });
   });
+}
+
+/**
+ * Creates the document a link points at but that doesn't exist yet: `[[Name]]` next to
+ * the linking document (or at `Folder/Name` when the link has a path), a path link at
+ * its path when that folder exists. The link itself is left as written, so it resolves.
+ */
+export async function createLinkedDocument(
+  fromId: EntryId,
+  link: { kind: 'wiki' | 'markdown'; target: string },
+) {
+  const tree = ws().tree;
+  let parentId: EntryId | null = tree.get(fromId)?.parentId ?? null;
+  let name: string;
+  if (link.kind === 'wiki') {
+    const parts = link.target.trim().split('/');
+    name = parts.pop()!.trim();
+    if (parts.length) {
+      const folder = tree.findByPath(parts.join('/'));
+      parentId = folder?.kind === 'folder' ? folder.id : null;
+    }
+  } else {
+    const path = resolvePath(tree.dirOf(fromId), safeDecodeURI(link.target.split('#')[0]!));
+    if (path === null) return;
+    const parts = path.split('/');
+    name = parts.pop()!;
+    const folder = parts.length ? tree.findByPath(parts.join('/')) : undefined;
+    if (parts.length && folder?.kind !== 'folder') {
+      toast({ message: `The folder "${parts.join('/')}" doesn't exist.`, tone: 'error' });
+      return;
+    }
+    parentId = folder?.id ?? null;
+  }
+  if (!name) return;
+  const file = /\.[a-z0-9]+$/i.test(name) ? name : `${name}.md`;
+  return guard('Unable to create the document.', async () => {
+    const entry = await ws().createFile(parentId, file, `# ${baseName(file)}\n\n`, {
+      uniquify: false,
+    });
+    if (parentId) appActions.setExpanded(parentId, true);
+    editorActions.requestFocus(entry.id, { end: true });
+    await openEntry(entry.id);
+    return entry;
+  });
+}
+
+function safeDecodeURI(s: string) {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
 }

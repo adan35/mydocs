@@ -76,6 +76,10 @@ test('a Word document opens formatted and converts to Markdown with its images',
   );
   await expect(page.locator('article.prose h1', { hasText: 'Field notes' })).toBeVisible();
   await expect(page.locator('article.prose table td', { hasText: '0042' })).toBeVisible();
+  // The embedded image shows, from the file itself.
+  await expect
+    .poll(() => page.locator('article.prose img').evaluate((i: HTMLImageElement) => i.naturalWidth))
+    .toBeGreaterThan(0);
   await page.getByRole('button', { name: 'Convert or export…' }).first().click();
   const dialog = page.getByRole('dialog', { name: /Convert or export/ });
   await expect(dialog.getByRole('radio', { name: /Markdown/ })).toHaveAttribute(

@@ -208,7 +208,7 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
           role="status"
         >
           <AlertTriangle size={15} className="shrink-0 text-warning" aria-hidden />
-          <span className="min-w-0 flex-1">
+          <span className="min-w-[min(100%,16rem)] flex-1">
             Viewing only. Saving changes would drop:{' '}
             {warnings.map((w) => w.message.replace(/\.$/, '').toLowerCase()).join('; ')}.
           </span>

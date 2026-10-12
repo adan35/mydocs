@@ -5,7 +5,7 @@ import { extractTags } from '@/domain/tags';
 import { baseName, isMarkdownName } from '@/domain/names';
 import { findMentions } from '@/domain/mentions';
 import { resolvePath } from '@/domain/paths';
-import { resolveWikiLink } from './workspace';
+import { resolveWikiLink, wikiCandidates } from './workspace';
 
 interface DocFacts {
   links: RawLink[];
@@ -18,8 +18,15 @@ interface DocFacts {
  */
 export class KnowledgeIndex {
   private facts = new Map<EntryId, DocFacts>();
+  /** Bumped on every change to the facts; derived caches compare against it. */
+  private version = 0;
+  /** Link resolution depends only on the tree, so it is cached per tree snapshot. */
+  private resolved = new WeakMap<Tree, Map<string, EntryId | null>>();
+  /** target → documents linking to it, rebuilt lazily when the tree or facts change. */
+  private reverse: { tree: Tree; version: number; map: Map<EntryId, EntryId[]> } | null = null;
 
   update(id: EntryId, name: string, text: string) {
+    this.version++;
     if (!isMarkdownName(name)) {
       this.facts.delete(id);
       return;
@@ -28,7 +35,13 @@ export class KnowledgeIndex {
   }
 
   remove(id: EntryId) {
+    this.version++;
     this.facts.delete(id);
+  }
+
+  /** Markdown documents the index knows about (live and trashed). */
+  documents(): EntryId[] {
+    return [...this.facts.keys()];
   }
 
   tagsOf(id: EntryId): string[] {
@@ -59,6 +72,22 @@ export class KnowledgeIndex {
     fromId: EntryId,
     link: Pick<RawLink, 'kind' | 'target'>,
   ): EntryId | undefined {
+    let cache = this.resolved.get(tree);
+    if (!cache) this.resolved.set(tree, (cache = new Map()));
+    const key =
+      link.kind === 'wiki' ? `w\0${link.target}` : `p\0${tree.dirOf(fromId)}\0${link.target}`;
+    const hit = cache.get(key);
+    if (hit !== undefined) return hit ?? undefined;
+    const id = this.resolveUncached(tree, fromId, link);
+    cache.set(key, id ?? null);
+    return id;
+  }
+
+  private resolveUncached(
+    tree: Tree,
+    fromId: EntryId,
+    link: Pick<RawLink, 'kind' | 'target'>,
+  ): EntryId | undefined {
     if (link.kind === 'wiki') return resolveWikiLink(tree, link.target)?.id;
     const path = resolvePath(tree.dirOf(fromId), link.target);
     if (path === null) return undefined;
@@ -66,6 +95,24 @@ export class KnowledgeIndex {
     if (hit) return hit.id;
     // Allow extension-less links: [x](./notes/today) → today.md
     return tree.findByPath(`${path}.md`)?.id;
+  }
+
+  /**
+   * Wiki links whose name matches several documents. They resolve to one of them
+   * (Markdown first, then the first found), which may not be the one meant.
+   */
+  ambiguousLinks(tree: Tree, id: EntryId): { link: RawLink; candidates: EntryId[] }[] {
+    const out: { link: RawLink; candidates: EntryId[] }[] = [];
+    const seen = new Set<string>();
+    for (const link of this.facts.get(id)?.links ?? []) {
+      if (link.kind !== 'wiki' || link.embed) continue;
+      const key = link.target.trim().toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const candidates = wikiCandidates(tree, link.target).filter((e) => isMarkdownName(e.name));
+      if (candidates.length > 1) out.push({ link, candidates: candidates.map((e) => e.id) });
+    }
+    return out;
   }
 
   outgoing(tree: Tree, id: EntryId): { link: RawLink; targetId?: EntryId }[] {
@@ -77,13 +124,25 @@ export class KnowledgeIndex {
 
   /** Documents linking to `id`. */
   backlinks(tree: Tree, id: EntryId): EntryId[] {
-    const out: EntryId[] = [];
-    for (const [from, f] of this.facts) {
-      if (from === id || tree.isTrashed(from)) continue;
-      if (f.links.some((l) => l.kind !== 'image' && this.resolve(tree, from, l) === id))
-        out.push(from);
+    if (!this.reverse || this.reverse.tree !== tree || this.reverse.version !== this.version) {
+      const map = new Map<EntryId, EntryId[]>();
+      for (const [from, f] of this.facts) {
+        if (tree.isTrashed(from)) continue;
+        const targets = new Set<EntryId>();
+        for (const l of f.links) {
+          if (l.kind === 'image') continue;
+          const t = this.resolve(tree, from, l);
+          if (t && t !== from) targets.add(t);
+        }
+        for (const t of targets) {
+          const list = map.get(t);
+          if (list) list.push(from);
+          else map.set(t, [from]);
+        }
+      }
+      this.reverse = { tree, version: this.version, map };
     }
-    return out;
+    return [...(this.reverse.map.get(id) ?? [])];
   }
 
   /**

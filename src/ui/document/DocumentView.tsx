@@ -418,7 +418,7 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
               docId={id}
               name={entry.name}
               text={text}
-              onConvert={() => void dialogs.convert(id, isMd ? 'xlsx' : 'xlsx')}
+              onConvert={() => void dialogs.convert(id, 'xlsx')}
             />
           </div>
         ) : (

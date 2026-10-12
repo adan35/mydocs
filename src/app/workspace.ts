@@ -773,6 +773,16 @@ function wikiIndex(tree: Tree): Map<string, Entry[]> {
   return index;
 }
 
+/** Every live entry a wiki target could mean (more than one means the link is ambiguous). */
+export function wikiCandidates(tree: Tree, target: string): Entry[] {
+  const t = target.trim().toLowerCase();
+  if (t.includes('/')) {
+    const hit = tree.findByPath(t) ?? tree.findByPath(`${t}.md`);
+    return hit ? [hit] : [];
+  }
+  return [...(wikiIndex(tree).get(t) ?? [])];
+}
+
 /** Resolves `[[Name]]` / `[[Folder/Name]]` to a live document. */
 export function resolveWikiLink(tree: Tree, target: string): Entry | undefined {
   const t = target.trim().toLowerCase();

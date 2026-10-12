@@ -17,19 +17,31 @@ export class ForceLayout {
   alpha = 1;
   private readonly cell = 90;
 
+  /**
+   * `initial` places nodes where they were last time (the graph keeps its shape when a
+   * filter changes); a mostly-placed graph starts cool, so it only settles the newcomers.
+   */
   constructor(
     count: number,
     readonly edges: [number, number][],
     seed = 1,
+    initial?: readonly ({ x: number; y: number } | undefined)[],
   ) {
     let s = seed;
     const rand = () => ((s = (s * 16807) % 2147483647) / 2147483647) * 2 - 1;
     // Start on a spiral so the first frames already look orderly.
+    let placed = 0;
     this.nodes = Array.from({ length: count }, (_, i) => {
+      const at = initial?.[i];
+      if (at) {
+        placed++;
+        return { x: at.x, y: at.y, vx: 0, vy: 0 };
+      }
       const r = 12 * Math.sqrt(i + 1);
       const a = i * 2.39996;
       return { x: Math.cos(a) * r + rand(), y: Math.sin(a) * r + rand(), vx: 0, vy: 0 };
     });
+    if (count && placed / count > 0.8) this.alpha = 0.25;
   }
 
   get settled(): boolean {

@@ -23,14 +23,17 @@ export function StaticMarkdown({
     if (!el) return;
     const urls: string[] = [];
     for (const img of el.querySelectorAll('img')) {
-      const src = img.getAttribute('src') ?? '';
+      // The effect can run again over the same DOM (its blob URLs revoked), so keep the
+      // source as written.
+      const src = (img.dataset.src ??= img.getAttribute('src') ?? '');
       const blob = media?.[decodeURI(src)];
       if (blob) {
         const url = URL.createObjectURL(blob);
         urls.push(url);
         img.src = url;
+        img.classList.remove('img-missing');
       } else if (!/^(https?:|data:)/.test(src)) {
-        img.alt = `Image: ${img.alt || src}`;
+        if (!img.alt.startsWith('Image: ')) img.alt = `Image: ${img.alt || src}`;
         img.classList.add('img-missing');
       }
     }

@@ -13,7 +13,7 @@ import { isExternalHref, resolvePath, safeDecode } from '@/domain/paths';
 import { renderMarkdown } from '@/lib/markdown/render';
 import { renderMermaidIn } from '@/lib/markdown/mermaid';
 import { session, ws } from '@/app/app-store';
-import { openEntry } from '@/app/actions';
+import { createLinkedDocument, openEntry } from '@/app/actions';
 import { slugify } from '@/domain/outline';
 import { resolveWikiLink } from '@/app/workspace';
 import { toast } from '@/app/toast-store';
@@ -253,8 +253,16 @@ export function Preview({
       e.preventDefault();
       const id = resolveWiki(a.dataset.wiki);
       if (id) void openEntry(id, a.dataset.fragment && slugify(a.dataset.fragment));
-      else
-        toast({ message: `"${a.dataset.wiki}" doesn't exist in this workspace.`, tone: 'error' });
+      else {
+        const target = a.dataset.wiki;
+        toast({
+          message: `"${target}" doesn't exist yet.`,
+          action: {
+            label: 'Create it',
+            run: () => void createLinkedDocument(docId, { kind: 'wiki', target }),
+          },
+        });
+      }
       return;
     }
     if (isExternalHref(href)) return; // target=_blank + rel=noopener from the sanitizer
@@ -262,6 +270,14 @@ export function Preview({
     const [, fragment] = href.split('#');
     const id = resolveHref(docId, href);
     if (id) void openEntry(id, fragment ? safeDecode(fragment) : undefined);
+    else if (/\.md$|\/[^./]*$|^[^./]+$/i.test(href.split('#')[0]!))
+      toast({
+        message: `"${safeDecode(href)}" doesn't exist yet.`,
+        action: {
+          label: 'Create it',
+          run: () => void createLinkedDocument(docId, { kind: 'markdown', target: href }),
+        },
+      });
     else
       toast({ message: `"${safeDecode(href)}" doesn't exist in this workspace.`, tone: 'error' });
   };
