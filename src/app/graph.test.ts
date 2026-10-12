@@ -91,4 +91,26 @@ describe('graph', () => {
       new Set([a.id, b.id, c.id, d.id]),
     );
   });
+
+  it('includes linked Word, spreadsheet and PDF files and filters by type', async () => {
+    const { ws, s } = await setup();
+    const sheet = await ws.createFile(null, 'Budget.xlsx', new Blob([new Uint8Array([1])]));
+    const pdf = await ws.createFile(null, 'Scan.pdf', new Blob([new Uint8Array([1])]));
+    await ws.createFile(null, 'Logo.png', new Blob([new Uint8Array([1])]));
+    const md = await ws.createFile(
+      null,
+      'Plan.md',
+      'See [budget](./Budget.xlsx) and [[Scan.pdf]].',
+    );
+    const g = buildGraph(ws.tree, s.knowledge, {});
+    expect(new Set(g.ids)).toEqual(new Set([md.id, sheet.id, pdf.id]));
+    expect(g.types[g.ids.indexOf(sheet.id)]).toBe('sheet');
+    expect(g.labels[g.ids.indexOf(pdf.id)]).toBe('Scan.pdf');
+    // Filtering to spreadsheets leaves no links, so only "unlinked documents" shows it.
+    expect(buildGraph(ws.tree, s.knowledge, { types: ['sheet'] }).ids).toEqual([]);
+    expect(buildGraph(ws.tree, s.knowledge, { types: ['sheet'], orphans: true }).ids).toEqual([
+      sheet.id,
+    ]);
+    expect(s.knowledge.backlinks(ws.tree, sheet.id)).toEqual([md.id]);
+  });
 });

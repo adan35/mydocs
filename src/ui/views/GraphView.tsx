@@ -3,7 +3,14 @@ import { AlertTriangle, FilePlus2, Minus, Network, Plus, RotateCcw, Search, X } 
 import type { EntryId } from '@/domain/types';
 import { ForceLayout } from '@/domain/graph-layout';
 import { session } from '@/app/app-store';
-import { buildGraph, isGhost, SUGGEST_LIMIT, type GraphData } from '@/app/graph';
+import {
+  buildGraph,
+  DOC_TYPES,
+  isGhost,
+  SUGGEST_LIMIT,
+  type DocType,
+  type GraphData,
+} from '@/app/graph';
 import { createLinkedDocument, openEntry } from '@/app/actions';
 import { navigate } from '@/app/router';
 import { useEditor } from '@/app/editor-store';
@@ -43,6 +50,7 @@ function truncate(g: GraphData): Graph {
     ...g,
     ids: keep.map((i) => g.ids[i]!),
     kinds: keep.map((i) => g.kinds[i]!),
+    types: keep.map((i) => g.types[i]!),
     labels: keep.map((i) => g.labels[i]!),
     details: keep.map((i) => g.details[i]!),
     degree: keep.map((i) => g.degree[i]!),
@@ -64,6 +72,7 @@ export function GraphView({ focusId }: { focusId?: string }) {
   const activeId = useEditor((s) => s.activeId);
   const [folderId, setFolderId] = useState('');
   const [tag, setTag] = useState('');
+  const [docType, setDocType] = useState<DocType | ''>('');
   const [depth, setDepth] = useState(1);
   const [orphans, setOrphans] = useState(false);
   const [unresolved, setUnresolved] = useState(false);
@@ -81,12 +90,25 @@ export function GraphView({ focusId }: { focusId?: string }) {
           focusId: local ? focusId : undefined,
           depth,
           orphans,
+          types: docType ? [docType] : undefined,
           unresolved,
           suggested: suggested ? session().workspace.allTexts() : undefined,
         }),
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tree, indexVersion, folderId, tag, depth, orphans, unresolved, suggested, focusId, local],
+    [
+      tree,
+      indexVersion,
+      folderId,
+      tag,
+      docType,
+      depth,
+      orphans,
+      unresolved,
+      suggested,
+      focusId,
+      local,
+    ],
   );
 
   const tags = useMemo(
@@ -233,7 +255,10 @@ export function GraphView({ focusId }: { focusId?: string }) {
         const strong = i === h || i === focusIndex || i === sel;
         const fill = strong ? colors.focus : isMatch ? colors.match : colors.node;
         ctx.beginPath();
-        ctx.arc(x, y, r, 0, Math.PI * 2);
+        // Markdown documents are circles; Word, spreadsheets, PDFs… are rounded squares.
+        if (graph.types[i] && graph.types[i] !== 'markdown')
+          ctx.roundRect(x - r, y - r, r * 2, r * 2, 2);
+        else ctx.arc(x, y, r, 0, Math.PI * 2);
         if (graph.kinds[i] === 'ghost') {
           // Not created yet: a hollow, dashed ring.
           ctx.fillStyle = colors.bg;
@@ -536,6 +561,19 @@ export function GraphView({ focusId }: { focusId?: string }) {
             </option>
           ))}
         </select>
+        <select
+          className="input h-7 w-auto max-w-[160px] rounded-full py-0 text-caption"
+          aria-label="Filter by type"
+          value={docType}
+          onChange={(e) => setDocType(e.target.value as DocType | '')}
+        >
+          <option value="">Any type</option>
+          {DOC_TYPES.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.label}
+            </option>
+          ))}
+        </select>
         <label className="flex h-7 items-center gap-1.5 px-2 text-caption text-steel">
           <input type="checkbox" checked={orphans} onChange={(e) => setOrphans(e.target.checked)} />
           Unlinked documents
@@ -618,19 +656,21 @@ export function GraphView({ focusId }: { focusId?: string }) {
             </div>
           )
         )}
-        {(unresolved || suggested) && graph.ids.length > 0 && (
-          <div
-            className="pointer-events-none absolute bottom-2 left-2 flex flex-wrap gap-x-3 gap-y-1 rounded-md bg-canvas/90 px-2 py-1 text-xs text-steel"
-            aria-hidden
-          >
-            <span>● document</span>
-            {unresolved && <span>◌ not created yet</span>}
-            {suggested && <span>┄ mentioned, not linked</span>}
-          </div>
-        )}
+        {graph.ids.length > 0 &&
+          (unresolved || suggested || graph.types.some((t) => t && t !== 'markdown')) && (
+            <div
+              className="pointer-events-none absolute bottom-2 left-2 flex flex-wrap gap-x-3 gap-y-1 rounded-md bg-canvas/90 px-2 py-1 text-xs text-steel"
+              aria-hidden
+            >
+              <span>● Markdown</span>
+              {graph.types.some((t) => t && t !== 'markdown') && <span>■ other document</span>}
+              {unresolved && <span>◌ not created yet</span>}
+              {suggested && <span>┄ mentioned, not linked</span>}
+            </div>
+          )}
         {!graph.ids.length && (
           <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-[14px] text-steel">
-            {orphans || folderId || tag
+            {orphans || folderId || tag || docType
               ? 'No documents match these filters.'
               : 'Link documents with [[Name]] or [text](./file.md) and they appear here.'}
           </div>
@@ -715,7 +755,9 @@ function SelectionCard({
         <div className="min-w-0 flex-1">
           <div className="truncate font-medium text-ink">{graph.labels[index]}</div>
           <div className="truncate text-xs text-steel">
-            {ghost ? 'Not created yet' : graph.details[index] || 'Workspace root'}
+            {ghost
+              ? 'Not created yet'
+              : `${DOC_TYPES.find((t) => t.id === graph.types[index])?.label ?? 'Document'} · ${graph.details[index] || 'Workspace root'}`}
           </div>
         </div>
         <button
