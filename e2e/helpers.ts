@@ -45,3 +45,28 @@ export async function withoutFileSystemAccess(page: Page) {
     delete w.showDirectoryPicker;
   });
 }
+
+/** Replaces the whole document in the source editor (no auto-indent or bracket closing). */
+export async function setDoc(page: Page, text: string) {
+  const editor = page.locator('.cm-content');
+  await editor.click();
+  await page.keyboard.press(`${mod}+a`);
+  await page.keyboard.insertText(text);
+}
+
+/** The source text of the open document. */
+export async function sourceText(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const lines = [...document.querySelectorAll('.cm-content .cm-line')].map(
+      (l) => l.textContent ?? '',
+    );
+    return lines.join('\n');
+  });
+}
+
+export async function mode(page: Page, name: 'Source' | 'Split' | 'Rich' | 'Read') {
+  await page
+    .getByRole('group', { name: 'View mode' })
+    .getByRole('button', { name, exact: true })
+    .click();
+}

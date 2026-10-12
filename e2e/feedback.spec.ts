@@ -135,7 +135,7 @@ test('formatting toolbar formats the selection', async ({ page }) => {
 
 test('focus returns after the palette and goes to a neighbor after deleting', async ({ page }) => {
   await freshApp(page);
-  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByRole('button', { name: 'Source', exact: true }).click();
   await editorText(page).click();
   await page.keyboard.press(`${mod}+K`);
   await expect(page.getByRole('combobox', { name: 'Command palette' })).toBeFocused();
@@ -152,7 +152,7 @@ test('focus returns after the palette and goes to a neighbor after deleting', as
 
 test('the editor font setting applies to the editor', async ({ page }) => {
   await freshApp(page);
-  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByRole('button', { name: 'Source', exact: true }).click();
   const font = () => page.locator('.cm-scroller').evaluate((el) => getComputedStyle(el).fontFamily);
   expect(await font()).toMatch(/JetBrains Mono/);
   await page.getByRole('button', { name: 'Settings' }).click();
@@ -177,7 +177,7 @@ test('local images and ![[embeds]] show the first time a document opens', async 
     },
   ]);
   await page.getByRole('treeitem', { name: 'Pics.md' }).click();
-  await page.getByRole('button', { name: 'Preview' }).click();
+  await page.getByRole('button', { name: 'Read', exact: true }).click();
   const images = page.locator('.prose img');
   await expect(images).toHaveCount(2);
   for (const img of await images.all()) {

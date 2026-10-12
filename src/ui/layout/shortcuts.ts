@@ -56,6 +56,7 @@ export function useGlobalShortcuts() {
       if (onDoc) {
         if (m(SHORTCUTS.toggleMode)) return run(() => sendDocCommand('toggle-mode'));
         if (m(SHORTCUTS.splitView)) return run(() => sendDocCommand('split'));
+        if (m(SHORTCUTS.richMode)) return run(() => sendDocCommand('rich'));
         if (m(SHORTCUTS.focusMode)) return run(() => ui.setFocusMode(!ui.focusMode));
         if (m(SHORTCUTS.readingMode)) return run(() => ui.setReadingMode(!ui.readingMode));
         if (m(SHORTCUTS.closeTab)) {

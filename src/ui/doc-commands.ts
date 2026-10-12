@@ -3,7 +3,18 @@ import { editorActions } from '@/app/editor-store';
 import { openEntry } from '@/app/actions';
 
 export type DocCommand =
-  'find' | 'toggle-mode' | 'split' | 'focus-editor' | 'insert-table' | 'panel-sheet';
+  | 'find'
+  | 'toggle-mode'
+  | 'split'
+  | 'rich'
+  | 'sync-scroll'
+  | 'focus-editor'
+  | 'insert-table'
+  | 'panel-sheet'
+  /** Runs an editing tool from the ribbon registry by id. */
+  | `tool:${string}`
+  /** Applies a paragraph style (text, h1…h6). */
+  | `style:${string}`;
 
 /** Sends a command to the active document view (it owns the editor instance). */
 export function sendDocCommand(cmd: DocCommand) {

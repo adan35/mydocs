@@ -20,11 +20,11 @@ test('malicious Markdown cannot run script or escape the preview', async ({ page
     void d.dismiss();
   });
   await freshApp(page);
-  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByRole('button', { name: 'Source', exact: true }).click();
   await page.locator('.cm-content').click();
   await page.keyboard.press(`${mod}+A`);
   await page.keyboard.insertText(PAYLOAD);
-  await page.getByRole('button', { name: 'Preview' }).click();
+  await page.getByRole('button', { name: 'Read', exact: true }).click();
   await expect(page.locator('.prose h1')).toHaveText(/Hostile document/);
   await page.locator('.prose').getByText('click me').click();
   await page.waitForTimeout(300);

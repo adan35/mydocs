@@ -63,7 +63,7 @@ test('visual table editor inserts and edits valid Markdown tables', async ({ pag
   await edit.getByRole('button', { name: 'Save table' }).click();
   await expect(editor(page)).toContainText('Year');
   await waitSaved(page);
-  await page.getByRole('button', { name: 'Preview' }).click();
+  await page.getByRole('button', { name: 'Read', exact: true }).click();
   await expect(page.locator('.prose table th')).toHaveCount(4);
   await expect(page.locator('.prose table td').first()).toHaveText('Ada | Lovelace');
 });
@@ -127,7 +127,7 @@ test('your own templates, front matter properties and outline folding', async ({
   await waitSaved(page);
 
   // Properties render above the document; the YAML stays untouched.
-  await page.getByRole('button', { name: 'Preview' }).click();
+  await page.getByRole('button', { name: 'Read', exact: true }).click();
   const props = page.getByRole('definition').filter({ hasText: 'draft' });
   await expect(props).toBeVisible();
 

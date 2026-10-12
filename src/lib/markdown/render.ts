@@ -7,9 +7,33 @@ import { uniqueSlugger } from '@/domain/outline';
 import { stripFrontMatter, type FrontMatter } from '@/domain/frontmatter';
 import { sanitizeHtml } from './sanitize';
 
+/** Where an editable run of inline content lives in the source (for rich editing). */
+export interface InlineSource {
+  kind: 'heading' | 'paragraph' | 'item' | 'cell';
+  /** 0-based first source line and the line after the last (whole document, front matter included). */
+  line: number;
+  end: number;
+  /** The inline source as markdown-it read it (container prefixes removed). */
+  content: string;
+  /** Heading level. */
+  level?: number;
+  /** Table cell column. */
+  col?: number;
+  /** Rendered differently from its source (callout titles): edit as source instead. */
+  sourceOnly?: boolean;
+}
+
 export interface RenderResult {
   html: string;
   frontMatter: FrontMatter | null;
+  /** Editable inline runs, indexed by the elements' `data-inline` attribute. */
+  inlines: InlineSource[];
+}
+
+interface Env {
+  lineOffset?: number;
+  inlines?: InlineSource[];
+  [key: string]: unknown;
 }
 
 const escapeHtml = (s: string) =>
@@ -68,18 +92,59 @@ function createRenderer(): MarkdownIt {
     maxExpand: 500,
   } as never);
 
-  // Annotate block tokens with their source line so the preview can scroll-sync,
-  // jump to headings and toggle task checkboxes. Line offset is added at render time.
+  // Annotate block tokens with their source lines so the preview can scroll-sync, jump to
+  // headings, toggle task checkboxes and edit blocks in place. The line offset (front
+  // matter) is added at render time.
   md.core.ruler.push('source_lines', (state) => {
-    const offset = (state.env as { lineOffset?: number }).lineOffset ?? 0;
+    const offset = (state.env as Env).lineOffset ?? 0;
     for (const token of state.tokens) {
-      if (
-        token.map &&
-        token.nesting >= 0 &&
-        (token.level === 0 || token.type === 'list_item_open')
-      ) {
-        token.attrSet('data-line', String(token.map![0] + offset));
+      if (!token.map || token.nesting < 0 || token.type === 'inline' || token.hidden) continue;
+      token.attrSet('data-line', String(token.map[0] + offset));
+      token.attrSet('data-line-end', String(token.map[1] + offset));
+    }
+  });
+
+  // Remember each inline run's source before plugins rewrite it (task markers, callouts).
+  md.core.ruler.after('block', 'inline_sources', (state) => {
+    const offset = (state.env as Env).lineOffset ?? 0;
+    const tokens = state.tokens;
+    let col = 0;
+    let rowMap: [number, number] | null = null;
+    for (let i = 0; i < tokens.length; i++) {
+      const t = tokens[i]!;
+      if (t.type === 'tr_open') {
+        col = 0;
+        rowMap = t.map;
       }
+      // Table cells carry no line map of their own; their row's applies.
+      const map = t.map ?? (tokens[i - 1]?.type.match(/^t[hd]_open$/) ? rowMap : null);
+      if (t.type !== 'inline' || !map) continue;
+      const parent = tokens[i - 1];
+      if (!parent) continue;
+      let kind: InlineSource['kind'] | null = null;
+      let level: number | undefined;
+      let cell: number | undefined;
+      if (parent.type === 'heading_open') {
+        kind = 'heading';
+        level = Number(parent.tag.slice(1));
+      } else if (parent.type === 'paragraph_open') {
+        kind = parent.hidden ? 'item' : 'paragraph';
+      } else if (parent.type === 'th_open' || parent.type === 'td_open') {
+        kind = 'cell';
+        cell = col++;
+      }
+      if (!kind) continue;
+      t.meta = {
+        ...(t.meta as object),
+        source: {
+          kind,
+          line: map[0] + offset,
+          end: map[1] + offset,
+          content: t.content,
+          level,
+          col: cell,
+        } satisfies InlineSource,
+      };
     }
   });
 
@@ -120,6 +185,8 @@ function createRenderer(): MarkdownIt {
       const kind = m[1]!.toLowerCase();
       const title = m[2]!.trim() || kind[0]!.toUpperCase() + kind.slice(1);
       tokens[i]!.attrJoin('class', `callout callout-${CALLOUT_KINDS.has(kind) ? kind : 'note'}`);
+      const source = (inline.meta as { source?: InlineSource } | null)?.source;
+      if (source) source.sourceOnly = true;
       // The whole first line is the marker and title; the body starts after its line break.
       const children = inline.children!;
       const br = children.findIndex((c) => c.type === 'softbreak' || c.type === 'hardbreak');
@@ -183,7 +250,10 @@ function createRenderer(): MarkdownIt {
     const token = tokens[idx]!;
     const lang = String(token.info).trim().split(/\s+/)[0]?.toLowerCase() ?? '';
     const line = token.attrGet('data-line');
-    const lineAttr = line ? ` data-line="${escapeHtml(String(line))}"` : '';
+    const end = token.attrGet('data-line-end');
+    const lineAttr = line
+      ? ` data-line="${escapeHtml(String(line))}" data-line-end="${escapeHtml(String(end))}"`
+      : '';
     if (lang === 'mermaid') {
       // The diagram source lives in the code element; it's rendered lazily after sanitizing.
       return `<div class="mermaid-block"${lineAttr}><pre><code>${escapeHtml(token.content)}</code></pre></div>`;
@@ -208,6 +278,28 @@ function createRenderer(): MarkdownIt {
   md.renderer.rules.table_close = (tokens, idx, options, _env, self) =>
     `${self.renderToken(tokens, idx, options)}</div>`;
 
+  // Tag each editable element with its inline run. In tight lists the paragraph is
+  // hidden, so its text is wrapped in a span to give it an element of its own.
+  md.core.ruler.push('rich_targets', (state) => {
+    const env = state.env as Env;
+    const tokens = state.tokens;
+    for (let i = 0; i < tokens.length; i++) {
+      const t = tokens[i]!;
+      const source = (t.meta as { source?: InlineSource } | null)?.source;
+      if (t.type !== 'inline' || !source || !env.inlines) continue;
+      const open = tokens[i - 1]!;
+      const close = tokens[i + 1];
+      if (open.hidden && close) {
+        open.hidden = close.hidden = false;
+        open.tag = close.tag = 'span';
+        open.block = close.block = false;
+        open.attrJoin('class', 'li-text');
+      }
+      open.attrSet('data-inline', String(env.inlines.length));
+      env.inlines.push(source);
+    }
+  });
+
   return md;
 }
 
@@ -217,14 +309,28 @@ let renderer: MarkdownIt | null = null;
 export function renderMarkdown(src: string): RenderResult {
   renderer ??= createRenderer();
   const { body, data, lineOffset } = stripFrontMatter(src);
+  const env: Env = { lineOffset, inlines: [] };
   let html: string;
   try {
-    html = renderer.render(body, { lineOffset });
+    html = renderer.render(body, env as Record<string, unknown>);
   } catch (err) {
     console.error('Markdown render failed', err);
     html = `<pre>${escapeHtml(body)}</pre>`;
+    env.inlines = [];
   }
-  return { html: sanitizeHtml(html), frontMatter: data };
+  return { html: sanitizeHtml(html), frontMatter: data, inlines: env.inlines! };
+}
+
+/** Renders inline Markdown (one paragraph's content) to sanitized HTML, for comparisons. */
+export function renderInlineMarkdown(src: string): string {
+  renderer ??= createRenderer();
+  return sanitizeHtml(renderer.renderInline(src, {}));
+}
+
+/** Parses Markdown into markdown-it tokens (used by format converters). */
+export function parseMarkdownTokens(src: string): Token[] {
+  renderer ??= createRenderer();
+  return renderer.parse(src, { lineOffset: 0 });
 }
 
 /** Renders a plain-text file as a highlighted code block. */

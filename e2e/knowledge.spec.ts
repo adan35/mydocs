@@ -43,7 +43,7 @@ test('unlinked mentions can be linked, and related documents and hover previews 
 
   await page.getByRole('treeitem', { name: 'Standup.md' }).click();
   await expect(page.locator('.cm-content')).toContainText('[[Roadmap|roadmap]]');
-  await page.getByRole('button', { name: 'Preview' }).click();
+  await page.getByRole('button', { name: 'Read', exact: true }).click();
   await page.locator('.prose a.wiki-link').hover();
   await expect(page.getByRole('tooltip')).toContainText('Ship the beta in Q4.');
 });

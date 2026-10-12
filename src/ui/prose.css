@@ -449,3 +449,66 @@
   color: var(--callout);
   margin-bottom: 0.25em;
 }
+
+/* Rich editing: blocks are edited in place. Quiet affordances, Notion-like. */
+.prose-rich [data-rich='inline'],
+.prose-rich [data-rich='new'] {
+  outline: none;
+  border-radius: 4px;
+  transition: background-color 0.12s;
+  caret-color: var(--ink);
+}
+.prose-rich [data-rich='inline']:hover {
+  background: color-mix(in srgb, var(--hover) 55%, transparent);
+}
+.prose-rich [data-rich='inline']:focus,
+.prose-rich [data-rich='new']:focus {
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 22%, transparent);
+}
+.prose-rich td[data-rich='inline']:focus,
+.prose-rich th[data-rich='inline']:focus {
+  box-shadow: inset 0 0 0 2px var(--primary);
+  border-radius: 0;
+}
+.prose-rich [data-rich='new']:empty::before {
+  content: 'Type here…';
+  color: var(--stone);
+}
+.prose-rich [data-rich='source'],
+.prose-rich [data-rich='code'] {
+  cursor: text;
+  border-radius: 6px;
+  outline: none;
+}
+.prose-rich [data-rich='source']:hover,
+.prose-rich [data-rich='code']:hover,
+.prose-rich [data-rich='source']:focus-visible,
+.prose-rich [data-rich='code']:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 22%, transparent);
+}
+.prose-rich a {
+  cursor: text;
+}
+.prose .rich-source-wrap {
+  margin: 1em 0;
+}
+.prose .rich-source-hint {
+  font: 12px var(--font-sans);
+  color: var(--steel);
+  margin-bottom: 4px;
+}
+.prose .rich-source {
+  display: block;
+  width: 100%;
+  min-height: 3em;
+  resize: vertical;
+  padding: 10px 12px;
+  font: 13.5px/1.6 var(--font-mono);
+  color: var(--ink);
+  background: var(--surface-soft);
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+  outline: none;
+  tab-size: 2;
+}

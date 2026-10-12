@@ -12,7 +12,7 @@ test('phone layout uses bottom navigation and full-screen views', async ({ page 
     .getByRole('button', { name: 'Markdown guide.md', exact: true })
     .click();
   await expect(page.locator('.cm-content')).toBeVisible();
-  await page.getByRole('button', { name: 'Preview' }).click();
+  await page.getByRole('button', { name: 'Read', exact: true }).click();
   await expect(page.locator('.prose h1')).toHaveText(/Markdown guide/);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
   expect(overflow).toBeLessThanOrEqual(0);

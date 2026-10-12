@@ -8,7 +8,9 @@ describe('renderMarkdown', () => {
     const out = html(
       '# Title\n\n- [ ] task\n- [x] done\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nText[^1]\n\n[^1]: Note',
     );
-    expect(out).toContain('<h1 data-line="0" data-heading="title">');
+    expect(out).toMatch(
+      /<h1 data-line="0" data-line-end="1" data-heading="title" data-inline="0">/,
+    );
     expect(out).toContain('class="task-list-item-checkbox"');
     expect(out).toContain('<div class="table-wrap">');
     expect(out).toContain('footnote');
@@ -17,7 +19,29 @@ describe('renderMarkdown', () => {
     const out = html('$x^2$\n\n```ts\nconst a = 1;\n```\n\n```mermaid\ngraph TD; A-->B\n```');
     expect(out).toContain('katex');
     expect(out).toContain('hljs-keyword');
-    expect(out).toMatch(/<div class="mermaid-block" data-line="\d+"><pre><code>graph TD; A--&gt;B/);
+    expect(out).toMatch(
+      /<div class="mermaid-block" data-line="\d+" data-line-end="\d+"><pre><code>graph TD; A--&gt;B/,
+    );
+  });
+  it('maps every editable inline run to its source', () => {
+    const r = renderMarkdown(
+      '## Plan\n\n- one\n- [ ] two\n  - nested\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nPara\nmore',
+    );
+    expect(r.inlines.map((i) => [i.kind, i.line, i.content, i.col])).toEqual([
+      ['heading', 0, 'Plan', undefined],
+      ['item', 2, 'one', undefined],
+      ['item', 3, '[ ] two', undefined],
+      ['item', 4, 'nested', undefined],
+      ['cell', 6, 'a', 0],
+      ['cell', 6, 'b', 1],
+      ['cell', 8, '1', 0],
+      ['cell', 8, '2', 1],
+      ['paragraph', 10, 'Para\nmore', undefined],
+    ]);
+    expect(r.html).toContain('<span class="li-text" data-inline="1">one</span>');
+  });
+  it('marks callout titles as source-only', () => {
+    expect(renderMarkdown('> [!NOTE] Title\n> body').inlines[0]?.sourceOnly).toBe(true);
   });
   it('renders an empty task as a checkbox', () => {
     expect(html('- [ ] \n- [x]')).toMatch(/task-list-item-checkbox[\s\S]*task-list-item-checkbox/);
@@ -28,6 +52,12 @@ describe('renderMarkdown', () => {
   it('keeps line numbers correct after front matter', () => {
     const out = html('---\ntags: [a]\n---\n# H');
     expect(out).toContain('<h1 data-line="3"');
+    expect(renderMarkdown('---\ntitle: x\n---\n# H').inlines[0]).toMatchObject({
+      kind: 'heading',
+      line: 3,
+      level: 1,
+      content: 'H',
+    });
     expect(renderMarkdown('---\ntitle: x\n---\nbody').frontMatter).toEqual({ title: 'x' });
   });
 

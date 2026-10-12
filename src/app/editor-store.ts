@@ -161,6 +161,11 @@ export const editorActions = {
     return docModel.dispatch(id, spec);
   },
 
+  /** The current text of an open document. */
+  textOf(id: EntryId): string | undefined {
+    return docModel.text(id) ?? get().buffers[id]?.text;
+  },
+
   /** Replaces the whole text of an open document (undoable). */
   replaceText(id: EntryId, text: string): boolean {
     const b = get().buffers[id];

@@ -47,7 +47,7 @@ test('core journey: create, edit, persist, link, search, organize, trash, restor
   await expect(page.locator('.cm-content')).toContainText('authentication service validates');
 
   // Preview and follow the internal link.
-  await page.getByRole('button', { name: 'Preview' }).click();
+  await page.getByRole('button', { name: 'Read', exact: true }).click();
   await page.locator('.prose').getByRole('link', { name: 'the welcome guide' }).click();
   await expect(page.getByRole('tab', { name: /Welcome to My Doc\.md/ })).toHaveAttribute(
     'aria-selected',
@@ -99,7 +99,7 @@ test('core journey: create, edit, persist, link, search, organize, trash, restor
     page.getByRole('treeitem', { name: 'Architecture.md', exact: true }),
   ).toHaveAttribute('aria-level', '1');
   await page.getByRole('treeitem', { name: 'Architecture.md' }).click();
-  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByRole('button', { name: 'Source', exact: true }).click();
   await expect(page.locator('.cm-content')).toContainText('](Welcome%20to%20My%20Doc.md)');
 
   // Trash with undo, then trash and restore from the Trash view.
@@ -148,18 +148,18 @@ test('quick open and command palette are keyboard driven', async ({ page }) => {
 
 test('unsaved edits survive a reload through autosave', async ({ page }) => {
   await freshApp(page);
-  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByRole('button', { name: 'Source', exact: true }).click();
   await typeInEditor(page, '\nA line typed right before reload.');
   // Reload immediately; autosave or the recovery draft must keep the text.
   await page.waitForTimeout(100);
   await page.reload();
-  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByRole('button', { name: 'Source', exact: true }).click();
   await expect(page.locator('.cm-content')).toContainText('A line typed right before reload.');
 });
 
 test('version history shows and restores an earlier version', async ({ page }) => {
   await freshApp(page);
-  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByRole('button', { name: 'Source', exact: true }).click();
   await page.locator('.cm-content').click();
   await page.keyboard.press(`${mod}+A`);
   await page.keyboard.type('Brand new text');
@@ -174,7 +174,7 @@ test('task checkboxes toggle from the preview', async ({ page }) => {
   await freshApp(page);
   await page.getByRole('treeitem', { name: 'Guides' }).click();
   await page.getByRole('treeitem', { name: 'Markdown guide.md' }).click();
-  await page.getByRole('button', { name: 'Preview' }).click();
+  await page.getByRole('button', { name: 'Read', exact: true }).click();
   const box = page.locator('.prose .task-list-item-checkbox').nth(1);
   await expect(box).not.toBeChecked();
   await box.click();

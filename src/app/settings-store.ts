@@ -3,7 +3,8 @@ import type { SortDir, SortKey } from '@/domain/tree';
 import { prefs } from './prefs';
 
 export type ThemePref = 'light' | 'dark' | 'system';
-export type ViewMode = 'edit' | 'split' | 'preview';
+/** Source (`edit`), source and preview side by side, rich editing, and reading (`preview`). */
+export type ViewMode = 'edit' | 'split' | 'rich' | 'preview';
 export type Density = 'comfortable' | 'compact';
 export type ExplorerView = 'list' | 'compact' | 'grid';
 
@@ -29,6 +30,8 @@ export interface Settings {
   typewriter: boolean;
   /** Folder path for daily notes ("Daily notes", "Journal/Daily"…). */
   dailyFolder: string;
+  /** Split view: scrolling one pane moves the other to the same content. */
+  syncScroll: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -49,6 +52,7 @@ export const DEFAULT_SETTINGS: Settings = {
   formatToolbar: true,
   typewriter: false,
   dailyFolder: 'Daily notes',
+  syncScroll: true,
 };
 
 const KEY = 'mydoc:settings';
