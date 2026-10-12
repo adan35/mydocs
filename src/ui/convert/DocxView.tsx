@@ -6,7 +6,7 @@ import { exportEntry } from '@/app/actions';
 import { convert } from '@/lib/convert/client';
 import { MEDIA_SRC } from '@/lib/convert/docx';
 import type { ReportData } from '@/lib/convert/doc-ast';
-import { StaticMarkdown } from './StaticMarkdown';
+import { StaticMarkdown, type MediaItem } from './StaticMarkdown';
 import { ReportList } from './ReportList';
 
 /**
@@ -17,7 +17,7 @@ export function DocxView({ entry, onConvert }: { entry: Entry; onConvert(): void
   const [state, setState] = useState<
     | { kind: 'loading' }
     | { kind: 'error'; message: string }
-    | { kind: 'ready'; markdown: string; media: Record<string, Blob>; report: ReportData }
+    | { kind: 'ready'; markdown: string; media: Record<string, MediaItem>; report: ReportData }
   >({ kind: 'loading' });
 
   useEffect(() => {
@@ -30,9 +30,12 @@ export function DocxView({ entry, onConvert }: { entry: Entry; onConvert(): void
         const out = await convert('docxToMarkdown', {
           data: new Uint8Array(await blob.arrayBuffer()),
         });
-        const media: Record<string, Blob> = {};
+        const media: Record<string, MediaItem> = {};
         for (const m of out.media)
-          media[MEDIA_SRC + m.name] = new Blob([m.data as BlobPart], { type: m.mime });
+          media[MEDIA_SRC + m.name] = {
+            blob: new Blob([m.data as BlobPart], { type: m.mime }),
+            width: m.width,
+          };
         if (!cancelled)
           setState({ kind: 'ready', markdown: out.markdown, media, report: out.report });
       } catch (e) {
@@ -44,6 +47,14 @@ export function DocxView({ entry, onConvert }: { entry: Entry; onConvert(): void
       cancelled = true;
     };
   }, [entry.id, entry.updatedAt]);
+
+  const hidden =
+    state.kind === 'ready'
+      ? {
+          ...state.report,
+          notes: state.report.notes.filter((n) => n.severity === 'warning'),
+        }
+      : null;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -76,12 +87,13 @@ export function DocxView({ entry, onConvert }: { entry: Entry; onConvert(): void
           )}
           {state.kind === 'ready' && (
             <>
-              {state.report.notes.length > 0 && (
+              {/* Notes about what Markdown can't hold don't apply to this view. */}
+              {hidden!.notes.length > 0 && (
                 <details className="card mb-6 p-3 text-caption">
                   <summary className="cursor-pointer text-charcoal">
-                    Some parts of this file are not shown ({state.report.notes.length})
+                    Some parts of this file are not shown ({hidden!.notes.length})
                   </summary>
-                  <ReportList report={state.report} />
+                  <ReportList report={hidden!} />
                 </details>
               )}
               <StaticMarkdown text={state.markdown} media={state.media} />

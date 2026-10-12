@@ -6,13 +6,19 @@ import { renderMarkdown } from '@/lib/markdown/render';
  * contents, a conversion preview). Images extracted from the source are shown from
  * `media`; links don't navigate.
  */
+/** An image with the width it was laid out at in its source document. */
+export interface MediaItem {
+  blob: Blob;
+  width?: number;
+}
+
 export function StaticMarkdown({
   text,
   media,
   className = '',
 }: {
   text: string;
-  media?: Record<string, Blob>;
+  media?: Record<string, Blob | MediaItem>;
   className?: string;
 }) {
   const ref = useRef<HTMLElement>(null);
@@ -26,9 +32,15 @@ export function StaticMarkdown({
       // The effect can run again over the same DOM (its blob URLs revoked), so keep the
       // source as written.
       const src = (img.dataset.src ??= img.getAttribute('src') ?? '');
-      const blob = media?.[decodeURI(src)];
+      const item = media?.[decodeURI(src)];
+      const blob = item instanceof Blob ? item : item?.blob;
       if (blob) {
         const url = URL.createObjectURL(blob);
+        const width = item instanceof Blob ? undefined : item?.width;
+        if (width) {
+          img.style.width = `${width}px`;
+          img.style.maxWidth = '100%';
+        }
         urls.push(url);
         img.src = url;
         img.classList.remove('img-missing');

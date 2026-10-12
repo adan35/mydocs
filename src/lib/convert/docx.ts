@@ -413,6 +413,8 @@ export interface ExtractedMedia {
   name: string;
   data: Uint8Array;
   mime: string;
+  /** Display width in CSS pixels, as laid out in the document (images often differ from their pixel size). */
+  width?: number;
 }
 
 export interface DocxReadResult {
@@ -548,7 +550,7 @@ export function docxToAst(data: Uint8Array): DocxReadResult {
     return chain;
   };
 
-  const image = (blip: XmlElement, alt: string): Inline | null => {
+  const image = (blip: XmlElement, alt: string, extentCx?: number): Inline | null => {
     const rid = attr(blip, 'embed');
     const rel = rid ? rels.get(rid) : undefined;
     if (!rel || rel.external) {
@@ -562,7 +564,13 @@ export function docxToAst(data: Uint8Array): DocxReadResult {
       if (!bytes) return null;
       const info = imageInfo(bytes);
       name = path.split('/').pop()!;
-      media.push({ name, data: bytes, mime: info?.mime ?? 'application/octet-stream' });
+      const width = extentCx ? Math.round(extentCx / 9525) : undefined; // EMU → CSS px
+      media.push({ name, data: bytes, mime: info?.mime ?? 'application/octet-stream', width });
+      if (width && info?.width && Math.abs(width - info.width) > 2)
+        report.note(
+          'Image display sizes were not kept; Markdown shows each image at its own size.',
+          'info',
+        );
       mediaByTarget.set(path, name);
       if (!info) report.note('Some images are in a format browsers cannot show (EMF, WMF).');
     }
@@ -629,7 +637,8 @@ export function docxToAst(data: Uint8Array): DocxReadResult {
                 const blip = descendants(rc, 'blip')[0] ?? descendants(rc, 'imagedata')[0];
                 const docPr = descendants(rc, 'docPr')[0];
                 const alt = attr(docPr, 'descr') ?? attr(docPr, 'title') ?? '';
-                const img = blip ? image(blip, alt) : null;
+                const cx = Number(attr(descendants(rc, 'extent')[0], 'cx'));
+                const img = blip ? image(blip, alt, cx > 0 ? cx : undefined) : null;
                 if (img) emit(img);
                 const box = descendants(rc, 'txbxContent');
                 if (box.length) {
