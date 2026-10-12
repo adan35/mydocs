@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { History } from 'lucide-react';
 import type { EntryId, Version } from '@/domain/types';
 import { diffLines } from '@/domain/diff';
+import { formatBytes } from '@/domain/names';
 import { ws } from '@/app/app-store';
 import { restoreVersion } from '@/app/actions';
 import { useEditor } from '@/app/editor-store';
@@ -34,7 +35,10 @@ export function HistoryDialog({ entryId, onClose }: { entryId: EntryId; onClose(
   }, [entryId]);
 
   const version = versions?.find((v) => v.id === selected);
-  const diff = useMemo(() => (version ? diffLines(version.text, current) : []), [version, current]);
+  const diff = useMemo(
+    () => (version && !version.blob ? diffLines(version.text, current) : []),
+    [version, current],
+  );
   const changes = diff.filter((d) => d.type !== 'same').length;
 
   return (
@@ -98,36 +102,45 @@ export function HistoryDialog({ entryId, onClose }: { entryId: EntryId; onClose(
               </li>
             ))}
           </ul>
-          <div className="min-w-0 flex-1">
-            <p className="mb-2 text-caption text-steel">
-              {changes
-                ? `${changes} changed line${changes === 1 ? '' : 's'} compared with the current text.`
-                : 'Identical to the current text.'}
-            </p>
-            <pre className="max-h-[50vh] overflow-auto rounded-md border border-hairline bg-surface-soft p-3 font-mono text-[12.5px] leading-relaxed">
-              {diff.map((d, i) => (
-                <div
-                  key={i}
-                  className={
-                    d.type === 'add'
-                      ? 'bg-[color-mix(in_srgb,var(--success)_14%,transparent)]'
-                      : d.type === 'del'
-                        ? 'bg-[color-mix(in_srgb,var(--danger)_14%,transparent)] line-through decoration-[color-mix(in_srgb,var(--danger)_50%,transparent)]'
-                        : ''
-                  }
-                >
-                  <span className="mr-2 inline-block w-3 select-none text-stone" aria-hidden>
-                    {d.type === 'add' ? '+' : d.type === 'del' ? '−' : ' '}
-                  </span>
-                  {d.text || ' '}
-                </div>
-              ))}
-            </pre>
-            <p className="mt-2 text-xs text-stone">
-              Red lines exist only in the selected version; green lines exist only in the current
-              text.
-            </p>
-          </div>
+          {version?.blob ? (
+            <div className="min-w-0 flex-1">
+              <p className="text-caption text-steel">
+                A saved copy of the whole file ({formatBytes(version.blob.size)}). Restoring it
+                replaces the current file; the current file is kept as a version too.
+              </p>
+            </div>
+          ) : (
+            <div className="min-w-0 flex-1">
+              <p className="mb-2 text-caption text-steel">
+                {changes
+                  ? `${changes} changed line${changes === 1 ? '' : 's'} compared with the current text.`
+                  : 'Identical to the current text.'}
+              </p>
+              <pre className="max-h-[50vh] overflow-auto rounded-md border border-hairline bg-surface-soft p-3 font-mono text-[12.5px] leading-relaxed">
+                {diff.map((d, i) => (
+                  <div
+                    key={i}
+                    className={
+                      d.type === 'add'
+                        ? 'bg-[color-mix(in_srgb,var(--success)_14%,transparent)]'
+                        : d.type === 'del'
+                          ? 'bg-[color-mix(in_srgb,var(--danger)_14%,transparent)] line-through decoration-[color-mix(in_srgb,var(--danger)_50%,transparent)]'
+                          : ''
+                    }
+                  >
+                    <span className="mr-2 inline-block w-3 select-none text-stone" aria-hidden>
+                      {d.type === 'add' ? '+' : d.type === 'del' ? '−' : ' '}
+                    </span>
+                    {d.text || ' '}
+                  </div>
+                ))}
+              </pre>
+              <p className="mt-2 text-xs text-stone">
+                Red lines exist only in the selected version; green lines exist only in the current
+                text.
+              </p>
+            </div>
+          )}
         </div>
       )}
     </Dialog>

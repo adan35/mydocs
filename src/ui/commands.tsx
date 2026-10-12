@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 import {
+  FileOutput,
+  Sheet,
   BookOpen,
   Columns2,
   Download,
@@ -46,6 +48,12 @@ import { useUi } from '@/app/ui-store';
 import { dialogs } from '@/app/dialog-store';
 import { SHORTCUTS } from '@/app/shortcuts';
 import { isMarkdownName } from '@/domain/names';
+import { conversionsFrom, formatOf } from '@/lib/convert/capabilities';
+
+const convertible = (name: string) => {
+  const f = formatOf(name)?.id;
+  return !!f && conversionsFrom(f).length > 0;
+};
 import { pickImport } from './import-pickers';
 import { reopenClosedTab, sendDocCommand, toggleSidePanel } from './doc-commands';
 import { canInstall, installApp } from '@/pwa/register';
@@ -77,6 +85,22 @@ export function getCommands(): Command[] {
       shortcut: SHORTCUTS.newDoc,
       keywords: 'create file note page',
       run: () => void A.newDocument(),
+    },
+    {
+      id: 'new-sheet',
+      title: 'New spreadsheet',
+      group: 'Create',
+      icon: <Sheet />,
+      keywords: 'excel xlsx table grid workbook',
+      run: () => void A.newSpreadsheet(),
+    },
+    {
+      id: 'formats',
+      title: 'Supported formats and conversions',
+      group: 'Workspace',
+      icon: <FileOutput />,
+      keywords: 'docx word xlsx excel csv tsv pdf html export import capability matrix',
+      run: () => void dialogs.formats(),
     },
     {
       id: 'new-template',
@@ -365,6 +389,18 @@ export function getCommands(): Command[] {
               icon: <Table />,
               keywords: 'grid columns rows visual editor',
               run: () => sendDocCommand('insert-table'),
+            },
+          ]
+        : []),
+      ...(convertible(doc.name)
+        ? [
+            {
+              id: 'convert',
+              title: 'Convert or export…',
+              group: 'Document' as const,
+              icon: <FileOutput />,
+              keywords: 'docx word xlsx excel csv tsv html pdf markdown save as',
+              run: () => void dialogs.convert(doc.id),
             },
           ]
         : []),

@@ -64,7 +64,7 @@ export async function sourceText(page: Page): Promise<string> {
   });
 }
 
-export async function mode(page: Page, name: 'Source' | 'Split' | 'Rich' | 'Read') {
+export async function mode(page: Page, name: 'Source' | 'Split' | 'Rich' | 'Read' | 'Sheet') {
   await page
     .getByRole('group', { name: 'View mode' })
     .getByRole('button', { name, exact: true })

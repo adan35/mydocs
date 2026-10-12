@@ -1,0 +1,129 @@
+/* Spreadsheet grid. Hairlines and tokens follow the rest of the app. */
+.sheet-grid {
+  background: var(--canvas);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.sheet-head,
+.sheet-corner,
+.sheet-rownum {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  background: var(--surface-soft);
+  color: var(--steel);
+  font-size: 12px;
+  border-right: 1px solid var(--hairline-soft);
+  border-bottom: 1px solid var(--hairline);
+  user-select: none;
+  flex-shrink: 0;
+}
+.sheet-head.is-active,
+.sheet-rownum.is-active {
+  background: var(--primary-soft);
+  color: var(--primary-soft-ink);
+}
+.sheet-cell {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 8px;
+  border-right: 1px solid var(--hairline-soft);
+  border-bottom: 1px solid var(--hairline-soft);
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: cell;
+  position: relative;
+}
+.sheet-cell.text-right {
+  justify-content: flex-end;
+}
+.sheet-cell.is-active {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+  z-index: 1;
+}
+.sheet-cell.is-stale::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  border-style: solid;
+  border-width: 0 7px 7px 0;
+  border-color: transparent var(--warning) transparent transparent;
+}
+.sheet-editor {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  padding: 0 7px;
+  border: 0;
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+  background: var(--canvas);
+  color: var(--ink);
+  font: inherit;
+}
+.sheet-tabs button[aria-selected='true'] {
+  background: var(--canvas);
+  color: var(--ink);
+  border-color: var(--hairline);
+}
+
+/* PDF text layer (adapted from pdf.js's viewer CSS): invisible text over the canvas,
+   positioned by pdf.js, so text can be selected and searched. */
+.pdf-text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  line-height: 1;
+  text-align: initial;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  z-index: 0;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+.pdf-text-layer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  user-select: text;
+}
+.pdf-text-layer > :not(.markedContent),
+.pdf-text-layer .markedContent span:not(.markedContent) {
+  z-index: 1;
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+.pdf-text-layer .markedContent {
+  display: contents;
+}
+.pdf-text-layer ::selection {
+  background: rgba(35, 131, 226, 0.3);
+  color: transparent;
+}
+.pdf-text-layer br::selection {
+  background: transparent;
+}
+.pdf-text-layer .endOfContent {
+  display: block;
+  position: absolute;
+  inset: 100% 0 0;
+  z-index: 0;
+  user-select: none;
+}
+.pdf-text-layer span.pdf-hit {
+  background: rgba(255, 200, 0, 0.45);
+  border-radius: 2px;
+}

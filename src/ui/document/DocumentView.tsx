@@ -24,6 +24,9 @@ import {
   FileCode2,
   Link2,
   Link2Off,
+  FileOutput,
+  Table2,
+  FileText,
 } from 'lucide-react';
 import type { Entry, EntryId } from '@/domain/types';
 import { isMarkdownName } from '@/domain/names';
@@ -55,6 +58,8 @@ import { Preview, type PreviewHandle } from './Preview';
 import { RightPanel } from './RightPanel';
 import { DiskStatus, SaveStatus } from './SaveStatus';
 import { BinaryView } from './BinaryView';
+import { formatOf, conversionsFrom } from '@/lib/convert/capabilities';
+import { DocxView, PdfView, TextSheetView, XlsxView } from '../lazy-views';
 
 export function DocumentView({ id, anchor }: { id: EntryId; anchor?: string }) {
   const tree = useTree()!;
@@ -74,13 +79,22 @@ export function DocumentView({ id, anchor }: { id: EntryId; anchor?: string }) {
     return null;
   }
   const textual = ws().isEditable(entry);
-  return textual ? (
-    <TextDocument entry={entry} anchor={anchor} />
-  ) : (
+  if (textual) return <TextDocument entry={entry} anchor={anchor} />;
+  const format = formatOf(entry.name)?.id;
+  const onConvert = () => void dialogs.convert(entry.id);
+  return (
     <div className="flex h-full min-h-0 flex-col">
       <DocHeader entry={entry} mode="edit" setMode={() => {}} />
       <div className="min-h-0 flex-1">
-        <BinaryView entry={entry} />
+        {format === 'xlsx' ? (
+          <XlsxView entry={entry} onConvert={onConvert} />
+        ) : format === 'docx' ? (
+          <DocxView entry={entry} onConvert={onConvert} />
+        ) : format === 'pdf' ? (
+          <PdfView entry={entry} />
+        ) : (
+          <BinaryView entry={entry} />
+        )}
       </div>
     </div>
   );
@@ -166,7 +180,13 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
   useEffect(() => setOutlineSheet(false), [id]);
   const focusRequest = useEditor((s) => s.focusRequest);
 
-  let mode: ViewMode = isMd ? (storedMode ?? defaultMode) : 'edit';
+  const delimited = /\.(csv|tsv|tab)$/i.test(entry.name);
+  let mode: ViewMode = isMd
+    ? (storedMode ?? defaultMode)
+    : delimited
+      ? (storedMode ?? 'sheet')
+      : 'edit';
+  if (!isMd && mode !== 'sheet') mode = 'edit';
   if (mode === 'split' && !desktop) mode = 'edit';
   if (readingMode && isMd) mode = 'preview';
   const setMode = (m: ViewMode) => useUi.getState().setViewMode(id, m);
@@ -391,39 +411,50 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
           setMode={setMode}
           onOutline={() => setOutlineSheet(true)}
         />
-        {showRibbon && <Ribbon ctx={toolCtx} tick={tick} />}
-        <div ref={splitRef} className="flex min-h-0 flex-1" style={editorStyle}>
-          {(mode === 'edit' || mode === 'split') && (
-            <div
-              className="flex h-full min-w-0 flex-col"
-              style={mode === 'split' ? { flex: `0 0 ${splitRatio * 100}%` } : { flex: '1 1 0%' }}
-            >
-              <div className="min-h-0 flex-1">
-                <Editor
-                  ref={editorRef}
-                  docId={id}
-                  name={entry.name}
-                  text={text}
-                  onUpdate={bumpTick}
-                  onScrollLine={(line) => {
-                    if (mode === 'edit') setActiveLine(line);
-                  }}
-                />
-              </div>
-            </div>
-          )}
-          {mode === 'split' && (
-            <SplitHandle
-              ratio={splitRatio}
-              containerRef={splitRef}
-              onChange={(r) => {
-                useUi.getState().setSplitRatio(r);
-                sync.invalidate();
-              }}
+        {showRibbon && mode !== 'sheet' && <Ribbon ctx={toolCtx} tick={tick} />}
+        {mode === 'sheet' ? (
+          <div className="min-h-0 flex-1">
+            <TextSheetView
+              docId={id}
+              name={entry.name}
+              text={text}
+              onConvert={() => void dialogs.convert(id, isMd ? 'xlsx' : 'xlsx')}
             />
-          )}
-          {mode !== 'edit' && preview}
-        </div>
+          </div>
+        ) : (
+          <div ref={splitRef} className="flex min-h-0 flex-1" style={editorStyle}>
+            {(mode === 'edit' || mode === 'split') && (
+              <div
+                className="flex h-full min-w-0 flex-col"
+                style={mode === 'split' ? { flex: `0 0 ${splitRatio * 100}%` } : { flex: '1 1 0%' }}
+              >
+                <div className="min-h-0 flex-1">
+                  <Editor
+                    ref={editorRef}
+                    docId={id}
+                    name={entry.name}
+                    text={text}
+                    onUpdate={bumpTick}
+                    onScrollLine={(line) => {
+                      if (mode === 'edit') setActiveLine(line);
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+            {mode === 'split' && (
+              <SplitHandle
+                ratio={splitRatio}
+                containerRef={splitRef}
+                onChange={(r) => {
+                  useUi.getState().setSplitRatio(r);
+                  sync.invalidate();
+                }}
+              />
+            )}
+            {mode !== 'edit' && preview}
+          </div>
+        )}
       </div>
       {showPanel && (
         <div
@@ -581,6 +612,12 @@ function DocHeader({
   const isMd = isMarkdownName(entry.name);
   const textual = ws().isEditable(entry);
   const ancestors = tree.ancestors(entry.id);
+  const delimited = /\.(csv|tsv|tab)$/i.test(entry.name);
+  const format = formatOf(entry.name)?.id;
+  const canConvert = !!format && conversionsFrom(format).length > 0;
+  const hasTables = useEditor((s) =>
+    isMd ? /^\s*\|?.*\|.*\n\s*\|?\s*:?-+:?\s*\|/m.test(s.buffers[entry.id]?.text ?? '') : false,
+  );
 
   const menu: MenuEntry[] = [
     { label: 'Rename…', icon: <PencilLine />, onSelect: () => void A.renameEntry(entry.id) },
@@ -603,6 +640,24 @@ function DocHeader({
             icon: <Search />,
             shortcut: SHORTCUTS.find,
             onSelect: () => sendDocCommand('find'),
+          },
+        ] as MenuEntry[])
+      : []),
+    ...(canConvert
+      ? ([
+          {
+            label: 'Convert or export…',
+            icon: <FileOutput />,
+            onSelect: () => void dialogs.convert(entry.id),
+          },
+        ] as MenuEntry[])
+      : []),
+    ...(!isMd && (format === 'xlsx' || textual)
+      ? ([
+          {
+            label: 'Version history',
+            icon: <History />,
+            onSelect: () => void dialogs.history(entry.id),
           },
         ] as MenuEntry[])
       : []),
@@ -768,7 +823,48 @@ function DocHeader({
             icon={<Eye size={14} />}
             shortcut={SHORTCUTS.toggleMode}
           />
+          {hasTables && (
+            <ModeButton
+              label="Sheet"
+              hint="Edit this document's tables as a spreadsheet"
+              active={mode === 'sheet'}
+              onClick={() => setMode('sheet')}
+              icon={<Table2 size={14} />}
+            />
+          )}
         </div>
+      )}
+      {delimited && (
+        <div
+          role="group"
+          aria-label="View mode"
+          className="ml-1 flex items-center rounded-md bg-surface p-0.5"
+        >
+          <ModeButton
+            label="Sheet"
+            hint="Edit as a spreadsheet"
+            active={mode === 'sheet'}
+            onClick={() => setMode('sheet')}
+            icon={<Table2 size={14} />}
+          />
+          <ModeButton
+            label="Text"
+            hint="Edit the raw text"
+            active={mode !== 'sheet'}
+            onClick={() => setMode('edit')}
+            icon={<FileText size={14} />}
+          />
+        </div>
+      )}
+      {canConvert && !readingMode && !phone && (
+        <button
+          type="button"
+          className="btn btn-ghost h-8 shrink-0 px-2 text-steel"
+          title="Convert to another format, or export a copy"
+          onClick={() => void dialogs.convert(entry.id)}
+        >
+          <FileOutput size={15} aria-hidden /> Convert
+        </button>
       )}
       {isMd && mode === 'split' && !readingMode && <SyncScrollButton />}
       <button
@@ -852,13 +948,13 @@ function ModeButton({
   active: boolean;
   onClick(): void;
   icon: React.ReactNode;
-  shortcut: string;
+  shortcut?: string;
 }) {
   return (
     <button
       type="button"
       aria-pressed={active}
-      title={`${hint} (${formatShortcut(shortcut)})`}
+      title={shortcut ? `${hint} (${formatShortcut(shortcut)})` : hint}
       className={`tap flex h-7 items-center gap-1.5 rounded-[5px] px-2 text-caption font-medium ${active ? 'bg-canvas text-ink shadow-1' : 'text-steel hover:text-ink'}`}
       onClick={onClick}
     >

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { EntryId } from '@/domain/types';
 import type { Table } from '@/domain/table';
+import type { FormatId } from '@/lib/convert/capabilities';
 
 export interface PromptOptions {
   title: string;
@@ -50,7 +51,9 @@ export type DialogRequest =
   | { kind: 'template'; resolve: (v: string | null) => void }
   | { kind: 'history'; entryId: EntryId; resolve: (v: void) => void }
   | { kind: 'shortcuts'; resolve: (v: void) => void }
-  | { kind: 'table'; table: Table; isNew: boolean; resolve: (v: Table | null) => void };
+  | { kind: 'table'; table: Table; isNew: boolean; resolve: (v: Table | null) => void }
+  | { kind: 'convert'; entryId: EntryId; to?: FormatId; resolve: (v: void) => void }
+  | { kind: 'formats'; resolve: (v: void) => void };
 
 interface DialogState {
   stack: DialogRequest[];
@@ -94,4 +97,7 @@ export const dialogs = {
   shortcuts: () => request<void>((resolve) => ({ kind: 'shortcuts', resolve })),
   table: (table: Table, isNew: boolean) =>
     request<Table | null>((resolve) => ({ kind: 'table', table, isNew, resolve })),
+  convert: (entryId: EntryId, to?: FormatId) =>
+    request<void>((resolve) => ({ kind: 'convert', entryId, to, resolve })),
+  formats: () => request<void>((resolve) => ({ kind: 'formats', resolve })),
 };

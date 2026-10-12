@@ -125,6 +125,27 @@ export async function newDocument(
   return run;
 }
 
+/** Creates an empty Excel workbook and opens it in the sheet view. */
+export async function newSpreadsheet(parentId: EntryId | null = contextFolderId()) {
+  return guard('Unable to create the spreadsheet.', async () => {
+    const { convert } = await import('@/lib/convert/client');
+    const { emptySheet } = await import('@/lib/convert/workbook');
+    const sheet = emptySheet('Sheet1', 0, 0);
+    const out = await convert('writeXlsx', { workbook: { sheets: [sheet] } });
+    const name = ws().freeName(parentId, 'Untitled.xlsx');
+    const entry = await ws().createFile(
+      parentId,
+      name,
+      new Blob([out.data as BlobPart], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }),
+    );
+    if (parentId) appActions.setExpanded(parentId, true);
+    await openEntry(entry.id);
+    return entry;
+  });
+}
+
 export async function newFromTemplate(parentId: EntryId | null = contextFolderId()) {
   const id = await dialogs.template();
   if (id) return newDocument(parentId, id);

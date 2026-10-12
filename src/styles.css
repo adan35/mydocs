@@ -5,6 +5,7 @@
 @import './ui/prose.css';
 @import './ui/editor/editor.css';
 @import './ui/print.css';
+@import './ui/sheet/sheet.css';
 
 @custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
 

@@ -4,7 +4,7 @@ import { prefs } from './prefs';
 
 export type ThemePref = 'light' | 'dark' | 'system';
 /** Source (`edit`), source and preview side by side, rich editing, and reading (`preview`). */
-export type ViewMode = 'edit' | 'split' | 'rich' | 'preview';
+export type ViewMode = 'edit' | 'split' | 'rich' | 'preview' | 'sheet';
 export type Density = 'comfortable' | 'compact';
 export type ExplorerView = 'list' | 'compact' | 'grid';
 
