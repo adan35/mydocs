@@ -17,12 +17,12 @@ My Doc runs entirely in the browser and has no server, accounts or network sync.
 Production builds include this policy as a meta tag (`vite.config.ts`):
 
 ```
-default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
+default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline';
 img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self';
 object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'
 ```
 
-No inline or third-party script can run even if sanitizing were bypassed. Inline styles are allowed because CodeMirror, KaTeX and Mermaid need them. Remote `https:` images are allowed so documents can embed images by URL; this means opening a document can make a request to the image's host.
+No inline or third-party script can run even if sanitizing were bypassed. `'wasm-unsafe-eval'` allows WebAssembly only (not `eval()` of text); the PDF viewer needs it for its JPEG 2000 and color-profile decoders, which ship in this app's build, as do its fonts and character maps. Inline styles are allowed because CodeMirror, KaTeX and Mermaid need them. Remote `https:` images are allowed so documents can embed images by URL; this means opening a document can make a request to the image's host.
 
 ## Files and import
 

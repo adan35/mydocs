@@ -39,6 +39,8 @@ test('split view keeps both panes on the same section in either direction', asyn
   // Scrolling the source moves the preview.
   await page.locator('.cm-scroller').hover();
   await page.mouse.wheel(0, 2500);
+  // The wheel has to land first, or "aligned" is just both panes still at the top.
+  await expect.poll(() => topHeading(page, 'source')).toBeGreaterThan(5);
   await expect
     .poll(async () =>
       Math.abs((await topHeading(page, 'source')) - (await topHeading(page, 'preview'))),
@@ -50,6 +52,7 @@ test('split view keeps both panes on the same section in either direction', asyn
   // Scrolling the preview moves the source back, without bouncing.
   await page.locator('[data-testid="preview-pane"]').hover();
   await page.mouse.wheel(0, -1200);
+  await expect.poll(() => topHeading(page, 'preview')).toBeLessThan(afterSource);
   await expect
     .poll(async () =>
       Math.abs((await topHeading(page, 'source')) - (await topHeading(page, 'preview'))),

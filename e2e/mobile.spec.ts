@@ -39,3 +39,31 @@ test('phone: usable filter box, and toasts never cover an open sheet', async ({ 
   await page.getByRole('menuitem', { name: 'Settings' }).click();
   await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
 });
+
+test('phone: the PDF export preview fits the dialog', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Welcome to My Doc' })).toBeVisible();
+  await page
+    .getByRole('navigation', { name: 'Main' })
+    .getByRole('button', { name: 'Files' })
+    .click();
+  await page.getByRole('main').getByRole('button', { name: 'Guides', exact: true }).click();
+  await page
+    .getByRole('main')
+    .getByRole('button', { name: 'Markdown guide.md', exact: true })
+    .click();
+  await expect(page.locator('.cm-content')).toBeVisible();
+  await page.getByRole('button', { name: 'More actions' }).click();
+  await page.getByRole('menuitem', { name: /Convert or export/ }).click();
+  const dialog = page.getByRole('dialog', { name: /Convert or export/ });
+  await dialog.getByRole('radio', { name: /^PDF/ }).click();
+  const preview = dialog.getByTestId('pdf-preview');
+  await expect(preview.locator('canvas').first()).toBeVisible();
+  const fit = await preview.evaluate((el) => ({
+    scroll: el.scrollWidth,
+    client: el.clientWidth,
+    page: el.querySelector('[data-page]')!.getBoundingClientRect().width,
+  }));
+  expect(fit.scroll).toBeLessThanOrEqual(fit.client);
+  expect(fit.page).toBeLessThanOrEqual(fit.client);
+});

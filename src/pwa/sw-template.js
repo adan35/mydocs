@@ -44,5 +44,21 @@ self.addEventListener('fetch', (event) => {
     );
     return;
   }
+  if (url.pathname.startsWith('/pdfjs/')) {
+    // PDF fonts, character maps and decoders: large, rarely needed, so cached on first use.
+    event.respondWith(
+      caches.open(CACHE).then((cache) =>
+        cache.match(req).then(
+          (hit) =>
+            hit ||
+            fetch(req).then((res) => {
+              if (res.ok) void cache.put(req, res.clone());
+              return res;
+            }),
+        ),
+      ),
+    );
+    return;
+  }
   event.respondWith(caches.match(req, { cacheName: CACHE }).then((hit) => hit || fetch(req)));
 });

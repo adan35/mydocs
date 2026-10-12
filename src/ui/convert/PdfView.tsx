@@ -14,25 +14,7 @@ import type { Entry } from '@/domain/types';
 import { ws } from '@/app/app-store';
 import { exportEntry } from '@/app/actions';
 import { canPrint } from '@/platform';
-
-type PdfJs = typeof import('pdfjs-dist');
-let pdfjs: Promise<PdfJs> | null = null;
-
-/**
- * Loaded only when a PDF is opened; the worker is served from this app (CSP 'self').
- * The legacy build carries polyfills the modern one assumes (e.g. Map.getOrInsertComputed),
- * which older Chromium, Android WebViews and Safari/WKWebView don't have yet.
- */
-function loadPdfJs(): Promise<PdfJs> {
-  pdfjs ??= Promise.all([
-    import('pdfjs-dist/legacy/build/pdf.mjs'),
-    import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'),
-  ]).then(([lib, worker]) => {
-    lib.GlobalWorkerOptions.workerSrc = worker.default;
-    return lib as unknown as PdfJs;
-  });
-  return pdfjs;
-}
+import { loadPdfJs, pdfAssets } from './pdfjs';
 
 const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
 
@@ -65,7 +47,7 @@ export function PdfView({ entry }: { entry: Entry }) {
         if (!blob) throw new Error('The file could not be read.');
         const lib = await loadPdfJs();
         const data = new Uint8Array(await blob.arrayBuffer());
-        const loading = lib.getDocument({ data, enableXfa: false });
+        const loading = lib.getDocument({ data, enableXfa: false, ...pdfAssets() });
         task = loading;
         const loaded = await loading.promise;
         if (cancelled) return;
@@ -284,7 +266,7 @@ export function PdfView({ entry }: { entry: Entry }) {
   );
 }
 
-function PdfPage({
+export function PdfPage({
   doc,
   n,
   zoom,
@@ -300,6 +282,8 @@ function PdfPage({
   const textLayer = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [visible, setVisible] = useState(n <= 2);
+  // Bumped when the text layer has been drawn, so search highlights can be applied to it.
+  const [layerReady, setLayerReady] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -354,6 +338,7 @@ function PdfPage({
         viewport,
       });
       await tl.render().catch(() => undefined);
+      if (!cancelled) setLayerReady((v) => v + 1);
     })();
     return () => {
       cancelled = true;
@@ -361,7 +346,7 @@ function PdfPage({
     };
   }, [visible, size, doc, n, zoom]);
 
-  // Highlight search matches in this page's text layer.
+  // Highlight search matches in this page's text layer, also when it finishes after the search.
   useEffect(() => {
     const el = textLayer.current;
     if (!el) return;
@@ -371,7 +356,7 @@ function PdfPage({
         'pdf-hit',
         !!needle && (span.textContent ?? '').toLowerCase().includes(needle),
       );
-  });
+  }, [query, layerReady]);
 
   return (
     <div

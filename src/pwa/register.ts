@@ -42,7 +42,14 @@ export function registerServiceWorker() {
   if (location.protocol !== 'https:' && location.hostname !== 'localhost') return;
 
   let reloading = false;
+  // The first install claims the open page; that needs no reload (the page already runs the
+  // newest code), and reloading would interrupt whoever is typing. Only an update does.
+  let hadController = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController) {
+      hadController = true;
+      return;
+    }
     if (reloading) return;
     reloading = true;
     location.reload();

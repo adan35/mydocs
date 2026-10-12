@@ -3,7 +3,8 @@ import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath } from 'node:url';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, normalize, sep } from 'node:path';
 import { createHash } from 'node:crypto';
 
 /**
@@ -13,7 +14,9 @@ import { createHash } from 'node:crypto';
  */
 const CSP = [
   "default-src 'self'",
-  "script-src 'self'",
+  // 'wasm-unsafe-eval' lets pdf.js run its image decoders (JPEG 2000, ICC); it allows
+  // WebAssembly only, not eval() of text.
+  "script-src 'self' 'wasm-unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
@@ -35,6 +38,46 @@ const cspPlugin = (): Plugin => ({
     ),
 });
 
+/**
+ * pdf.js reads character maps (CJK and other non-Latin PDFs), standard fonts and image
+ * decoders from files. They're served from this app, so the CSP stays 'self' and nothing
+ * is fetched from a third party. They're cached when first used, not at install.
+ */
+const PDFJS_DIRS = ['cmaps', 'standard_fonts', 'wasm', 'iccs'];
+const PDFJS_ROOT = fileURLToPath(new URL('./node_modules/pdfjs-dist/', import.meta.url));
+
+function* pdfjsFiles(dir: string, prefix = ''): Generator<string> {
+  for (const name of readdirSync(join(PDFJS_ROOT, dir, prefix))) {
+    const rel = prefix ? `${prefix}/${name}` : name;
+    if (statSync(join(PDFJS_ROOT, dir, rel)).isDirectory()) yield* pdfjsFiles(dir, rel);
+    else if (!name.startsWith('LICENSE')) yield `${dir}/${rel}`;
+  }
+}
+
+const pdfjsAssetsPlugin = (): Plugin => ({
+  name: 'mydoc-pdfjs-assets',
+  configureServer(server) {
+    server.middlewares.use((req, res, next) => {
+      const path = (req.url ?? '').split('?')[0]!;
+      if (!path.startsWith('/pdfjs/')) return next();
+      const file = normalize(join(PDFJS_ROOT, decodeURIComponent(path.slice('/pdfjs/'.length))));
+      const dir = PDFJS_DIRS.find((d) => file.startsWith(join(PDFJS_ROOT, d) + sep));
+      if (!dir || !existsSync(file) || statSync(file).isDirectory()) return next();
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.end(readFileSync(file));
+    });
+  },
+  generateBundle() {
+    for (const dir of PDFJS_DIRS)
+      for (const file of pdfjsFiles(dir))
+        this.emitFile({
+          type: 'asset',
+          fileName: `pdfjs/${file}`,
+          source: readFileSync(join(PDFJS_ROOT, file)),
+        });
+  },
+});
+
 /** Files from `public/` the offline shell needs (build output is added automatically). */
 const PUBLIC_SHELL = [
   '/',
@@ -54,7 +97,7 @@ const serviceWorkerPlugin = (): Plugin => ({
   apply: 'build',
   generateBundle(_options, bundle) {
     const files = [...PUBLIC_SHELL, ...Object.keys(bundle).map((f) => `/${f}`)].filter(
-      (f) => !f.endsWith('.map') && f !== '/sw.js',
+      (f) => !f.endsWith('.map') && f !== '/sw.js' && !f.startsWith('/pdfjs/'),
     );
     const version = createHash('sha256').update(files.join('\n')).digest('hex').slice(0, 12);
     const template = readFileSync(new URL('./src/pwa/sw-template.js', import.meta.url), 'utf8');
@@ -69,7 +112,7 @@ const serviceWorkerPlugin = (): Plugin => ({
 });
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), cspPlugin(), serviceWorkerPlugin()],
+  plugins: [react(), tailwindcss(), cspPlugin(), pdfjsAssetsPlugin(), serviceWorkerPlugin()],
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },

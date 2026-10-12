@@ -17,7 +17,7 @@ My Doc ships as one web app in four shells. Every feature lives in `src/`, so an
   - **Saving exports**: a browser download on the web, a native Save dialog on desktop, the share sheet on Android and iOS (save to Files, Drive, email, and so on).
   - **External links**: opened in the system browser instead of a dead `target="_blank"`.
   - **Closing the window** (desktop): pending edits are saved before the window closes.
-  - **PDF export**: uses the print dialog on web and desktop. Mobile web views have no print dialog, so the mobile apps share a print-ready HTML file instead.
+  - **PDF export**: MyDocs writes the PDF file itself, so it saves or shares the same way on every platform. The system print dialog is only an optional second route (web and desktop) for text in non-Latin scripts.
 - The desktop window turns off Tauri's own file-drop handling so drag-and-drop import works exactly as in the browser.
 - The desktop Content-Security-Policy adds only Tauri's IPC endpoints to `connect-src` (see `vite.config.ts`).
 
@@ -67,8 +67,9 @@ desktop and mobile apps get them unchanged. Platform differences:
 
 - **Saving exports**: the desktop app uses the native save dialog; the mobile apps use the share
   sheet; the browser downloads (`src/platform/`).
-- **PDF export** uses the print dialog, which the mobile web views don't have. The mobile apps
-  share a print-ready HTML file instead and the conversion dialog says so.
+- **PDF export** writes a real PDF file in every shell (no print dialog needed), so on phones it
+  goes through the share sheet like any other export. "Print instead" (the system print dialog)
+  exists on web and desktop only.
 - **PDF viewing** uses pdf.js's legacy build so it works in older Android WebViews and WKWebView.
 - **Conversions** run in a Web Worker in every shell, with an in-thread fallback.
 

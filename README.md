@@ -57,7 +57,7 @@ Your documents stay plain Markdown and text. Everything My Doc adds, like tags a
 - Import files, whole folders or zip archives, by picker or drag and drop. Folder structure is kept, `.git` and `node_modules` are skipped, and name conflicts can be replaced, skipped or kept as copies.
 - In Chrome and Edge, text files imported with the Files… or Folder… picker stay linked to the original file: every save is also written back to it (the browser asks once for permission). Other browsers keep the edited copy in My Doc; export it to save it back.
 - Any text file opens in the editor, including dotfiles and unfamiliar extensions.
-- Export a document as Markdown, plain text, standalone HTML, or PDF (through the browser's print dialog). Export a folder or the whole workspace as a zip.
+- Export a document as Markdown, plain text, standalone HTML, or PDF (a real PDF file; the print dialog stays available for non-Latin text). Export a folder or the whole workspace as a zip.
 
 **Offline and install**
 
