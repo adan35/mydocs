@@ -105,7 +105,7 @@ test('the theme toggle switches themes, and line numbers follow', async ({ page 
   const gutterBg = await page
     .locator('.cm-gutters')
     .evaluate((el) => getComputedStyle(el).backgroundColor);
-  expect(gutterBg).toBe('rgb(25, 25, 25)');
+  expect(gutterBg).toBe('rgb(28, 29, 33)');
   // Line numbers sit right next to the text.
   const gap = await page.evaluate(() => {
     const gutter = document.querySelector('.cm-gutters')!.getBoundingClientRect();
@@ -115,4 +115,50 @@ test('the theme toggle switches themes, and line numbers follow', async ({ page 
   expect(gap).toBeLessThan(24);
   await page.getByRole('button', { name: 'Switch to light theme' }).click();
   await expect(html).toHaveAttribute('data-theme', 'light');
+});
+
+test('the theme menu switches palettes, the gutter follows, and the choice survives a reload', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    if (!sessionStorage.getItem('seeded')) {
+      sessionStorage.setItem('seeded', '1');
+      localStorage.setItem('mydoc:settings', JSON.stringify({ theme: 'dark', lineNumbers: true }));
+    }
+  });
+  await freshApp(page);
+  await page.getByRole('button', { name: 'New document', exact: true }).first().click();
+  await page.keyboard.type('one\ntwo');
+  const html = page.locator('html');
+  const colors = () =>
+    page.evaluate(() => ({
+      gutter: getComputedStyle(document.querySelector('.cm-gutters')!).backgroundColor,
+      canvas: getComputedStyle(document.documentElement).getPropertyValue('--canvas').trim(),
+    }));
+
+  await page.getByRole('button', { name: 'Change theme' }).click();
+  await page.getByRole('menuitemradio', { name: 'Nord' }).click();
+  await expect(html).toHaveAttribute('data-palette', 'nord');
+  expect((await colors()).canvas).toBe('#2e3440');
+  expect((await colors()).gutter).toBe('rgb(46, 52, 64)');
+
+  // Light mode from the same menu keeps the palette.
+  await page.getByRole('button', { name: 'Change theme' }).click();
+  await expect(page.getByRole('menuitemradio', { name: 'Nord' })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
+  await page.getByRole('menuitemradio', { name: 'Light' }).click();
+  await expect(html).toHaveAttribute('data-theme', 'light');
+  expect((await colors()).gutter).toBe('rgb(236, 239, 244)');
+
+  // Applied before first paint on reload.
+  await page.reload();
+  await expect(html).toHaveAttribute('data-palette', 'nord');
+  await expect(html).toHaveAttribute('data-theme', 'light');
+
+  // Back to Classic from Settings removes the attribute.
+  await page.goto('/#/settings');
+  await page.getByRole('radio', { name: /Classic/ }).click();
+  await expect(html).not.toHaveAttribute('data-palette', /.+/);
 });

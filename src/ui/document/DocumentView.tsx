@@ -319,13 +319,14 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
     );
   }
 
-  const widthPx = { narrow: 640, normal: 760, wide: 980 }[readingWidth];
+  // Full width: the column fills the pane, keeping only a small margin.
+  const widthPx = { narrow: 640, normal: 760, wide: 980, full: null }[readingWidth];
   const showPanel = isMd && panelOpen && wide && !focusMode && !readingMode;
   const editorStyle = {
     '--editor-size': `${fontSize - (editorFont === 'mono' ? 1 : 0)}px`,
     '--editor-font': editorFont === 'mono' ? 'var(--font-mono)' : 'var(--font-sans)',
     '--editor-line-height': editorFont === 'mono' ? 1.65 : 1.75,
-    '--editor-max': mode === 'split' ? '100%' : `${widthPx + 60}px`,
+    '--editor-max': mode === 'split' || widthPx === null ? '100%' : `${widthPx + 60}px`,
   } as React.CSSProperties;
 
   const preview = (
@@ -347,8 +348,8 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
       }
     >
       <div
-        className="mx-auto px-5 pt-8 pb-[30vh] sm:px-10 sm:pt-12"
-        style={{ maxWidth: widthPx + 80 }}
+        className="mx-auto px-4 pt-8 pb-[30vh] sm:px-8 sm:pt-12"
+        style={{ maxWidth: widthPx === null ? undefined : widthPx + 64 }}
       >
         {mode === 'rich' && !text.trim() && (
           <button

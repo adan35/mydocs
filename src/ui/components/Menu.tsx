@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronRight } from 'lucide-react';
+import { Check, ChevronRight } from 'lucide-react';
 import { create } from 'zustand';
 import { formatShortcut, useLayout } from '../hooks';
 import { restoreFocus } from '../focus';
@@ -11,6 +11,8 @@ export interface MenuItem {
   shortcut?: string;
   danger?: boolean;
   disabled?: boolean;
+  /** Shows the item as a choice in a group, ticked when true. */
+  checked?: boolean;
   onSelect?: () => void;
   submenu?: MenuEntry[];
 }
@@ -64,7 +66,7 @@ function useMenuKeyboard(
     const list = listRef.current;
     if (!list) return;
     const items = () => [
-      ...list.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not([disabled])'),
+      ...list.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]:not([disabled])'),
     ];
     items()[0]?.focus();
     const onKey = (e: KeyboardEvent) => {
@@ -117,7 +119,8 @@ function MenuItems({
           <button
             key={i}
             type="button"
-            role="menuitem"
+            role={item.checked === undefined ? 'menuitem' : 'menuitemradio'}
+            aria-checked={item.checked}
             className="menu-item"
             data-danger={item.danger || undefined}
             disabled={item.disabled}
@@ -136,6 +139,7 @@ function MenuItems({
             {item.shortcut && (
               <span className="ml-4 text-xs text-stone">{formatShortcut(item.shortcut)}</span>
             )}
+            {item.checked && <Check size={14} className="text-primary" aria-hidden />}
             {item.submenu && <ChevronRight size={14} className="text-stone" aria-hidden />}
           </button>
         ),

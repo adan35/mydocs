@@ -6,6 +6,7 @@
 @import './ui/editor/editor.css';
 @import './ui/print.css';
 @import './ui/sheet/sheet.css';
+@import './themes.css';
 
 @custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
 
@@ -14,7 +15,8 @@
  * (warm neutrals, hairline borders, purple primary, link blue).
  * Dark values are derived for a calm, low-glare workspace.
  */
-:root {
+:root,
+[data-theme='light'] {
   color-scheme: light;
   --canvas: #ffffff;
   --surface: #f6f5f4;
@@ -26,7 +28,7 @@
   --ink: #1a1a1a;
   --charcoal: #37352f;
   --slate: #5d5b54;
-  --steel: #787671;
+  --steel: #6f6d68;
   --stone: #a4a097;
   --muted: #bbb8b1;
   --primary: #5645d4;
@@ -63,41 +65,42 @@
 
 [data-theme='dark'] {
   color-scheme: dark;
-  --canvas: #191919;
-  --surface: #232323;
-  --surface-soft: #1e1e1e;
-  --sidebar: #202020;
-  --hairline: #2f2f2f;
-  --hairline-soft: #282828;
-  --hairline-strong: #474747;
-  --ink: #ededec;
-  --charcoal: #d6d5d2;
-  --slate: #a9a8a4;
-  --steel: #8f8e8a;
-  --stone: #6f6e6a;
-  --muted: #555452;
-  --primary: #7c6df2;
-  --primary-pressed: #6a5ae6;
+  /* Cool charcoal: the sidebar sits a step darker than the page, panels a step lighter. */
+  --canvas: #1c1d21;
+  --surface: #26272c;
+  --surface-soft: #212226;
+  --sidebar: #17181b;
+  --hairline: #2f3137;
+  --hairline-soft: #282a2f;
+  --hairline-strong: #474a52;
+  --ink: #ececef;
+  --charcoal: #d4d6db;
+  --slate: #a9acb4;
+  --steel: #92959e;
+  --stone: #6f727b;
+  --muted: #565961;
+  --primary: #9a8cff;
+  --primary-pressed: #8677fa;
   --on-primary: #ffffff;
   --primary-solid: #6352e0;
   --primary-solid-pressed: #5544cf;
   --danger-solid: #c92a2a;
-  --primary-soft: #2c2650;
-  --primary-soft-ink: #d6ceff;
-  --link: #5aa9f5;
-  --success: #3cc35c;
-  --warning: #f08a3c;
-  --danger: #f16a6a;
-  --danger-soft: #3a1f24;
-  --hover: rgba(255, 255, 255, 0.055);
+  --primary-soft: #2e2a55;
+  --primary-soft-ink: #dcd6ff;
+  --link: #6cb6ff;
+  --success: #4cc96b;
+  --warning: #f29a52;
+  --danger: #f37b7b;
+  --danger-soft: #3d2228;
+  --hover: rgba(255, 255, 255, 0.05);
   --active: rgba(255, 255, 255, 0.09);
-  --selection: rgba(90, 169, 245, 0.25);
-  --focus: #9d8fff;
-  --code-bg: #232323;
+  --selection: rgba(154, 140, 255, 0.28);
+  --focus: #a99dff;
+  --code-bg: #26272c;
   --mark: #4a3f14;
   --mark-ink: #f9e79f;
-  --tag-bg: #2c2650;
-  --tag-ink: #d6ceff;
+  --tag-bg: #2e2a55;
+  --tag-ink: #dcd6ff;
   --shadow-1: rgba(0, 0, 0, 0.3) 0px 1px 2px 0px;
   --shadow-2: rgba(0, 0, 0, 0.35) 0px 4px 12px 0px;
   --shadow-3: rgba(255, 255, 255, 0.06) 0px 0px 0px 1px, rgba(0, 0, 0, 0.45) 0px 12px 32px -4px;

@@ -11,15 +11,24 @@ import { Toaster } from './components/Toaster';
 import { useResolvedTheme } from './hooks';
 import { installNativeLinkHandler, onBeforeQuit } from '@/platform';
 import { useUi } from '@/app/ui-store';
+import { useSettings } from '@/app/settings-store';
 
 function useThemeAttribute() {
   const theme = useResolvedTheme();
+  const palette = useSettings((s) => s.palette);
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
+    const root = document.documentElement;
+    root.dataset.theme = theme;
+    if (palette === 'classic') delete root.dataset.palette;
+    else root.dataset.palette = palette;
+    // The browser and phone status bar take the page color.
+    const canvas = getComputedStyle(root).getPropertyValue('--canvas').trim();
     document
       .querySelectorAll('meta[name="theme-color"]')
-      .forEach((m) => m.setAttribute('content', theme === 'dark' ? '#191919' : '#ffffff'));
-  }, [theme]);
+      .forEach((m) =>
+        m.setAttribute('content', canvas || (theme === 'dark' ? '#1c1d21' : '#ffffff')),
+      );
+  }, [theme, palette]);
 }
 
 /** Wires the workspace to the editor and protects unsaved work across reloads and crashes. */
