@@ -150,7 +150,9 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
   const syncScroll = useSettings((s) => s.syncScroll);
   const splitRatio = useUi((s) => s.splitRatio);
   const panelWidth = useUi((s) => s.rightPanelWidth);
-  const { wide, desktop } = useLayout();
+  const { wide, phone } = useLayout();
+  /** Phones stack the panes; wider screens put them side by side. */
+  const stacked = phone;
   const editorRef = useRef<EditorHandle>(null);
   const previewRef = useRef<PreviewHandle>(null);
   const previewScroller = useRef<HTMLDivElement>(null);
@@ -187,7 +189,6 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
       ? (storedMode ?? 'sheet')
       : 'edit';
   if (!isMd && mode !== 'sheet') mode = 'edit';
-  if (mode === 'split' && !desktop) mode = 'edit';
   if (readingMode && isMd) mode = 'preview';
   const setMode = (m: ViewMode) => useUi.getState().setViewMode(id, m);
   const text = buffer?.text ?? '';
@@ -270,7 +271,7 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
         const tool = TOOLS.find((t) => t.id === cmd.slice(5));
         if (tool && tool.when(toolCtx) && !tool.disabled?.(toolCtx)) tool.run(toolCtx);
       } else if (cmd.startsWith('style:')) applyBlockStyle(toolCtx, cmd.slice(6) as BlockType);
-      else if (cmd === 'split' && isMd && desktop) setMode(mode === 'split' ? 'edit' : 'split');
+      else if (cmd === 'split' && isMd) setMode(mode === 'split' ? 'edit' : 'split');
       else if (cmd === 'focus-editor') editorRef.current?.focus();
       else if (cmd === 'panel-sheet' && isMd && !readingMode) setOutlineSheet((v) => !v);
       else if (cmd === 'insert-table' && isMd) {
@@ -332,7 +333,7 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
   const preview = (
     <div
       ref={previewScroller}
-      className="scroll-area h-full min-w-0 flex-1 print-source"
+      className={`scroll-area min-w-0 flex-1 print-source ${stacked ? 'min-h-0 w-full' : 'h-full'}`}
       data-testid="preview-pane"
       onScroll={
         readingMode
@@ -423,10 +424,14 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
             />
           </div>
         ) : (
-          <div ref={splitRef} className="flex min-h-0 flex-1" style={editorStyle}>
+          <div
+            ref={splitRef}
+            className={`flex min-h-0 flex-1 ${stacked ? 'flex-col' : ''}`}
+            style={editorStyle}
+          >
             {(mode === 'edit' || mode === 'split') && (
               <div
-                className="flex h-full min-w-0 flex-col"
+                className={`flex min-w-0 flex-col ${stacked && mode === 'split' ? 'min-h-0 w-full' : 'h-full'}`}
                 style={mode === 'split' ? { flex: `0 0 ${splitRatio * 100}%` } : { flex: '1 1 0%' }}
               >
                 <div className="min-h-0 flex-1">
@@ -445,6 +450,7 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
             )}
             {mode === 'split' && (
               <SplitHandle
+                vertical={stacked}
                 ratio={splitRatio}
                 containerRef={splitRef}
                 onChange={(r) => {
@@ -492,27 +498,33 @@ function SplitHandle({
   ratio,
   containerRef,
   onChange,
+  vertical = false,
 }: {
   ratio: number;
   containerRef: React.RefObject<HTMLDivElement | null>;
   onChange(r: number): void;
+  /** Panes are stacked: the divider is horizontal and moves up and down. */
+  vertical?: boolean;
 }) {
   const clamp = (r: number) => Math.min(0.8, Math.max(0.2, r));
   return (
     <div
       role="separator"
-      aria-orientation="vertical"
+      aria-orientation={vertical ? 'horizontal' : 'vertical'}
       aria-label="Resize source and preview"
       aria-valuemin={20}
       aria-valuemax={80}
       aria-valuenow={Math.round(ratio * 100)}
       tabIndex={0}
       title="Drag to resize. Double-click to reset."
-      className="group relative z-10 -mx-1 w-2 shrink-0 cursor-col-resize touch-none no-print"
+      className={`group relative z-10 shrink-0 touch-none no-print ${
+        vertical ? '-my-2 h-5 cursor-row-resize' : '-mx-1 w-2 cursor-col-resize'
+      }`}
       onDoubleClick={() => onChange(0.5)}
       onKeyDown={(e) => {
-        if (e.key === 'ArrowLeft') onChange(clamp(ratio - 0.05));
-        else if (e.key === 'ArrowRight') onChange(clamp(ratio + 0.05));
+        const [less, more] = vertical ? ['ArrowUp', 'ArrowDown'] : ['ArrowLeft', 'ArrowRight'];
+        if (e.key === less) onChange(clamp(ratio - 0.05));
+        else if (e.key === more) onChange(clamp(ratio + 0.05));
         else return;
         e.preventDefault();
       }}
@@ -520,7 +532,12 @@ function SplitHandle({
         const box = containerRef.current?.getBoundingClientRect();
         if (!box) return;
         e.currentTarget.setPointerCapture(e.pointerId);
-        const move = (ev: PointerEvent) => onChange(clamp((ev.clientX - box.left) / box.width));
+        const move = (ev: PointerEvent) =>
+          onChange(
+            clamp(
+              vertical ? (ev.clientY - box.top) / box.height : (ev.clientX - box.left) / box.width,
+            ),
+          );
         const up = () => {
           removeEventListener('pointermove', move);
           removeEventListener('pointerup', up);
@@ -529,7 +546,13 @@ function SplitHandle({
         addEventListener('pointerup', up);
       }}
     >
-      <div className="mx-auto h-full w-px bg-hairline group-hover:bg-primary group-focus-visible:bg-primary" />
+      <div
+        className={
+          vertical
+            ? 'absolute inset-x-0 top-1/2 h-px bg-hairline group-hover:bg-primary group-focus-visible:bg-primary'
+            : 'mx-auto h-full w-px bg-hairline group-hover:bg-primary group-focus-visible:bg-primary'
+        }
+      />
     </div>
   );
 }
@@ -606,7 +629,7 @@ function DocHeader({
   onOutline?: () => void;
 }) {
   const tree = useTree()!;
-  const { phone, wide, desktop } = useLayout();
+  const { phone, wide } = useLayout();
   const focusMode = useUi((s) => s.focusMode);
   const readingMode = useUi((s) => s.readingMode);
   const panelOpen = useUi((s) => s.rightPanelOpen);
@@ -798,16 +821,14 @@ function DocHeader({
             icon={<FileCode2 size={14} />}
             shortcut={SHORTCUTS.toggleMode}
           />
-          {desktop && (
-            <ModeButton
-              label="Split"
-              hint="Source and preview side by side"
-              active={mode === 'split'}
-              onClick={() => setMode('split')}
-              icon={<Columns2 size={14} />}
-              shortcut={SHORTCUTS.splitView}
-            />
-          )}
+          <ModeButton
+            label="Split"
+            hint={phone ? 'Source above, preview below' : 'Source and preview side by side'}
+            active={mode === 'split'}
+            onClick={() => setMode('split')}
+            icon={<Columns2 size={14} className={phone ? 'rotate-90' : ''} />}
+            shortcut={SHORTCUTS.splitView}
+          />
           <ModeButton
             label="Rich"
             hint="Edit the formatted document directly"

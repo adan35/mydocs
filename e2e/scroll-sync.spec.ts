@@ -27,15 +27,40 @@ async function topHeading(page: Page, pane: 'source' | 'preview'): Promise<numbe
   }, pane);
 }
 
-test('split view keeps both panes on the same section in either direction', async ({ page }) => {
+/** Starts both panes at the top (a freshly typed document opens scrolled to the cursor). */
+async function scrollToTop(page: Page) {
+  await page.locator('.cm-scroller').hover();
+  await page.mouse.wheel(0, -100000);
+  await expect.poll(() => topHeading(page, 'source')).toBe(1);
+  await expect.poll(() => topHeading(page, 'preview')).toBe(1);
+}
+
+const SIZES = [
+  { name: 'desktop', width: 1400, height: 900 },
+  { name: 'tablet', width: 900, height: 1000 },
+  { name: 'phone', width: 390, height: 844 },
+];
+
+for (const size of SIZES) {
+  test(`split view keeps both panes on the same section in either direction (${size.name})`, async ({
+    page,
+  }) => {
+    await runSplitSync(page, size);
+  });
+}
+
+async function runSplitSync(page: Page, size: { width: number; height: number; name: string }) {
+  // Set up on a roomy screen (phones hide the sidebar buttons), then shrink.
   await page.setViewportSize({ width: 1400, height: 900 });
   await freshApp(page);
   await newDocInRoot(page, 'Long');
   await setDoc(page, sections);
   await waitSaved(page);
+  await page.setViewportSize({ width: size.width, height: size.height });
   await mode(page, 'Split');
   await expect(page.locator('[data-testid="preview-pane"] h2').first()).toBeVisible();
 
+  await scrollToTop(page);
   // Scrolling the source moves the preview.
   await page.locator('.cm-scroller').hover();
   await page.mouse.wheel(0, 2500);
@@ -67,4 +92,38 @@ test('split view keeps both panes on the same section in either direction', asyn
   await page.mouse.wheel(0, 2000);
   await page.waitForTimeout(400);
   expect(await topHeading(page, 'preview')).toBe(before);
+}
+
+test('split view stays aligned past tables and images (phone)', async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await freshApp(page);
+  await newDocInRoot(page, 'Rich');
+  const png =
+    'data:image/svg+xml;utf8,' +
+    encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="#7b61ff"/></svg>',
+    );
+  const doc = Array.from({ length: 20 }, (_, i) => {
+    const n = i + 1;
+    return `## Section ${n}\n\n![pic](${png})\n\n| a | b | c |\n| - | - | - |\n${'| 1 | 2 | 3 |\n'.repeat(6)}\nText for section ${n}.\n`;
+  }).join('\n');
+  await setDoc(page, doc);
+  await waitSaved(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mode(page, 'Split');
+  await expect(page.locator('[data-testid="preview-pane"] h2').first()).toBeVisible();
+  // Both panes are visible at once, one above the other.
+  const src = await page.locator('.cm-scroller').boundingBox();
+  const pre = await page.locator('[data-testid="preview-pane"]').boundingBox();
+  expect(src!.y + src!.height).toBeLessThanOrEqual(pre!.y + 2);
+
+  await scrollToTop(page);
+  await page.locator('.cm-scroller').hover();
+  await page.mouse.wheel(0, 1800);
+  await expect.poll(() => topHeading(page, 'source')).toBeGreaterThan(3);
+  await expect
+    .poll(async () =>
+      Math.abs((await topHeading(page, 'source')) - (await topHeading(page, 'preview'))),
+    )
+    .toBeLessThanOrEqual(1);
 });
