@@ -8,6 +8,8 @@ import { AppShell } from './layout/AppShell';
 import { DialogHost } from './dialogs/DialogHost';
 import { MenuHost } from './components/Menu';
 import { Toaster } from './components/Toaster';
+import { UpdatePrompt } from './dialogs/UpdateDialog';
+import { startUpdateChecks } from '@/app/updates';
 import { useResolvedTheme } from './hooks';
 import { installNativeLinkHandler, onBeforeQuit } from '@/platform';
 import { useUi } from '@/app/ui-store';
@@ -135,6 +137,7 @@ export function App() {
   const error = useApp((s) => s.error);
   useThemeAttribute();
   useLifecycle();
+  useEffect(() => startUpdateChecks(), []);
 
   useEffect(() => {
     void appActions.init();
@@ -206,6 +209,7 @@ export function App() {
       <AppShell />
       <DialogHost />
       <MenuHost />
+      <UpdatePrompt />
       <Toaster />
     </>
   );

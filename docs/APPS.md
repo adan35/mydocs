@@ -46,7 +46,60 @@ Run `npm run mobile:sync` after every web change before building a mobile app.
 - **Android**: a debug APK that installs on any device with "Install unknown apps" allowed. With signing secrets set, also a signed release APK and a Play Store bundle.
 - **iOS**: a Simulator build, which proves the app compiles. Device builds need signing (below).
 
-Each run's files are under **Artifacts** on the run's page. Pushing a tag such as `v0.2.0` also creates a draft GitHub Release with all of them attached.
+Each run's files are under **Artifacts** on the run's page. Pushing a tag such as `v0.2.0` publishes a GitHub Release (see [Releasing](#releasing-and-updates)).
+
+## Releasing and updates
+
+### Cutting a release
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+The **Apps** workflow then builds Windows, macOS and Linux installers plus the Android APK, stamps the tag's version into the desktop app, and publishes a GitHub Release (a tag with a suffix such as `v0.2.0-beta.1` is marked pre-release and is never offered as the latest). Files get stable names so links to `releases/latest/download/<name>` always point at the newest build:
+
+| File                                                        | For                                  |
+| ----------------------------------------------------------- | ------------------------------------ |
+| `My-Doc-windows-x64-setup.exe`                              | Windows                              |
+| `My-Doc-macos-universal.dmg`                                | macOS (Apple silicon and Intel)      |
+| `My-Doc-linux-x64.AppImage` / `.deb` / `.rpm`               | Linux                                |
+| `My-Doc-android.apk`                                        | Android (release APK once signed)    |
+| `latest.json`, `*.sig`, `My-Doc-macos-universal.app.tar.gz` | The desktop updater (not for people) |
+
+The site's **Download** page (`#/download`, also in Settings and the command palette) links to these names. The tag must look like `vMAJOR.MINOR.PATCH`; the desktop app's version comes from it.
+
+### How the desktop app updates
+
+Installed desktop apps check `https://github.com/adan35/my-doc/releases/latest/download/latest.json` shortly after launch and every six hours. When a newer version exists, an **Update available** dialog offers **Install and restart**, **Later** or **Skip this version**. Open edits are saved first; the update package's signature is verified against the public key built into the app before anything is installed. **Settings → Updates** shows the version and has **Check for updates**. The web app updates itself through its service worker; the mobile apps update through their stores.
+
+An update is only offered when `latest.json` exists, which needs the signing key below. Installers made without it still work; they just can't update themselves.
+
+### One-time setup for updates (required)
+
+1. Generate the updater key pair on your computer (keep the private key out of the repository):
+
+   ```bash
+   npx tauri signer generate -w ~/.tauri/mydoc.key
+   ```
+
+   Choose a password when asked. This writes `mydoc.key` (private) and `mydoc.key.pub` (public).
+
+2. Put the **public** key in `src-tauri/tauri.conf.json`, replacing `REPLACE_WITH_UPDATER_PUBLIC_KEY` under `plugins.updater.pubkey` with the contents of `mydoc.key.pub`, and merge that change.
+3. In the repository's **Settings → Secrets and variables → Actions**, add:
+   - `TAURI_SIGNING_PRIVATE_KEY`: the contents of `mydoc.key`
+   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: the password you chose
+4. Tag a release (`git tag v0.1.1 && git push origin v0.1.1`). Install it once, then tag a later version to see the update prompt.
+
+Keep a backup of `mydoc.key` and its password. If the key is lost, installed apps can never be updated again and users must reinstall by hand. If the repository is renamed, GitHub keeps redirecting the old download URLs; update `endpoints` and `REPO` in `src/app/downloads.ts` when convenient.
+
+### Optional: clean installs without OS warnings
+
+Updates work without these. They only remove the "unknown publisher" prompts on first install.
+
+- **Windows**: buy a code-signing certificate and follow the [Tauri guide](https://tauri.app/distribute/sign/windows/). Without it, SmartScreen shows **More info → Run anyway**.
+- **macOS**: join the Apple Developer Program ($99/year), create a Developer ID Application certificate, and add the repository secrets `APPLE_CERTIFICATE` (base64 `.p12`), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` (an app-specific password) and `APPLE_TEAM_ID`. The workflow already passes them to the build, which signs and notarizes when they are present ([Tauri guide](https://tauri.app/distribute/sign/macos/)). Without it, right-click → Open the first time.
+
+Linux needs nothing.
 
 ## What needs the owner's accounts
 
@@ -79,5 +132,4 @@ are built by CI (below); running them on real devices needs the accounts listed 
 ## Not in the apps yet
 
 - Editing a real folder on disk (the desktop app still stores documents in its own database, like the browser). The storage layer is ready for it: a folder-backed `WorkspaceProvider` in `src/storage/` would plug in without UI changes.
-- Automatic updates for the desktop app (Tauri's updater needs a signing key and an update server).
 - Sync between devices.

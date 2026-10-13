@@ -11,6 +11,7 @@ export type Route =
   | { name: 'tags'; tag?: string }
   | { name: 'trash' }
   | { name: 'settings' }
+  | { name: 'download' }
   /** `id` shows the local graph around one document. */
   | { name: 'graph'; id?: string };
 
@@ -43,6 +44,8 @@ export function parseHash(hash: string): Route {
       return { name: 'trash' };
     case 'settings':
       return { name: 'settings' };
+    case 'download':
+      return { name: 'download' };
     case 'graph':
       return rest[0] ? { name: 'graph', id: rest[0] } : { name: 'graph' };
     default:

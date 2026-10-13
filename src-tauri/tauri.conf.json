@@ -41,5 +41,11 @@
     "category": "Productivity",
     "shortDescription": "One place for every document. Markdown at its core.",
     "homepage": "https://mydocs.doerwise.com/"
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "REPLACE_WITH_UPDATER_PUBLIC_KEY",
+      "endpoints": ["https://github.com/adan35/my-doc/releases/latest/download/latest.json"]
+    }
   }
 }

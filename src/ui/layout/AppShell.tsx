@@ -16,6 +16,7 @@ import { FolderView } from '../views/FolderView';
 import { SearchView } from '../views/SearchView';
 import { FavoritesView, RecentView, TagsView, TrashView } from '../views/ListViews';
 import { SettingsView } from '../views/SettingsView';
+import { DownloadView } from '../views/DownloadView';
 import { useLayout } from '../hooks';
 import { TREE_DRAG_TYPE } from './FileTree';
 import { useGlobalShortcuts } from './shortcuts';
@@ -117,6 +118,8 @@ function RouteView() {
       return <TrashView />;
     case 'settings':
       return <SettingsView />;
+    case 'download':
+      return <DownloadView />;
     case 'graph':
       return (
         <Suspense fallback={<DocumentFallback />}>
