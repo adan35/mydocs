@@ -52,6 +52,7 @@ export function docTypeOf(name: string): DocType | null {
     case 'xlsx':
     case 'csv':
     case 'tsv':
+    case 'unl':
       return 'sheet';
     case 'pdf':
       return 'pdf';

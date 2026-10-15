@@ -8,6 +8,7 @@ import { editorActions } from '@/app/editor-store';
 import { toast } from '@/app/toast-store';
 import { dialogs } from '@/app/dialog-store';
 import {
+  DELIMITED_EXTENSIONS,
   delimitedToSheet,
   detectDialect,
   findMarkdownTables,
@@ -43,7 +44,7 @@ const rowsOf = (sheet: Sheet): string[][] => {
 const cellText = (c: Cell | undefined) => (c ? String(c.v ?? '') : '');
 
 /**
- * Edits CSV/TSV files and Markdown tables as a grid. Every change is written back to the
+ * Edits CSV/TSV/UNL files and Markdown tables as a grid. Every change is written back to the
  * text as one transaction on the document model: only the edited row (CSV) or the
  * edited table (Markdown) changes, and undo works across the grid and the source.
  */
@@ -59,10 +60,11 @@ export function TextSheetView({
   onConvert?(): void;
 }) {
   const ext = extensionOf(name);
-  const markdown = ext !== 'csv' && ext !== 'tsv' && ext !== 'tab';
+  const markdown = !DELIMITED_EXTENSIONS.includes(ext);
   const [tableIndex, setTableIndex] = useState(0);
   const [selection, setSelection] = useState<Selection>({ r: 0, c: 0 });
-  const [headerRow, setHeaderRow] = useState(true);
+  // UNL exports have no header row; their columns are named A, B, C…
+  const [headerRow, setHeaderRow] = useState(ext !== 'unl');
 
   const dialect = useMemo(
     () => (markdown ? null : detectDialect(text, ext)),
@@ -100,7 +102,7 @@ export function TextSheetView({
       toast({
         message: markdown
           ? 'Markdown tables hold text, not formulas. Convert the table to an Excel workbook to calculate.'
-          : 'CSV files hold values, not formulas. Convert to an Excel workbook to calculate.',
+          : `${ext.toUpperCase()} files hold values, not formulas. Convert to an Excel workbook to calculate.`,
         action: onConvert ? { label: 'Convert…', run: onConvert } : undefined,
       });
       return;

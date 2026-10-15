@@ -64,10 +64,11 @@ function textFromBytes(buf: Uint8Array, name: string): string | null {
     if (sample.includes(0)) return null;
   }
   try {
-    const text = new TextDecoder('utf-8', { fatal: !known }).decode(buf);
-    return text.replace(/^\uFEFF/, '');
+    return new TextDecoder('utf-8', { fatal: true }).decode(buf).replace(/^\uFEFF/, '');
   } catch {
-    return null;
+    // A known text format that isn't UTF-8 is most often Windows-1252/Latin-1 (database
+    // exports such as .unl and .csv); decoding it that way keeps accented letters intact.
+    return known ? new TextDecoder('windows-1252').decode(buf) : null;
   }
 }
 

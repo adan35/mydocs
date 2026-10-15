@@ -4,7 +4,7 @@
  * docs/FORMATS.md are all generated from this table, so they cannot disagree.
  */
 
-export type FormatId = 'md' | 'docx' | 'xlsx' | 'csv' | 'tsv' | 'html' | 'txt' | 'pdf';
+export type FormatId = 'md' | 'docx' | 'xlsx' | 'csv' | 'tsv' | 'unl' | 'html' | 'txt' | 'pdf';
 
 export interface FormatInfo {
   id: FormatId;
@@ -51,6 +51,13 @@ export const FORMATS: FormatInfo[] = [
     extensions: ['tsv', 'tab'],
     view: 'Sheet view, or as text',
     edit: 'Cells (only edited rows are rewritten) or raw text',
+  },
+  {
+    id: 'unl',
+    label: 'UNL',
+    extensions: ['unl'],
+    view: 'Sheet view (pipe-delimited, columns A, B, C… with an optional header row), or as text',
+    edit: 'Cells (only edited rows are rewritten, keeping the trailing delimiter) or raw text',
   },
   {
     id: 'html',
@@ -264,6 +271,38 @@ export const CONVERSIONS: Conversion[] = [
     loses: ['Line breaks inside cells (become spaces)'],
   },
   { from: 'tsv', to: 'csv', kinds: ['convert', 'export'], keeps: ['Every value'], loses: [] },
+  {
+    from: 'unl',
+    to: 'xlsx',
+    kinds: ['convert', 'export'],
+    keeps: [
+      'Every value, one row per record',
+      'Plain numbers as numbers (250.0 keeps its decimal place)',
+      'Leading zeros, dates and codes exactly as text',
+    ],
+    loses: ['The trailing delimiter (it ends a row, it is not a column)'],
+  },
+  {
+    from: 'unl',
+    to: 'csv',
+    kinds: ['convert', 'export'],
+    keeps: ['Every value, including escaped delimiters and line breaks'],
+    loses: ['The trailing delimiter (it ends a row, it is not a column)'],
+  },
+  {
+    from: 'unl',
+    to: 'tsv',
+    kinds: ['convert', 'export'],
+    keeps: ['Every value'],
+    loses: ['The trailing delimiter (it ends a row, it is not a column)'],
+  },
+  {
+    from: 'unl',
+    to: 'md',
+    kinds: ['convert'],
+    keeps: ['Every value, as a table with columns named A, B, C…'],
+    loses: ['Line breaks inside cells (become spaces)'],
+  },
   {
     from: 'html',
     to: 'md',

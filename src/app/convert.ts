@@ -32,7 +32,7 @@ import {
 } from '@/lib/convert/delimited';
 import { serializeTable } from '@/domain/table';
 import { sheetToTable } from '@/lib/convert/delimited';
-import { textValue, type Sheet, type Workbook } from '@/lib/convert/workbook';
+import { colName, textValue, type Sheet, type Workbook } from '@/lib/convert/workbook';
 import { ws } from './app-store';
 import { editorActions } from './editor-store';
 import { ATTACHMENTS_FOLDER } from './attachments';
@@ -72,6 +72,7 @@ const MIME: Record<FormatId, string> = {
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   csv: 'text/csv;charset=utf-8',
   tsv: 'text/tab-separated-values;charset=utf-8',
+  unl: 'text/plain;charset=utf-8',
   html: 'text/html;charset=utf-8',
   txt: 'text/plain;charset=utf-8',
   pdf: 'application/pdf',
@@ -271,7 +272,7 @@ export async function runConversion(
   }
 
   // ---------------------------------------------------------------- spreadsheet sources
-  if (from === 'xlsx' || from === 'csv' || from === 'tsv') {
+  if (from === 'xlsx' || from === 'csv' || from === 'tsv' || from === 'unl') {
     let wb: Workbook;
     let sourceReport: ReportData | undefined;
     if (from === 'xlsx') {
@@ -319,7 +320,14 @@ export async function runConversion(
       let md: string;
       if (from === 'xlsx') md = workbookMarkdown(wb, r);
       else {
-        const table = sheetToTable(wb.sheets[0]!, []);
+        let sheet = wb.sheets[0]!;
+        if (from === 'unl') {
+          // UNL rows are all data: name the columns A, B, C… so the first record isn't a header.
+          const width = Math.max(1, ...sheet.rows.map((row) => row?.length ?? 0));
+          const names = Array.from({ length: width }, (_, c) => ({ v: colName(c) }));
+          sheet = { ...sheet, rows: [names, ...sheet.rows] };
+        }
+        const table = sheetToTable(sheet, []);
         md = `${serializeTable(table)}\n`;
         if (
           wb.sheets[0]!.rows.some((row) =>

@@ -180,6 +180,43 @@ test('a CSV file edits as a sheet and rewrites only the edited row', async ({ pa
   await expect(preview.locator('[data-cell="B2"]')).toHaveClass(/text-right/);
 });
 
+test('a .unl export opens as a sheet without the trailing empty column and converts to CSV', async ({
+  page,
+}) => {
+  await freshApp(page);
+  await importFile(page, 'transactions.unl', 'application/octet-stream');
+  const grid = page.getByTestId('sheet-grid');
+  // No header row: the first record is row 1, under column letters.
+  await expect(grid.locator('[data-cell="A1"]')).toHaveText('27747620');
+  await expect(grid.locator('[data-cell="F1"]')).toHaveText('REISSUE_FUND');
+  await expect(grid.locator('[data-cell="Q1"]')).toHaveText('0.0');
+  await expect(grid.locator('[data-cell="F6"]')).toHaveText('PRE_AUTH');
+  await expect(page.getByRole('checkbox', { name: 'Header row' })).not.toBeChecked();
+  // Editing a cell rewrites only that record and keeps its trailing pipe.
+  await grid.locator('[data-cell="F3"]').dblclick();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.type('REFUND');
+  await page.keyboard.press('Enter');
+  await waitSaved(page);
+  await page.getByRole('button', { name: 'Text', exact: true }).click();
+  const text = await sourceText(page);
+  expect(text.split('\n')[2]).toBe(
+    '27744742|0.0|6.0|250.0|250.0|REFUND|F||SD|40|10/15/2026|0642|H|-1|JSNWS|0.0|0.0|',
+  );
+  expect(text.split('\n')[0]).toBe(fixture('transactions.unl').toString('utf8').split('\n')[0]);
+
+  const dialog = await openConvert(page);
+  await dialog.getByRole('radio', { name: /^CSV/ }).click();
+  const download = page.waitForEvent('download');
+  await dialog.getByRole('button', { name: 'Export' }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toBe('transactions.csv');
+  const csv = readFileSync((await file.path())!, 'utf8').split('\n');
+  expect(csv[0]).toBe(
+    '27747620,-6.0,-6.0,250.0,250.0,REISSUE_FUND,F,,HI,22,10/15/2026,0642,B,-1,BAT_A_ReissueFunds,0.0,0.0',
+  );
+});
+
 test('Markdown tables edit as a sheet, with a picker for several tables', async ({ page }) => {
   await freshApp(page);
   await newDocInRoot(page, 'Tables');
