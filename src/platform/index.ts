@@ -80,6 +80,26 @@ export function onBeforeQuit(save: () => Promise<void> | void): () => void {
   };
 }
 
+/** Only the desktop app updates itself; the web updates on reload and the stores update mobile. */
+export const canSelfUpdate = platform === 'desktop';
+
+export type PendingUpdate = import('./desktop').PendingUpdate;
+
+/** Resolves to the newer signed version, or null when this one is current. */
+export async function checkForUpdate(): Promise<PendingUpdate | null> {
+  if (!canSelfUpdate) return null;
+  return (await import('./desktop')).checkForUpdate();
+}
+
+export async function relaunchApp(): Promise<void> {
+  if (canSelfUpdate) await (await import('./desktop')).relaunchApp();
+}
+
+/** The installed desktop app's version, or null elsewhere. */
+export async function installedVersion(): Promise<string | null> {
+  return canSelfUpdate ? (await import('./desktop')).appVersion() : null;
+}
+
 const EXTERNAL = /^(https?:|mailto:)/i;
 
 /**

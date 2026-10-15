@@ -1,0 +1,8 @@
+{
+  "windows": "My-Doc-windows-x64-setup.exe",
+  "macos": "My-Doc-macos-universal.dmg",
+  "linuxAppImage": "My-Doc-linux-x64.AppImage",
+  "linuxDeb": "My-Doc-linux-x64.deb",
+  "linuxRpm": "My-Doc-linux-x64.rpm",
+  "android": "My-Doc-android.apk"
+}

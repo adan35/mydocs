@@ -30,3 +30,42 @@ export function onCloseRequested(save: () => Promise<void> | void): Promise<() =
     }
   });
 }
+
+/** An update the installed desktop app can download, already checked against the signing key. */
+export interface PendingUpdate {
+  version: string;
+  notes?: string;
+  /** Downloads, verifies the signature, and installs. `onProgress` gets 0..1 when the size is known. */
+  install(onProgress: (fraction: number | null) => void): Promise<void>;
+}
+
+export async function checkForUpdate(): Promise<PendingUpdate | null> {
+  const { check } = await import('@tauri-apps/plugin-updater');
+  const update = await check();
+  if (!update) return null;
+  return {
+    version: update.version,
+    notes: update.body,
+    async install(onProgress) {
+      let total = 0;
+      let done = 0;
+      await update.downloadAndInstall((event) => {
+        if (event.event === 'Started') total = event.data.contentLength ?? 0;
+        else if (event.event === 'Progress') {
+          done += event.data.chunkLength;
+          onProgress(total ? Math.min(1, done / total) : null);
+        }
+      });
+    },
+  };
+}
+
+export async function relaunchApp(): Promise<void> {
+  const { relaunch } = await import('@tauri-apps/plugin-process');
+  await relaunch();
+}
+
+export async function appVersion(): Promise<string> {
+  const { getVersion } = await import('@tauri-apps/api/app');
+  return getVersion();
+}
