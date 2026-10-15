@@ -1,15 +1,16 @@
 import { create } from 'zustand';
-import { canSelfUpdate, checkForUpdate, relaunchApp, type PendingUpdate } from '@/platform';
+import { checkForUpdate, relaunchApp, updateMode, type PendingUpdate } from '@/platform';
 import { editorActions } from './editor-store';
 import { toast } from './toast-store';
 
-/** Self-update for the desktop app. Every action is a no-op elsewhere. */
+/** Update checks for the desktop and Android apps. Every action is a no-op elsewhere. */
 
 export type UpdateStatus =
   | { phase: 'idle' }
   | { phase: 'checking' }
   | { phase: 'current' }
-  | { phase: 'available'; version: string; notes?: string }
+  /** `download`: the user is sent to a file to install (Android) instead of updating in place. */
+  | { phase: 'available'; version: string; notes?: string; download: boolean }
   | { phase: 'installing'; version: string; progress: number | null }
   | { phase: 'ready'; version: string }
   | { phase: 'error'; message: string };
@@ -43,7 +44,7 @@ function skippedVersion(): string | null {
 
 /** Asks the update server whether a newer, correctly signed version exists. */
 export async function checkNow(opts: { silent?: boolean } = {}): Promise<void> {
-  if (!canSelfUpdate) return;
+  if (!updateMode) return;
   const phase = useUpdates.getState().status.phase;
   if (phase === 'checking' || phase === 'installing' || phase === 'ready') return;
   set({ phase: 'checking' });
@@ -59,8 +60,8 @@ export async function checkNow(opts: { silent?: boolean } = {}): Promise<void> {
     set({ phase: 'current' });
     return;
   }
-  const { version, notes } = pending;
-  set({ phase: 'available', version, notes });
+  const { version, notes, kind } = pending;
+  set({ phase: 'available', version, notes, download: kind === 'download' });
   if (!opts.silent || skippedVersion() !== version) useUpdates.setState({ promptOpen: true });
 }
 
@@ -86,6 +87,14 @@ export async function installUpdate(): Promise<void> {
   const s = useUpdates.getState().status;
   if (!pending || s.phase !== 'available') return;
   const { version } = s;
+  if (s.download) {
+    // Android: the browser downloads the APK and the user taps it to install.
+    await editorActions.flushAll();
+    await pending.install(() => {});
+    set({ phase: 'available', version, download: true, notes: s.notes });
+    dismissPrompt();
+    return;
+  }
   set({ phase: 'installing', version, progress: null });
   try {
     await editorActions.flushAll();
@@ -112,7 +121,7 @@ export async function restartNow(): Promise<void> {
 
 /** Checks shortly after launch and every few hours while the app stays open. */
 export function startUpdateChecks(): () => void {
-  if (!canSelfUpdate) return () => {};
+  if (!updateMode) return () => {};
   const first = setTimeout(() => void checkNow({ silent: true }), FIRST_CHECK_DELAY_MS);
   const timer = setInterval(() => void checkNow({ silent: true }), CHECK_EVERY_MS);
   return () => {

@@ -70,7 +70,9 @@ The site's **Download** page (`#/download`, also in Settings and the command pal
 
 ### How the desktop app updates
 
-Installed desktop apps check `https://github.com/adan35/my-doc/releases/latest/download/latest.json` shortly after launch and every six hours. When a newer version exists, an **Update available** dialog offers **Install and restart**, **Later** or **Skip this version**. Open edits are saved first; the update package's signature is verified against the public key built into the app before anything is installed. **Settings → Updates** shows the version and has **Check for updates**. The web app updates itself through its service worker; the mobile apps update through their stores.
+Installed desktop apps check `https://github.com/adan35/my-doc/releases/latest/download/latest.json` shortly after launch and every six hours. When a newer version exists, an **Update available** dialog offers **Install and restart**, **Later** or **Skip this version**. Open edits are saved first; the update package's signature is verified against the public key built into the app before anything is installed. **Settings → Updates** shows the version and has **Check for updates**. The web app updates itself through its service worker.
+
+**Android** has no store listing here, so it cannot install updates by itself. Each release also publishes `android.json` (version and APK link). The app reads it with the same schedule and shows the same **Update available** dialog; **Download update** opens the new APK in the browser and the user taps it to install. Android only installs it over the old app if both were signed with the same keystore, so set the Android signing secrets below before the first public APK. **iPhone and iPad** have no native app without an Apple Developer account; use the web app (Share → Add to Home Screen), which updates itself.
 
 An update is only offered when `latest.json` exists, which needs the signing key below. Installers made without it still work; they just can't update themselves.
 

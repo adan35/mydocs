@@ -4,5 +4,6 @@
   "linuxAppImage": "My-Doc-linux-x64.AppImage",
   "linuxDeb": "My-Doc-linux-x64.deb",
   "linuxRpm": "My-Doc-linux-x64.rpm",
-  "android": "My-Doc-android.apk"
+  "android": "My-Doc-android.apk",
+  "androidManifest": "android.json"
 }
