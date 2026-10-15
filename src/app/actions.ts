@@ -486,10 +486,13 @@ export async function runImport(items: ImportItem[], targetId: EntryId | null = 
             .join('; ')}${skipped.length > 3 ? '…' : ''}`
         : undefined,
       tone: skipped.length ? 'info' : 'success',
-      action: result.firstFileId
-        ? { label: 'Open', run: () => void openEntry(result.firstFileId!) }
-        : undefined,
     });
+    // Take the user to what they just imported: into the imported folder, or the first file.
+    if (result.firstFolderId) {
+      appActions.reveal(result.firstFolderId);
+      appActions.setExpanded(result.firstFolderId, true);
+      await openEntry(result.firstFolderId);
+    } else if (result.firstFileId) await openEntry(result.firstFileId);
   } catch (err) {
     dismissToast(progressToast);
     toastError('The import stopped before finishing. Files imported so far were kept.', err);
