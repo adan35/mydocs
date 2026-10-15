@@ -210,7 +210,8 @@ export function AppShell() {
         e.preventDefault();
         const items = await itemsFromDataTransfer(e.dataTransfer);
         await runImport(items);
-        if (route.name === 'home') navigate({ name: 'folder', id: null });
+        // The import opens what it imported; only a still-empty Home goes to All files.
+        if (useRouter.getState().route.name === 'home') navigate({ name: 'folder', id: null });
       }}
     >
       <a

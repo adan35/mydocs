@@ -58,8 +58,10 @@ export async function openEntry(id: EntryId, anchor?: string) {
   }
   appActions.touchRecent(id);
   appActions.reveal(id);
-  await editorActions.open(id);
+  // Switch views at once; the document shows its loading state until its text is read.
+  const opening = editorActions.open(id);
   navigate({ name: 'doc', id, anchor });
+  await opening;
 }
 
 async function guard<T>(message: string, fn: () => Promise<T>): Promise<T | undefined> {

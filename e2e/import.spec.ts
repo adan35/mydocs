@@ -60,6 +60,7 @@ test('binary files show details instead of pretending to be text', async ({ page
 
 test('dropping files anywhere shows an overlay and imports them', async ({ page }) => {
   await freshApp(page);
+  await page.getByRole('button', { name: 'Home' }).first().click();
   const dt = await page.evaluateHandle(() => {
     const d = new DataTransfer();
     d.items.add(
@@ -76,5 +77,9 @@ test('dropping files anywhere shows an overlay and imports them', async ({ page 
   await expect(page.getByTestId('drop-overlay')).toBeHidden();
   await expect(page.getByText(/Imported 2 files/)).toBeVisible();
   // The first dropped file opens on its own.
+  await expect(page.locator('.cm-content')).toContainText('Hello from a drop.');
+  // Dropped from Home, it must stay on the document instead of falling back to All files.
+  await page.waitForTimeout(800);
+  await expect(page).toHaveURL(/#\/doc\//);
   await expect(page.locator('.cm-content')).toContainText('Hello from a drop.');
 });
