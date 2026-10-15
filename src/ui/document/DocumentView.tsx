@@ -180,7 +180,7 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
   useEffect(() => setOutlineSheet(false), [id]);
   const focusRequest = useEditor((s) => s.focusRequest);
 
-  const delimited = /\.(csv|tsv|tab)$/i.test(entry.name);
+  const delimited = /\.(csv|tsv|tab|unl)$/i.test(entry.name);
   let mode: ViewMode = isMd
     ? (storedMode ?? defaultMode)
     : delimited
@@ -613,7 +613,7 @@ function DocHeader({
   const isMd = isMarkdownName(entry.name);
   const textual = ws().isEditable(entry);
   const ancestors = tree.ancestors(entry.id);
-  const delimited = /\.(csv|tsv|tab)$/i.test(entry.name);
+  const delimited = /\.(csv|tsv|tab|unl)$/i.test(entry.name);
   const format = formatOf(entry.name)?.id;
   const canConvert = !!format && conversionsFrom(format).length > 0;
   const hasTables = useEditor((s) =>

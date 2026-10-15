@@ -26,7 +26,7 @@ export function FileIcon({
   if (type === 'image') return <FileImage {...p} />;
   if (type === 'pdf') return <FileType2 {...p} />;
   if (ext === 'json') return <FileJson {...p} />;
-  if (ext === 'csv' || ext === 'tsv') return <Sheet {...p} />;
+  if (ext === 'csv' || ext === 'tsv' || ext === 'unl') return <Sheet {...p} />;
   if (type === 'code' || type === 'data') return <FileCode2 {...p} />;
   if (type === 'text') return <FileText {...p} />;
   return <File {...p} />;

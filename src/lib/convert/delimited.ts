@@ -1,5 +1,6 @@
 /**
- * CSV and TSV (RFC 4180 quoting), plus Markdown table ↔ sheet.
+ * CSV and TSV (RFC 4180 quoting), UNL (Informix-style unload files: pipe-delimited,
+ * backslash escapes, a delimiter after every row's last field), plus Markdown table ↔ sheet.
  *
  * Delimited files hold text only, so every cell is read as text: "007" stays "007",
  * "1/2" stays "1/2". Typing a number into a cell in the sheet view still writes the
@@ -17,21 +18,32 @@ export interface Dialect {
   /** The source quoted every field. */
   quoteAll: boolean;
   bom: boolean;
+  /** How a field holds the delimiter or a line break: RFC 4180 quotes, or a backslash (UNL). */
+  escape?: 'quote' | 'backslash';
+  /** Every row ends with the delimiter (UNL), which doesn't start another field. */
+  terminated?: boolean;
 }
+
+/** Text data files that open in the sheet view. */
+export const DELIMITED_EXTENSIONS = ['csv', 'tsv', 'tab', 'unl'];
 
 export function detectDialect(text: string, ext: string): Dialect {
   const eol = text.includes('\r\n') ? '\r\n' : '\n';
   const bom = text.charCodeAt(0) === 0xfeff;
+  const unl = ext === 'unl';
+  const escape = unl ? 'backslash' : 'quote';
   const sample = text
     .slice(bom ? 1 : 0, 20000)
     .split(/\r?\n/)
     .slice(0, 20);
-  let delimiter = ext === 'tsv' || ext === 'tab' ? '\t' : ',';
+  const lines = sample.filter((l) => l.trim());
+  let delimiter = ext === 'tsv' || ext === 'tab' ? '\t' : unl ? '|' : ',';
   if (ext !== 'tsv') {
     // Pick the candidate that splits lines into the most consistent number of fields.
     let best = -1;
-    for (const d of [',', ';', '\t', '|']) {
-      const counts = sample.filter((l) => l.trim()).map((l) => splitLine(l, d).length);
+    const candidates = unl ? ['|', ',', ';', '\t'] : [',', ';', '\t', '|'];
+    for (const d of candidates) {
+      const counts = lines.map((l) => splitLine(l, d, escape).length);
       if (!counts.length) continue;
       const first = counts[0]!;
       const score =
@@ -46,20 +58,35 @@ export function detectDialect(text: string, ext: string): Dialect {
       }
     }
   }
-  const quoteAll =
-    sample.filter((l) => l.trim()).length > 0 &&
-    sample.filter((l) => l.trim()).every((l) => /^"/.test(l) && /"$/.test(l));
+  if (unl) {
+    // Parse whole records (escaped line breaks join lines) and check each one's ending.
+    const head = text.slice(bom ? 1 : 0, 20000);
+    const cut =
+      head.length < text.length - (bom ? 1 : 0) ? head.lastIndexOf('\n') + 1 : head.length;
+    const terminated = parseDelimited(head.slice(0, cut || head.length), delimiter, {
+      escape,
+    }).allTerminated;
+    return { delimiter, eol, quoteAll: false, bom, escape, terminated };
+  }
+  const quoteAll = lines.length > 0 && lines.every((l) => /^"/.test(l) && /"$/.test(l));
   return { delimiter, eol, quoteAll, bom };
 }
 
-function splitLine(line: string, d: string): string[] {
-  return parseDelimited(line, d).rows[0] ?? [];
+function splitLine(line: string, d: string, escape: Dialect['escape']): string[] {
+  return parseDelimited(line, d, { escape }).rows[0] ?? [];
 }
 
 export function parseDelimited(
   text: string,
   delimiter: string,
-): { rows: string[][]; malformed: boolean; spans: [number, number][] } {
+  { escape = 'quote', terminated = false }: Pick<Dialect, 'escape' | 'terminated'> = {},
+): {
+  rows: string[][];
+  malformed: boolean;
+  spans: [number, number][];
+  /** Every non-blank row ended with an unescaped delimiter (and there was at least one). */
+  allTerminated: boolean;
+} {
   const rows: string[][] = [];
   const spans: [number, number][] = [];
   let row: string[] = [];
@@ -68,9 +95,58 @@ export function parseDelimited(
   let quoted = false;
   let malformed = false;
   let rowStart = i;
+  /** The last character read was an unescaped delimiter. */
+  let afterDelim = false;
   const n = text.length;
+  let allTerminated = true;
+  let any = false;
+  const endRow = () => {
+    if (row.length || field !== '') {
+      any = true;
+      if (!afterDelim) allTerminated = false;
+    }
+    // A terminated row's final delimiter closes the last field; it doesn't open a new one.
+    if (!(terminated && afterDelim && field === '')) row.push(field);
+    rows.push(row);
+    row = [];
+    field = '';
+    afterDelim = false;
+  };
   while (i < n) {
     const ch = text[i]!;
+    if (escape === 'backslash') {
+      if (ch === '\\' && i + 1 < n) {
+        // \x is a literal x: the delimiter, a backslash or a line break inside a field.
+        const next = text[i + 1]!;
+        if (next === '\r' && text[i + 2] === '\n') {
+          field += '\r\n';
+          i += 3;
+        } else {
+          field += next;
+          i += 2;
+        }
+        afterDelim = false;
+        continue;
+      }
+      if (ch === delimiter) {
+        row.push(field);
+        field = '';
+        afterDelim = true;
+        i++;
+        continue;
+      }
+      if (ch === '\r' || ch === '\n') {
+        spans.push([rowStart, i]);
+        endRow();
+        i += ch === '\r' && text[i + 1] === '\n' ? 2 : 1;
+        rowStart = i;
+        continue;
+      }
+      field += ch;
+      afterDelim = false;
+      i++;
+      continue;
+    }
     if (quoted) {
       if (ch === '"') {
         if (text[i + 1] === '"') {
@@ -95,38 +171,42 @@ export function parseDelimited(
     if (ch === delimiter) {
       row.push(field);
       field = '';
+      afterDelim = true;
       i++;
       continue;
     }
     if (ch === '\r' || ch === '\n') {
-      row.push(field);
-      rows.push(row);
       spans.push([rowStart, i]);
-      row = [];
-      field = '';
+      endRow();
       i += ch === '\r' && text[i + 1] === '\n' ? 2 : 1;
       rowStart = i;
       continue;
     }
     field += ch;
+    afterDelim = false;
     i++;
   }
   if (quoted) malformed = true;
   if (field !== '' || row.length) {
-    row.push(field);
-    rows.push(row);
     spans.push([rowStart, n]);
+    endRow();
   }
-  return { rows, malformed, spans };
+  return { rows, malformed, spans, allTerminated: any && allTerminated };
 }
 
 export function serializeDelimited(rows: string[][], dialect: Dialect): string {
   const d = dialect.delimiter;
-  const needs = new RegExp(`["\\r\\n${d === '\t' ? '\\t' : d.replace(/[|]/g, '\\|')}]|^\\s|\\s$`);
-  const field = (s: string) =>
-    dialect.quoteAll || needs.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  const body = rows.map((r) => r.map(field).join(d)).join(dialect.eol);
-  return (dialect.bom ? '﻿' : '') + body + (rows.length ? dialect.eol : '');
+  let field: (s: string) => string;
+  if (dialect.escape === 'backslash') {
+    const special = new RegExp(`[\\\\\\n${d.replace(/[\\^$.*+?()[\]{}|-]/g, '\\$&')}]`, 'g');
+    field = (s) => s.replace(/\r\n/g, '\n').replace(special, (c) => `\\${c}`);
+  } else {
+    const needs = new RegExp(`["\\r\\n${d === '\t' ? '\\t' : d.replace(/[|]/g, '\\|')}]|^\\s|\\s$`);
+    field = (s: string) => (dialect.quoteAll || needs.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
+  }
+  const end = dialect.terminated ? d : '';
+  const body = rows.map((r) => r.map(field).join(d) + end).join(dialect.eol);
+  return (dialect.bom ? '\ufeff' : '') + body + (rows.length ? dialect.eol : '');
 }
 
 /** A delimited file as a sheet: every cell is text. */
@@ -136,7 +216,7 @@ export function delimitedToSheet(
   name = 'Sheet1',
 ): { sheet: Sheet; report: ConversionReport } {
   const report = new ConversionReport();
-  const { rows, malformed } = parseDelimited(text, dialect.delimiter);
+  const { rows, malformed } = parseDelimited(text, dialect.delimiter, dialect);
   if (malformed)
     report.note('Some quotes in the file are unbalanced; those fields were read as written.');
   const widths = new Set(rows.map((r) => r.length));
@@ -160,7 +240,7 @@ export function delimitedToSheet(
  * stay exactly as they were).
  */
 export function rewriteDelimited(original: string, rows: string[][], dialect: Dialect): string {
-  const parsed = parseDelimited(original, dialect.delimiter);
+  const parsed = parseDelimited(original, dialect.delimiter, dialect);
   const same = (a: string[] | undefined, b: string[]) => {
     if (!a) return false;
     const n = Math.max(a.length, b.length);
@@ -201,8 +281,8 @@ export function sheetToDelimited(
 }
 
 /**
- * Types cells for a spreadsheet target: plain numbers and TRUE/FALSE become typed
- * values; everything else (leading zeros, dates, codes) stays text exactly.
+ * Types cells for a spreadsheet target: plain numbers (keeping written decimals such as
+ * "250.0" through a number format) and TRUE/FALSE become typed values; everything else (leading zeros, dates, codes) stays text exactly.
  */
 export function typeTextCells(sheet: Sheet): Sheet {
   return {
@@ -212,8 +292,13 @@ export function typeTextCells(sheet: Sheet): Sheet {
         if (!cell || typeof cell.v !== 'string' || cell.f !== undefined) return cell;
         const t = cell.v;
         if (t !== t.trim()) return cell;
-        const n = /^-?(0|[1-9]\d*)(\.\d+)?$/.test(t) ? parseNumber(t) : null;
+        const m = /^-?(0|[1-9]\d*)(?:\.(\d+))?$/.exec(t);
+        const n = m ? parseNumber(t) : null;
         if (n !== null && String(n) === t) return { v: n };
+        // "250.0" or "1.50": a number whose decimals are shown through its format.
+        const places = m?.[2]?.length ?? 0;
+        if (n !== null && places && !Object.is(n, -0) && n.toFixed(places) === t)
+          return { v: n, fmt: `0.${'0'.repeat(places)}` };
         if (t === 'TRUE' || t === 'FALSE') return { v: t === 'TRUE' };
         return cell;
       }),

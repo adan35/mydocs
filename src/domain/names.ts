@@ -76,7 +76,7 @@ export type FileType = 'markdown' | 'text' | 'code' | 'data' | 'image' | 'pdf' |
 
 const MARKDOWN = new Set(['md', 'markdown', 'mdx', 'mdown', 'mkd']);
 const TEXT = new Set(['txt', 'log', 'text', '']);
-const DATA = new Set(['json', 'yaml', 'yml', 'xml', 'csv', 'tsv', 'toml', 'ini', 'env']);
+const DATA = new Set(['json', 'yaml', 'yml', 'xml', 'csv', 'tsv', 'unl', 'toml', 'ini', 'env']);
 const CODE = new Set([
   'html',
   'htm',
@@ -148,6 +148,7 @@ const MIME_BY_EXT: Record<string, string> = {
   yml: 'text/yaml',
   xml: 'application/xml',
   csv: 'text/csv',
+  unl: 'text/plain',
   html: 'text/html',
   css: 'text/css',
   js: 'text/javascript',

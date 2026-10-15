@@ -191,7 +191,9 @@ describe('delimited files', () => {
   it('types only exact numbers when converting to a spreadsheet', () => {
     const { sheet } = delimitedToSheet('n\n007\n42\n4.50\nTRUE\n1e3\n', detectDialect('', 'csv'));
     const typed = typeTextCells(sheet).rows.map((r) => r[0]?.v);
-    expect(typed).toEqual(['n', '007', 42, '4.50', true, '1e3']);
+    expect(typed).toEqual(['n', '007', 42, 4.5, true, '1e3']);
+    // Written decimals are kept through the number format, so the cell still shows 4.50.
+    expect(displayValue(typeTextCells(sheet).rows[3]![0])).toBe('4.50');
   });
 
   it('writes formulas as their values and says so', () => {
@@ -244,5 +246,65 @@ describe('number formats', () => {
     expect(f(46037, 'd mmm yyyy')).toBe('15 Jan 2026');
     expect(f(46037.5, 'yyyy-mm-dd hh:mm')).toBe('2026-01-15 12:00');
     expect(f(46037, 'yyyy\\-mm\\-dd')).toBe('2026-01-15');
+  });
+});
+
+describe('unl files', () => {
+  const sample = [
+    '27747620|-6.0|-6.0|250.0|250.0|REISSUE_FUND|F||HI|22|10/15/2026|0642|B|-1|BAT_A_ReissueFunds|0.0|0.0|',
+    '27744619|-5.0|-5.0|-16.0|-16.0|UNDEFINED_SR|F||00|22|10/15/2026|0642|H|||-6.0|-6.0|',
+    '27629326|-5.0|-5.0|234.0||PRE_AUTH|B|||10|10/14/2026|0642|H|-1|JSNWS|-16.0|0.0|',
+    '',
+  ].join('\n');
+
+  it('detects pipes and the trailing delimiter, and drops the empty last column', () => {
+    const d = detectDialect(sample, 'unl');
+    expect(d).toMatchObject({ delimiter: '|', escape: 'backslash', terminated: true });
+    const { sheet } = delimitedToSheet(sample, d);
+    expect(sheet.rows).toHaveLength(3);
+    expect(sheet.rows.every((r) => r.length === 17)).toBe(true);
+    expect(sheet.rows[0]![0]).toEqual({ v: '27747620' });
+    expect(sheet.rows[0]![7]).toBeUndefined();
+    expect(sheet.rows[0]![16]).toEqual({ v: '0.0' });
+  });
+
+  it('reads backslash escapes and writes them back', () => {
+    const text = 'a\\|b|line\\\none|c\\\\d|\n';
+    const d = detectDialect(text, 'unl');
+    expect(parseDelimited(text, d.delimiter, d).rows).toEqual([['a|b', 'line\none', 'c\\d']]);
+    expect(serializeDelimited([['a|b', 'line\none', 'c\\d']], d)).toBe(text);
+  });
+
+  it('rewrites only the edited row and keeps its trailing delimiter', () => {
+    const d = detectDialect(sample, 'unl');
+    const rows = parseDelimited(sample, d.delimiter, d).rows;
+    rows[1]![5] = 'EDITED|X';
+    const out = rewriteDelimited(sample, rows, d);
+    const lines = out.split('\n');
+    expect(lines[0]).toBe(sample.split('\n')[0]);
+    expect(lines[1]).toBe(
+      '27744619|-5.0|-5.0|-16.0|-16.0|EDITED\\|X|F||00|22|10/15/2026|0642|H|||-6.0|-6.0|',
+    );
+    expect(out.endsWith('|\n')).toBe(true);
+  });
+
+  it('converts to CSV with every value and no empty last column', () => {
+    const d = detectDialect(sample, 'unl');
+    const { sheet } = delimitedToSheet(sample, d);
+    const csv = sheetToDelimited(sheet, { delimiter: ',', eol: '\n', quoteAll: false, bom: false });
+    expect(csv.text.split('\n')[0]).toBe(
+      '27747620,-6.0,-6.0,250.0,250.0,REISSUE_FUND,F,,HI,22,10/15/2026,0642,B,-1,BAT_A_ReissueFunds,0.0,0.0',
+    );
+    const typed = typeTextCells(sheet);
+    expect(typed.rows[0]![0]).toEqual({ v: 27747620 });
+    expect(typed.rows[0]![11]).toEqual({ v: '0642' });
+    expect(typed.rows[0]![1]).toEqual({ v: -6, fmt: '0.0' });
+    expect(displayValue(typed.rows[0]![1])).toBe('-6.0');
+  });
+
+  it('keeps comma and quote handling for CSV unchanged', () => {
+    const d = detectDialect('a,"b,c",d\n', 'csv');
+    expect(d.terminated).toBeUndefined();
+    expect(parseDelimited('a,"b,c",d\n', d.delimiter, d).rows).toEqual([['a', 'b,c', 'd']]);
   });
 });

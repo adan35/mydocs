@@ -274,6 +274,13 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
               ),
             )
           }
+          onRows={(a) => {
+            edit((book) => {
+              if (a.kind === 'insert') insertRows(book, sheetIndex, a.at, a.count);
+              else deleteRows(book, sheetIndex, a.at, a.count);
+            });
+            if (a.select !== undefined) setSelection({ r: a.select, c: selection.c });
+          }}
           onClear={(r, c) => edit((book) => setCellRaw(book.sheets[sheetIndex]!, r, c, undefined))}
           onPaste={(r, c, block) =>
             edit((book) => {

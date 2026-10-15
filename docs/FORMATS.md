@@ -9,6 +9,7 @@
 | Excel workbook (.xlsx) | Sheet view with sheet tabs and formulas | Cell values and formulas; every save keeps a version |
 | CSV (.csv) | Sheet view, or as text | Cells (only edited rows are rewritten) or raw text |
 | TSV (.tsv, .tab) | Sheet view, or as text | Cells (only edited rows are rewritten) or raw text |
+| UNL (.unl) | Sheet view (pipe-delimited, columns A, B, C… with an optional header row), or as text | Cells (only edited rows are rewritten, keeping the trailing delimiter) or raw text |
 | HTML (.html, .htm) | Source with highlighting | Source text |
 | Plain text (.txt, .text, .log) | Text editor | Text |
 | PDF (.pdf) | Page viewer with search, zoom and page navigation | No |
@@ -37,6 +38,10 @@
 | TSV → Excel workbook | convert, export | Every value; Plain numbers as numbers | Nothing |
 | TSV → Markdown | convert | Every value, as a table | Line breaks inside cells (become spaces) |
 | TSV → CSV | convert, export | Every value | Nothing |
+| UNL → Excel workbook | convert, export | Every value, one row per record; Plain numbers as numbers (250.0 keeps its decimal place); Leading zeros, dates and codes exactly as text | The trailing delimiter (it ends a row, it is not a column) |
+| UNL → CSV | convert, export | Every value, including escaped delimiters and line breaks | The trailing delimiter (it ends a row, it is not a column) |
+| UNL → TSV | convert, export | Every value | The trailing delimiter (it ends a row, it is not a column) |
+| UNL → Markdown | convert | Every value, as a table with columns named A, B, C… | Line breaks inside cells (become spaces) |
 | HTML → Markdown | convert | Headings, paragraphs, lists, quotes, code, tables, links, images; Bold, italic, strikethrough, underline, sub/superscript; Title, author, description and keywords | Styling and layout; Scripts, forms and embedded media; Merged table cells (split) |
 | Plain text → Markdown | convert | All text; blank lines separate paragraphs; Markdown characters are escaped so nothing changes meaning | Nothing |
 

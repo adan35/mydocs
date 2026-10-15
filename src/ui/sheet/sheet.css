@@ -19,6 +19,12 @@
   user-select: none;
   flex-shrink: 0;
 }
+.sheet-rownum.is-actionable {
+  cursor: pointer;
+}
+.sheet-rownum.is-actionable:hover {
+  background: var(--surface);
+}
 .sheet-head.is-active,
 .sheet-rownum.is-active {
   background: var(--primary-soft);
