@@ -42,6 +42,8 @@ export interface ImportResult {
   replaced: number;
   skipped: { path: string; reason: string }[];
   firstFileId?: EntryId;
+  /** The top-level folder holding the first imported file, when it came inside a folder. */
+  firstFolderId?: EntryId;
   /** Imported text files that can be saved back to their original file on disk. */
   diskLinks: { id: EntryId; handle: FileSystemFileHandle }[];
 }
@@ -278,12 +280,15 @@ export async function importItems(
         if (handle && text !== null) result.diskLinks.push({ id: clash.id, handle });
         result.replaced++;
         result.firstFileId ??= clash.id;
+        if (segments.length > 1)
+          result.firstFolderId ??= folderCache.get(segments[0]!) ?? undefined;
         done++;
         onProgress?.(done, items.length);
         continue;
       }
     }
     pending.push({ parentId, name, content, handle });
+    if (segments.length > 1) result.firstFolderId ??= folderCache.get(segments[0]!) ?? undefined;
     pendingBytes += read.bytes.byteLength;
     pendingNames.add(`${parentId}/${name.toLowerCase()}`);
     if (pending.length >= BATCH || pendingBytes >= BATCH_BYTES) await flush();

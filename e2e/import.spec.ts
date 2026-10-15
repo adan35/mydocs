@@ -20,7 +20,8 @@ test('imports a zipped documentation folder preserving structure', async ({ page
     await chooser
   ).setFiles({ name: 'project.zip', mimeType: 'application/zip', buffer: Buffer.from(zip) });
   await expect(page.getByText(/Imported 5 files, 4 folders/)).toBeVisible();
-  await page.getByRole('treeitem', { name: 'project' }).click();
+  // The imported folder opens on its own and is expanded in the tree.
+  await expect(page.getByRole('heading', { name: 'project', level: 1 })).toBeVisible();
   await page.getByRole('treeitem', { name: 'docs' }).click();
   await page.getByRole('treeitem', { name: 'API.md' }).click();
   await expect(page.locator('.cm-content')).toContainText('Endpoints live here.');
@@ -59,6 +60,7 @@ test('binary files show details instead of pretending to be text', async ({ page
 
 test('dropping files anywhere shows an overlay and imports them', async ({ page }) => {
   await freshApp(page);
+  await page.getByRole('button', { name: 'Home' }).first().click();
   const dt = await page.evaluateHandle(() => {
     const d = new DataTransfer();
     d.items.add(
@@ -74,6 +76,10 @@ test('dropping files anywhere shows an overlay and imports them', async ({ page 
   await main.dispatchEvent('drop', { dataTransfer: dt });
   await expect(page.getByTestId('drop-overlay')).toBeHidden();
   await expect(page.getByText(/Imported 2 files/)).toBeVisible();
-  await page.getByRole('treeitem', { name: 'dropped.md' }).click();
+  // The first dropped file opens on its own.
+  await expect(page.locator('.cm-content')).toContainText('Hello from a drop.');
+  // Dropped from Home, it must stay on the document instead of falling back to All files.
+  await page.waitForTimeout(800);
+  await expect(page).toHaveURL(/#\/doc\//);
   await expect(page.locator('.cm-content')).toContainText('Hello from a drop.');
 });
