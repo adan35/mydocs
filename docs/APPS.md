@@ -84,7 +84,7 @@ An update is only offered when `latest.json` exists, which needs the signing key
 
    Choose a password when asked. This writes `mydoc.key` (private) and `mydoc.key.pub` (public).
 
-2. Put the **public** key in `src-tauri/tauri.conf.json`, replacing `REPLACE_WITH_UPDATER_PUBLIC_KEY` under `plugins.updater.pubkey` with the contents of `mydoc.key.pub`, and merge that change.
+2. Put the **public** key in `src-tauri/tauri.conf.json` under `plugins.updater.pubkey` (the contents of `mydoc.key.pub`) and merge that change. This is already done for the current key.
 3. In the repository's **Settings → Secrets and variables → Actions**, add:
    - `TAURI_SIGNING_PRIVATE_KEY`: the contents of `mydoc.key`
    - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: the password you chose
