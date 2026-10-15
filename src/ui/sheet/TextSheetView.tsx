@@ -17,7 +17,7 @@ import {
   tableToSheet,
 } from '@/lib/convert/delimited';
 import type { Cell, Sheet } from '@/lib/convert/workbook';
-import { SheetGrid, type Selection } from './SheetGrid';
+import { SheetGrid, type RowAction, type Selection } from './SheetGrid';
 import { SheetRibbon, type SheetCommand } from './SheetRibbon';
 
 /** Replaces the document text with one minimal change, so undo and other views stay exact. */
@@ -193,6 +193,22 @@ export function TextSheetView({
     write(rows);
   };
 
+  const onRows = (a: RowAction) => {
+    if (!sheet) return;
+    const rows = rowsOf(sheet);
+    const width = Math.max(1, ...rows.map((r) => r.length));
+    if (a.kind === 'insert') {
+      while (rows.length < a.at) rows.push([]);
+      rows.splice(
+        a.at,
+        0,
+        ...Array.from({ length: a.count }, () => Array.from({ length: width }, () => '')),
+      );
+    } else rows.splice(a.at, a.count);
+    write(rows);
+    if (a.select !== undefined) setSelection({ r: a.select, c: selection.c });
+  };
+
   const onKeyDown = (e: React.KeyboardEvent) => {
     const mod = e.metaKey || e.ctrlKey;
     if (!mod || (e.target as HTMLElement).tagName === 'INPUT') return;
@@ -284,6 +300,8 @@ export function TextSheetView({
             onEdit={onEdit}
             onPaste={onPaste}
             onClear={(r, c) => onEdit(r, c, '')}
+            onRows={onRows}
+            fixedHeader={markdown}
             pad={markdown ? { rows: 0, cols: 0 } : undefined}
             textOnly
             align={markdown ? table?.table.align : undefined}

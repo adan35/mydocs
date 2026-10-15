@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, ArrowDownToLine, ArrowUpToLine, Rows3, Trash2 } from 'lucide-react';
+import { dialogs } from '@/app/dialog-store';
+import { openMenu, type MenuEntry } from '../components/Menu';
 import {
   addr,
   colName,
@@ -19,6 +21,16 @@ const OVERSCAN = 8;
 export interface Selection {
   r: number;
   c: number;
+}
+
+/** A change to whole rows, asked for from a row number. */
+export interface RowAction {
+  kind: 'insert' | 'delete';
+  /** Index of the first row inserted at, or deleted. */
+  at: number;
+  count: number;
+  /** Row to select afterwards. */
+  select?: number;
 }
 
 export interface SheetGridProps {
@@ -42,6 +54,10 @@ export interface SheetGridProps {
    * without the leading apostrophe a spreadsheet uses to mark text that looks like a number.
    */
   textOnly?: boolean;
+  /** Click or right-click a row number to insert or delete rows. */
+  onRows?(action: RowAction): void;
+  /** Row 1 is a table header that can't be moved or removed (Markdown tables). */
+  fixedHeader?: boolean;
   /** Column alignment, as a Markdown table declares it. */
   align?: readonly ('left' | 'center' | 'right' | null)[];
 }
@@ -64,6 +80,8 @@ export function SheetGrid({
   label,
   textOnly,
   align,
+  onRows,
+  fixedHeader,
 }: SheetGridProps) {
   const editValue = textOnly ? textValue : cellEditValue;
   const scroller = useRef<HTMLDivElement>(null);
@@ -209,6 +227,70 @@ export function SheetGrid({
     );
   };
 
+  const askCount = async (r: number, where: 'above' | 'below') => {
+    const answer = await dialogs.prompt({
+      title: `Insert rows ${where}`,
+      label: `How many rows to insert ${where} row ${r + 1}?`,
+      initial: '5',
+      confirmLabel: 'Insert',
+      selectRange: [0, 1],
+      validate: (v) => {
+        const n = Number(v.trim());
+        return Number.isInteger(n) && n >= 1 && n <= 1000
+          ? null
+          : 'Enter a whole number from 1 to 1000.';
+      },
+    });
+    return answer === null ? null : Number(answer.trim());
+  };
+
+  const openRowMenu = (r: number, at: DOMRect | { x: number; y: number }) => {
+    if (readOnly || !onRows) return;
+    onSelect({ r, c: selection.c });
+    const insert = async (where: 'above' | 'below', many: boolean) => {
+      const count = many ? await askCount(r, where) : 1;
+      if (!count) return;
+      const pos = where === 'above' ? r : r + 1;
+      onRows({ kind: 'insert', at: pos, count, select: where === 'above' ? r : r + 1 });
+    };
+    const lockedTop = !!fixedHeader && r === 0;
+    const items: MenuEntry[] = [
+      {
+        label: 'Insert row above',
+        icon: <ArrowUpToLine />,
+        disabled: lockedTop,
+        onSelect: () => void insert('above', false),
+      },
+      {
+        label: 'Insert row below',
+        icon: <ArrowDownToLine />,
+        onSelect: () => void insert('below', false),
+      },
+      {
+        label: 'Insert rows above…',
+        icon: <Rows3 />,
+        disabled: lockedTop,
+        onSelect: () => void insert('above', true),
+      },
+      { label: 'Insert rows below…', icon: <Rows3 />, onSelect: () => void insert('below', true) },
+      'separator',
+      {
+        label: `Delete row ${r + 1}`,
+        icon: <Trash2 />,
+        danger: true,
+        disabled: lockedTop || r >= dataRows,
+        onSelect: () =>
+          onRows({
+            kind: 'delete',
+            at: r,
+            count: 1,
+            select: Math.max(0, Math.min(r, dataRows - 2)),
+          }),
+      },
+    ];
+    openMenu({ items, at, label: `Row ${r + 1}`, returnFocus: scroller.current });
+  };
+
   const totalW = lefts[cols]!;
   const cellTitle = (c: Cell | undefined) =>
     c?.stale
@@ -309,8 +391,21 @@ export function SheetGrid({
               >
                 <div
                   role="rowheader"
-                  className={`sheet-rownum sticky left-0 z-10 ${r === selection.r ? 'is-active' : ''}`}
+                  className={`sheet-rownum sticky left-0 z-10 ${r === selection.r ? 'is-active' : ''} ${onRows && !readOnly ? 'is-actionable' : ''}`}
                   style={{ width: NUM_W }}
+                  title={onRows && !readOnly ? 'Click for row options' : undefined}
+                  aria-haspopup={onRows && !readOnly ? 'menu' : undefined}
+                  onMouseDown={(e) => {
+                    if (!onRows || readOnly) return;
+                    e.preventDefault();
+                    if (editing) commit(editing.value);
+                    openRowMenu(r, e.currentTarget.getBoundingClientRect());
+                  }}
+                  onContextMenu={(e) => {
+                    if (!onRows || readOnly) return;
+                    e.preventDefault();
+                    openRowMenu(r, { x: e.clientX, y: e.clientY });
+                  }}
                 >
                   {r + 1}
                 </div>

@@ -270,3 +270,27 @@ test('the formats page lists what each format supports', async ({ page }) => {
   await expect(matrix).toContainText('Google Docs and Google Sheets');
   await expect(matrix).toContainText('Sync, sharing and real-time collaboration');
 });
+
+test('clicking a row number inserts one or several rows above or below', async ({ page }) => {
+  await freshApp(page);
+  await importFile(page, 'inventory.csv', 'text/csv');
+  const grid = page.getByTestId('sheet-grid');
+  await expect(grid.locator('[data-cell="A3"]')).toHaveText('Cup, large');
+  // One row above row 3.
+  await grid.getByRole('rowheader', { name: '3', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Insert row above' }).click();
+  await expect(grid.locator('[data-cell="A3"]')).toHaveText('');
+  await expect(grid.locator('[data-cell="A4"]')).toHaveText('Cup, large');
+  // Three rows below row 1.
+  await grid.getByRole('rowheader', { name: '1', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Insert rows below…' }).click();
+  await page.getByRole('dialog').getByRole('textbox').fill('3');
+  await page.getByRole('dialog').getByRole('button', { name: 'Insert' }).click();
+  await expect(grid.locator('[data-cell="A2"]')).toHaveText('');
+  await expect(grid.locator('[data-cell="A5"]')).toHaveText('Pen');
+  await waitSaved(page);
+  await page.getByRole('button', { name: 'Text', exact: true }).click();
+  expect(await sourceText(page)).toBe(
+    'name,qty,code\n,,\n,,\n,,\nPen,3,007\n,,\n"Cup, large",2,0042\nLamp,1,100\n',
+  );
+});
