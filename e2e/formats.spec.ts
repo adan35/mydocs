@@ -256,8 +256,12 @@ test('PDFs open in a page viewer with search', async ({ page }) => {
   await page.getByRole('textbox', { name: 'Find in PDF' }).fill('Heron');
   await expect(page.getByTestId('pdf-toolbar')).toContainText('1 of 1 pages');
   await expect(pages.locator('.pdf-hit').first()).toBeVisible();
+  // The page starts at its own size, or the width of the view when that's narrower.
+  const zoom = async () =>
+    Number(/(\d+)%/.exec((await page.getByTestId('pdf-toolbar').textContent()) ?? '')?.[1]);
+  const before = await zoom();
   await page.getByRole('button', { name: 'Zoom in' }).click();
-  await expect(page.getByTestId('pdf-toolbar')).toContainText('125%');
+  await expect.poll(zoom).toBeGreaterThan(before);
 });
 
 test('the formats page lists what each format supports', async ({ page }) => {

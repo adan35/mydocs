@@ -69,3 +69,83 @@ export function extractHeadings(src: string): Heading[] {
   }
   return out;
 }
+
+/** An entry in a document's outline: a heading, page, sheet, table, column or symbol. */
+export interface OutlineItem {
+  key: string;
+  /** Nesting depth, 1 = top level. */
+  level: number;
+  text: string;
+  /** Short note shown at the end of the row ("120 words", "p. 4", "40 rows"). */
+  detail?: string;
+  /** Badge before the text ("H2", "fn"). */
+  badge?: string;
+}
+
+const SYMBOL_PATTERNS: [RegExp, string][] = [
+  // JavaScript / TypeScript
+  [/^(\s*)(?:export\s+)?(?:default\s+)?(?:abstract\s+)?class\s+([\w$]+)/, 'class'],
+  [/^(\s*)(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s*\*?\s*([\w$]+)/, 'fn'],
+  [/^(\s*)(?:export\s+)?(?:declare\s+)?interface\s+([\w$]+)/, 'type'],
+  [/^(\s*)(?:export\s+)?(?:declare\s+)?type\s+([\w$]+)\s*(?:<[^=]*>)?\s*=/, 'type'],
+  [/^(\s*)(?:export\s+)?(?:const\s+)?enum\s+([\w$]+)/, 'enum'],
+  [
+    /^(\s*)(?:export\s+)?(?:const|let|var)\s+([\w$]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[\w$]+)\s*=>/,
+    'fn',
+  ],
+  // Python
+  [/^(\s*)(?:async\s+)?def\s+(\w+)/, 'fn'],
+  [/^(\s*)class\s+(\w+)/, 'class'],
+  // Go, Rust, Swift, Kotlin
+  [/^(\s*)func\s+(?:\([^)]*\)\s*)?(\w+)/, 'fn'],
+  [/^(\s*)(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+(\w+)/, 'fn'],
+  [/^(\s*)(?:pub\s+)?(?:struct|trait|impl)\s+(?:<[^>]*>\s*)?([\w:]+)/, 'type'],
+  [/^(\s*)(?:public\s+|private\s+|internal\s+)?fun\s+(\w+)/, 'fn'],
+  // SQL
+  [/^(\s*)create\s+(?:or\s+replace\s+)?(?:table|view|procedure|function)\s+([\w.]+)/i, 'sql'],
+];
+
+const CODE_EXTENSIONS = new Set([
+  'js',
+  'jsx',
+  'mjs',
+  'cjs',
+  'ts',
+  'tsx',
+  'py',
+  'go',
+  'rs',
+  'swift',
+  'kt',
+  'kts',
+  'java',
+  'cs',
+  'sql',
+  'rb',
+  'php',
+]);
+
+export function isCodeExtension(ext: string): boolean {
+  return CODE_EXTENSIONS.has(ext.toLowerCase());
+}
+
+/**
+ * Functions, classes and types of a source file, by pattern (no parser): enough to find
+ * your way around a file. Indented definitions (methods) sit one level deeper.
+ */
+export function extractSymbols(src: string): (OutlineItem & { line: number })[] {
+  const out: (OutlineItem & { line: number })[] = [];
+  const lines = src.split('\n');
+  for (let i = 0; i < lines.length && out.length < 2000; i++) {
+    const line = lines[i]!;
+    if (line.length > 400 || /^\s*(\/\/|#|\*|--)/.test(line)) continue;
+    for (const [re, badge] of SYMBOL_PATTERNS) {
+      const m = re.exec(line);
+      if (!m) continue;
+      const indent = m[1]!.replace(/\t/g, '    ').length;
+      out.push({ key: `${i}`, line: i, level: indent ? 2 : 1, text: m[2]!, badge });
+      break;
+    }
+  }
+  return out;
+}

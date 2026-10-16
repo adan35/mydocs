@@ -44,6 +44,25 @@
   cursor: cell;
   position: relative;
 }
+.sheet-cell.is-wrapped {
+  align-items: flex-start;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  line-height: 18px;
+  white-space: normal;
+}
+.sheet-cell.is-wrapped.text-right {
+  text-align: right;
+}
+.sheet-cell .cell-lines {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-width: 0;
+  width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
 .sheet-cell.text-right {
   justify-content: flex-end;
 }

@@ -20,6 +20,7 @@ import {
 import { parseInput, setCellRaw, type Workbook } from '@/lib/convert/workbook';
 import { SheetGrid, type Selection } from './SheetGrid';
 import { SheetRibbon, type SheetCommand } from './SheetRibbon';
+import { publishOutline } from '@/app/outline-store';
 
 type SaveState = 'saved' | 'saving' | 'error';
 const SAVE_DELAY = 700;
@@ -101,6 +102,28 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
 
   // Save on leave.
   useEffect(() => () => void flush(), [flush]);
+
+  // Outline: the workbook's sheets.
+  useEffect(() => {
+    if (!wb) return;
+    const filled = (rows: unknown[][]) =>
+      rows.filter((r) => r?.some((c) => c !== undefined)).length;
+    publishOutline(entry.id, {
+      items: wb.sheets.map((sh, i) => ({
+        key: `${i}`,
+        level: 1,
+        text: sh.name,
+        detail: `${filled(sh.rows).toLocaleString()} rows`,
+      })),
+      active: Math.min(sheetIndex, wb.sheets.length - 1),
+      noun: 'sheets',
+      jump: (i) => {
+        setSheetIndex(i);
+        setSelection({ r: 0, c: 0 });
+      },
+    });
+  }, [wb, sheetIndex, entry.id]);
+  useEffect(() => () => publishOutline(entry.id, null), [entry.id]);
 
   const commit = (next: Workbook) => {
     if (!wb) return;

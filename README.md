@@ -22,7 +22,8 @@ Your documents stay plain Markdown and text. Everything My Doc adds, like tags a
 - The preview supports GitHub-style Markdown: tables, task lists (clickable), footnotes, KaTeX math, Mermaid diagrams, syntax-highlighted code with a copy button, and YAML front matter.
 - Paste or drop an image into a document to save it in an `assets/` folder next to the document and link it.
 - Plain-text and code files open in the same editor. Images show a preview. PDFs and other binary files show an info panel with download, and PDFs and images can open in a new tab.
-- An outline of headings with foldable sections; words, characters, lines and reading time.
+- An outline for every kind of file: headings with their level and section size (Markdown, text, Word), bookmarks or pages (PDF), sheets (Excel), tables or columns (sheet view, CSV) and functions and classes (code). It folds, filters long outlines, follows what's on screen, and jumps on click. The Info tab shows words, characters, lines and reading time.
+- Table row height like a spreadsheet: Default (one line per row), Normal (up to 3 lines), Medium (up to 6) or Full, from the Rows button on any table, the sheet toolbar or Settings. Click a row to see all of it.
 - Front matter shows as a properties table above the rendered document. Callouts (`> [!NOTE]`, `> [!WARNING]`…) render with a title.
 - Click an image in the preview to zoom, open it full size, copy or download it.
 
@@ -55,7 +56,7 @@ Your documents stay plain Markdown and text. Everything My Doc adds, like tags a
 **Import and export**
 
 - Import files, whole folders or zip archives, by picker or drag and drop. Folder structure is kept, `.git` and `node_modules` are skipped, and name conflicts can be replaced, skipped or kept as copies.
-- In Chrome and Edge, text files imported with the Files… or Folder… picker stay linked to the original file: every save is also written back to it (the browser asks once for permission). Other browsers keep the edited copy in My Doc; export it to save it back.
+- In Chrome, Edge and the Windows desktop app, files imported with the Files… or Folder… picker or dropped in stay linked to the original file: every save of a text file is also written back to it (the browser asks once for permission), and changes made to the file in another app show up in My Doc within seconds. If the document also has edits that aren't in the file, nothing is overwritten: "Changed on disk" lets you load the disk version or keep yours. Word, Excel and PDF files are refreshed from disk but never written. Other browsers keep the edited copy in My Doc; export it to save it back.
 - Any text file opens in the editor, including dotfiles and unfamiliar extensions.
 - Export a document as Markdown, plain text, standalone HTML, or PDF (through the browser's print dialog). Export a folder or the whole workspace as a zip.
 

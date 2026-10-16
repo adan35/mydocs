@@ -8,6 +8,8 @@ export type ThemePref = 'light' | 'dark' | 'system';
 export type ViewMode = 'edit' | 'split' | 'rich' | 'preview' | 'sheet';
 export type Density = 'comfortable' | 'compact';
 export type ExplorerView = 'list' | 'compact' | 'grid';
+/** How tall table rows are: one line like a spreadsheet, up to 3 or 6 lines, or everything. */
+export type RowHeight = 'default' | 'normal' | 'medium' | 'full';
 
 export interface Settings {
   theme: ThemePref;
@@ -36,6 +38,8 @@ export interface Settings {
   dailyFolder: string;
   /** Split view: scrolling one pane moves the other to the same content. */
   syncScroll: boolean;
+  /** Row height of tables in documents and of spreadsheet grids. */
+  tableRowHeight: RowHeight;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -58,6 +62,15 @@ export const DEFAULT_SETTINGS: Settings = {
   typewriter: false,
   dailyFolder: 'Daily notes',
   syncScroll: true,
+  tableRowHeight: 'default',
+};
+
+/** Most lines a cell shows at each row height. */
+export const ROW_LINES: Record<RowHeight, number> = {
+  default: 1,
+  normal: 3,
+  medium: 6,
+  full: Infinity,
 };
 
 const KEY = 'mydoc:settings';
@@ -75,6 +88,8 @@ function load(): Partial<Settings> {
   if ((saved.v ?? 1) < 2 && saved.readingWidth === 'normal') saved.readingWidth = 'full';
   delete saved.v;
   if (saved.palette !== undefined && !isPaletteId(saved.palette)) delete saved.palette;
+  if (saved.tableRowHeight !== undefined && !(saved.tableRowHeight in ROW_LINES))
+    delete saved.tableRowHeight;
   return saved;
 }
 

@@ -70,3 +70,70 @@ export async function mode(page: Page, name: 'Source' | 'Split' | 'Rich' | 'Read
     .getByRole('button', { name, exact: true })
     .click();
 }
+
+/**
+ * Stands in for the File System Access API: the picker returns one fake file whose
+ * writes land in `window.__disk`. With `prompt`, the first permission request (made right
+ * after import) is dismissed and the next one is granted. `changeDisk` edits the file as
+ * another app would.
+ */
+export async function fakeDisk(
+  page: Page,
+  name: string,
+  text: string,
+  permission: PermissionState,
+) {
+  await page.addInitScript(
+    ({ name, text, permission }) => {
+      const w = window as unknown as Record<string, unknown>;
+      w.__disk = text;
+      w.__diskTime = 1_700_000_000_000;
+      let state = permission;
+      let asked = 0;
+      const handle = {
+        kind: 'file',
+        name,
+        getFile: async () =>
+          new File([w.__disk as string], name, { lastModified: w.__diskTime as number }),
+        createWritable: async () => {
+          if (state !== 'granted') throw new DOMException('denied', 'NotAllowedError');
+          let next = '';
+          return {
+            write: async (t: string) => void (next = t),
+            close: async () => {
+              w.__disk = next;
+              w.__diskTime = (w.__diskTime as number) + 1000;
+            },
+          };
+        },
+        queryPermission: async () => state,
+        // The first request is the one right after import; model the user dismissing it.
+        requestPermission: async () => {
+          if (asked++) state = 'granted';
+          return state;
+        },
+      };
+      w.showOpenFilePicker = async () => [handle];
+    },
+    { name, text, permission },
+  );
+}
+
+export async function importViaPicker(page: Page, name: string) {
+  await page.getByRole('button', { name: 'Import' }).first().click();
+  await page.getByRole('menuitem', { name: 'Files…' }).click();
+  await expect(page.getByText(/^Imported 1 file/)).toBeVisible();
+  await page.getByRole('treeitem', { name }).click();
+}
+
+export const disk = (page: Page) =>
+  page.evaluate(() => (window as unknown as { __disk: string }).__disk);
+
+/** Changes the fake file on disk, as another app saving it would. */
+export async function changeDisk(page: Page, text: string) {
+  await page.evaluate((t) => {
+    const w = window as unknown as Record<string, unknown>;
+    w.__disk = t;
+    w.__diskTime = (w.__diskTime as number) + 1000;
+  }, text);
+}

@@ -6,6 +6,7 @@ import {
   useState,
   type Ref,
   useImperativeHandle,
+  useLayoutEffect,
 } from 'react';
 import { createPortal } from 'react-dom';
 import type { EntryId } from '@/domain/types';
@@ -19,6 +20,8 @@ import { resolveWikiLink } from '@/app/workspace';
 import { toast } from '@/app/toast-store';
 import { useResolvedTheme, useTree } from '../hooks';
 import { useLinkPreview } from './LinkPreview';
+import { useSettings } from '@/app/settings-store';
+import { applyRowHeight, toggleRowAt } from '../row-height';
 import { useRichEditing, type RichApi, type RichFocus } from './rich-editing';
 
 export interface PreviewHandle {
@@ -76,6 +79,7 @@ export function Preview({
   const deferred = rich ? text : deferredText;
   const tree = useTree()!;
   const theme = useResolvedTheme();
+  const rowHeight = useSettings((s) => s.tableRowHeight);
   const [zoom, setZoom] = useState<{ src: string; alt: string } | null>(null);
   const rendered = useMemo(() => renderMarkdown(deferred), [deferred]);
   const linkPreview = useLinkPreview((a) => {
@@ -174,6 +178,11 @@ export function Preview({
     };
   }, [rendered, tree, docId, theme]);
 
+  // Table row height (Default, Normal, Medium, Full). Cells edited in place show in full.
+  useLayoutEffect(() => {
+    if (root.current) applyRowHeight(root.current, rich ? null : rowHeight);
+  }, [rendered, rich, rowHeight]);
+
   // Report the first visible source line (for outline highlighting and scroll sync).
   useEffect(() => {
     const el = root.current;
@@ -183,10 +192,15 @@ export function Preview({
     const onScroll = () => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
-        const top = container.getBoundingClientRect().top;
+        const box = container.getBoundingClientRect();
+        // At the very end the last sections can't reach the top: count what's on screen.
+        const atEnd =
+          container.scrollTop > 0 &&
+          container.scrollTop + container.clientHeight >= container.scrollHeight - 4;
+        const limit = atEnd ? box.bottom - 40 : box.top + 40;
         let line = 0;
         for (const node of el.querySelectorAll<HTMLElement>('[data-line]')) {
-          if (node.getBoundingClientRect().top - top > 40) break;
+          if (node.getBoundingClientRect().top > limit) break;
           line = Number(node.dataset.line);
         }
         callbacks.current.onVisibleLine?.(line);
@@ -239,7 +253,10 @@ export function Preview({
       return;
     }
     const a = target.closest('a');
-    if (!a) return;
+    if (!a) {
+      if (!rich) toggleRowAt(target);
+      return;
+    }
     const href = a.getAttribute('href') ?? '';
     if (href.startsWith('#')) {
       e.preventDefault();

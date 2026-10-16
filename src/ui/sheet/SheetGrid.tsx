@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { AlertTriangle, ArrowDownToLine, ArrowUpToLine, Rows3, Trash2 } from 'lucide-react';
 import { dialogs } from '@/app/dialog-store';
 import { openMenu, type MenuEntry } from '../components/Menu';
+import { ROW_LINES, useSettings } from '@/app/settings-store';
 import {
   addr,
   colName,
@@ -14,6 +15,11 @@ import {
 } from '@/lib/convert/workbook';
 
 const ROW_H = 28;
+/** Wrapped rows: line height and vertical padding of a cell. */
+const LINE_H = 18;
+const PAD_Y = 10;
+/** Average width of a character at the grid's 13px, a little generous so text fits. */
+const CHAR_W = 7;
 const NUM_W = 48;
 const DEFAULT_COL_W = 112;
 const OVERSCAN = 8;
@@ -109,19 +115,64 @@ export function SheetGrid({
   const cell = (r: number, c: number): Cell | undefined => sheet.rows[r]?.[c];
   const active = cell(selection.r, selection.c);
 
+  // Row height: one line like a spreadsheet, or rows that grow with their text up to 3 or
+  // 6 lines (or all of it). Heights are estimated from the text and column widths.
+  const rowHeight = useSettings((st) => st.tableRowHeight);
+  const maxLines = ROW_LINES[rowHeight];
+  const wrap = maxLines > 1;
+  // Very large sheets use an average character width instead of measuring every word.
+  const measure = useMemo(() => (wrap ? textMeasurer(dataRows > 20_000) : null), [wrap, dataRows]);
+  const tops = useMemo(() => {
+    // tops[r] is where row r starts (row 0 sits under the column header); tops[rows] is the end.
+    const out = new Float64Array(rows + 1);
+    let y = ROW_H;
+    for (let r = 0; r < rows; r++) {
+      out[r] = y;
+      let lines = 1;
+      const row = wrap ? sheet.rows[r] : undefined;
+      if (row) {
+        for (let c = 0; c < row.length && c < cols && lines < maxLines; c++) {
+          const v = row[c];
+          if (!v) continue;
+          const text = displayValue(v);
+          if (!text) continue;
+          const n = wrappedLines(text, widths[c]! - 16, measure);
+          lines = Math.max(lines, n);
+        }
+      }
+      y += lines > 1 ? Math.min(lines, maxLines) * LINE_H + PAD_Y : ROW_H;
+    }
+    out[rows] = y;
+    return out;
+  }, [sheet, rows, cols, widths, wrap, maxLines, measure]);
+  const rowTop = (r: number) => tops[Math.min(r, rows)]!;
+  const rowH = (r: number) => rowTop(r + 1) - rowTop(r);
+  /** The row at a vertical position (binary search over the row tops). */
+  const rowAt = (y: number) => {
+    let lo = 0;
+    let hi = rows - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (tops[mid]! <= y) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
+  };
+
   // Keep the active cell in view.
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!el) return;
-    const top = (selection.r + 1) * ROW_H;
+    const top = rowTop(selection.r);
+    const bottom = rowTop(selection.r + 1);
     if (top < el.scrollTop + ROW_H) el.scrollTop = top - ROW_H;
-    else if (top + ROW_H > el.scrollTop + el.clientHeight)
-      el.scrollTop = top + ROW_H - el.clientHeight;
+    else if (bottom > el.scrollTop + el.clientHeight) el.scrollTop = bottom - el.clientHeight;
     const left = lefts[selection.c]!;
     const right = lefts[selection.c + 1]!;
     if (left < el.scrollLeft + NUM_W) el.scrollLeft = left - NUM_W;
     else if (right > el.scrollLeft + el.clientWidth) el.scrollLeft = right - el.clientWidth;
-  }, [selection, lefts]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selection, lefts, tops]);
 
   useEffect(() => {
     const el = scroller.current;
@@ -137,8 +188,8 @@ export function SheetGrid({
     };
   }, []);
 
-  const first = Math.max(0, Math.floor(view.top / ROW_H) - 1 - OVERSCAN);
-  const last = Math.min(rows, Math.ceil((view.top + view.height) / ROW_H) + OVERSCAN);
+  const first = Math.max(0, rowAt(view.top) - OVERSCAN);
+  const last = Math.min(rows, rowAt(view.top + view.height) + 1 + OVERSCAN);
 
   const move = useCallback(
     (dr: number, dc: number) => {
@@ -190,7 +241,8 @@ export function SheetGrid({
     }
     if (e.key === 'PageDown' || e.key === 'PageUp') {
       e.preventDefault();
-      move((e.key === 'PageDown' ? 1 : -1) * Math.max(1, Math.floor(view.height / ROW_H) - 1), 0);
+      const avg = (tops[rows]! - ROW_H) / Math.max(1, rows);
+      move((e.key === 'PageDown' ? 1 : -1) * Math.max(1, Math.floor(view.height / avg) - 1), 0);
       return;
     }
     if (readOnly) return;
@@ -360,7 +412,7 @@ export function SheetGrid({
         onCopy={onCopy}
         onPaste={onPasteEvent}
       >
-        <div style={{ height: (rows + 1) * ROW_H, width: totalW, position: 'relative' }}>
+        <div style={{ height: tops[rows], width: totalW, position: 'relative' }}>
           {/* Column headers */}
           <div
             className="sticky top-0 z-20 flex"
@@ -385,14 +437,14 @@ export function SheetGrid({
               <div
                 key={r}
                 className="absolute left-0 flex"
-                style={{ top: (r + 1) * ROW_H, height: ROW_H, width: totalW }}
+                style={{ top: rowTop(r), height: rowH(r), width: totalW }}
                 role="row"
                 aria-rowindex={r + 1}
               >
                 <div
                   role="rowheader"
                   className={`sheet-rownum sticky left-0 z-10 ${r === selection.r ? 'is-active' : ''} ${onRows && !readOnly ? 'is-actionable' : ''}`}
-                  style={{ width: NUM_W }}
+                  style={{ width: NUM_W, height: rowH(r) }}
                   title={onRows && !readOnly ? 'Click for row options' : undefined}
                   aria-haspopup={onRows && !readOnly ? 'menu' : undefined}
                   onMouseDown={(e) => {
@@ -421,9 +473,9 @@ export function SheetGrid({
                       aria-selected={isActive}
                       aria-colindex={c + 1}
                       data-cell={addr(r, c)}
-                      title={cellTitle(v)}
-                      className={`sheet-cell ${isActive ? 'is-active' : ''} ${numeric || align?.[c] === 'right' ? 'text-right' : align?.[c] === 'center' ? 'text-center' : ''} ${v && isError(v.v) ? 'text-danger' : ''} ${headerRow && r === 0 ? 'font-semibold' : ''} ${v?.stale ? 'is-stale' : ''}`}
-                      style={{ width: w }}
+                      title={cellTitle(v) ?? (!wrap && shown.length > 20 ? shown : undefined)}
+                      className={`sheet-cell ${wrap ? 'is-wrapped' : ''} ${isActive ? 'is-active' : ''} ${numeric || align?.[c] === 'right' ? 'text-right' : align?.[c] === 'center' ? 'text-center' : ''} ${v && isError(v.v) ? 'text-danger' : ''} ${headerRow && r === 0 ? 'font-semibold' : ''} ${v?.stale ? 'is-stale' : ''}`}
+                      style={{ width: w, height: rowH(r) }}
                       onMouseDown={(e) => {
                         if (editing && isActive) return;
                         e.preventDefault();
@@ -446,7 +498,16 @@ export function SheetGrid({
                           }}
                         />
                       ) : (
-                        <span className="truncate">{shown}</span>
+                        <span
+                          className={wrap ? 'cell-lines' : 'truncate'}
+                          style={
+                            wrap && maxLines !== Infinity
+                              ? { WebkitLineClamp: maxLines, lineClamp: maxLines }
+                              : undefined
+                          }
+                        >
+                          {shown}
+                        </span>
                       )}
                     </div>
                   );
@@ -458,6 +519,53 @@ export function SheetGrid({
       </div>
     </div>
   );
+}
+
+type Measure = ((s: string) => number) | null;
+
+/** Measures text in the grid's font (cached per word); `rough` uses an average width. */
+function textMeasurer(rough: boolean): Measure {
+  if (rough) return (t) => t.length * CHAR_W;
+  const ctx = document.createElement('canvas').getContext('2d');
+  if (!ctx) return (t) => t.length * CHAR_W;
+  ctx.font = `13px ${getComputedStyle(document.body).fontFamily || 'sans-serif'}`;
+  const cache = new Map<string, number>();
+  return (t) => {
+    let w = cache.get(t);
+    if (w === undefined) {
+      // Tabular figures and a little slack, so wrapped text never ends up cut off.
+      w = ctx.measureText(t).width * 1.04;
+      if (cache.size < 50_000) cache.set(t, w);
+    }
+    return w;
+  };
+}
+
+/** How many lines text takes in a cell `width` px wide, wrapping at spaces like the browser. */
+export function wrappedLines(text: string, width: number, measure: Measure): number {
+  const m = measure ?? ((t: string) => t.length * CHAR_W);
+  const room = Math.max(8, width);
+  const space = m(' ');
+  let total = 0;
+  for (const part of text.split('\n')) {
+    let lines = 1;
+    let x = 0;
+    for (const word of part.split(' ')) {
+      const w = m(word);
+      if (x > 0 && x + space + w <= room) {
+        x += space + w;
+        continue;
+      }
+      if (x > 0) lines++;
+      // A word wider than the cell breaks across lines.
+      if (w > room) {
+        lines += Math.ceil(w / room) - 1;
+        x = w % room || room;
+      } else x = w;
+    }
+    total += lines;
+  }
+  return total;
 }
 
 function CellEditor({
