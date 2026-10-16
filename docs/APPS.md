@@ -135,3 +135,13 @@ are built by CI (below); running them on real devices needs the accounts listed 
 
 - Editing a real folder on disk (the desktop app still stores documents in its own database, like the browser). The storage layer is ready for it: a folder-backed `WorkspaceProvider` in `src/storage/` would plug in without UI changes.
 - Sync between devices.
+
+## Logo and icons
+
+The master logo is `brand/logo.svg` (rounded tile), with `logo-maskable.svg` (full bleed, for maskable and iOS icons), `logo-foreground.svg` and `logo-background.svg` (Android adaptive icon) and 1024px PNG renders next to them. To change the logo, edit those SVGs and regenerate:
+
+- Web: `public/favicon.svg` and `public/icons/*` (PWA, apple-touch icon).
+- Desktop: `npx tauri icon brand/logo.png` (then delete the `android/` and `ios/` folders it adds under `src-tauri/icons`). The Windows installer file icon and the installer header and sidebar images come from `bundle.windows.nsis` in `src-tauri/tauri.conf.json` (`src-tauri/installer/*.bmp`).
+- Mobile: copy the SVGs and PNGs into `assets/` and run `npx @capacitor/assets generate --android --ios`; the iOS icon must have no transparency.
+
+Icons are baked into each release, so a new logo only shows after a new `v*` tag is built.

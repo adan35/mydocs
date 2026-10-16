@@ -439,6 +439,7 @@ export function SettingsView() {
         </Section>
       )}
 
+      <img src="/favicon.svg" alt="" width={32} height={32} className="mx-auto mb-2 rounded-lg" />
       <p className="text-center text-xs text-stone">
         My Doc · Markdown at its core · Your documents never leave this device.
       </p>
