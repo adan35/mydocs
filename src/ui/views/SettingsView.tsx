@@ -8,7 +8,7 @@ import { formatBytes } from '@/domain/names';
 import { Page } from '../components/Page';
 import { PaletteGrid } from '../components/ThemePicker';
 import { useEffect, useState } from 'react';
-import { canSelfUpdate, installedVersion, isNativeApp } from '@/platform';
+import { installedVersion, isNativeApp, updateMode } from '@/platform';
 import { checkNow, installUpdate, useUpdates } from '@/app/updates';
 import { navigate } from '@/app/router';
 
@@ -108,7 +108,7 @@ function UpdatesSection() {
           {version && <span className="text-[14px] text-charcoal">{version}</span>}
           {status.phase === 'available' ? (
             <button type="button" className="btn btn-primary" onClick={() => void installUpdate()}>
-              Install and restart
+              {status.download ? 'Download update' : 'Install and restart'}
             </button>
           ) : (
             <button
@@ -423,7 +423,7 @@ export function SettingsView() {
         </Row>
       </Section>
 
-      {canSelfUpdate && <UpdatesSection />}
+      {updateMode && <UpdatesSection />}
 
       {!isNativeApp && (
         <Section title="Apps" description="The same My Doc, installed on your computer or phone.">

@@ -35,6 +35,8 @@ export function onCloseRequested(save: () => Promise<void> | void): Promise<() =
 export interface PendingUpdate {
   version: string;
   notes?: string;
+  /** `in-app` installs by itself and restarts; `download` hands the user a file to install. */
+  kind: 'in-app' | 'download';
   /** Downloads, verifies the signature, and installs. `onProgress` gets 0..1 when the size is known. */
   install(onProgress: (fraction: number | null) => void): Promise<void>;
 }
@@ -46,6 +48,7 @@ export async function checkForUpdate(): Promise<PendingUpdate | null> {
   return {
     version: update.version,
     notes: update.body,
+    kind: 'in-app',
     async install(onProgress) {
       let total = 0;
       let done = 0;

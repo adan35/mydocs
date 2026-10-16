@@ -6,6 +6,10 @@ import { fileURLToPath } from 'node:url';
 import { readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 
+const { version: APP_VERSION } = JSON.parse(
+  readFileSync(new URL('./package.json', import.meta.url), 'utf8'),
+) as { version: string };
+
 /**
  * Production Content-Security-Policy. Documents are untrusted, so even if sanitizing
  * ever failed, inline and third-party scripts still could not run.
@@ -69,6 +73,7 @@ const serviceWorkerPlugin = (): Plugin => ({
 });
 
 export default defineConfig({
+  define: { __APP_VERSION__: JSON.stringify(APP_VERSION) },
   plugins: [react(), tailwindcss(), cspPlugin(), serviceWorkerPlugin()],
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },

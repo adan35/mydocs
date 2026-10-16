@@ -1,5 +1,9 @@
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
+import { CapacitorHttp } from '@capacitor/core';
+import { ANDROID_MANIFEST_URL, RELEASES_URL } from '@/app/downloads';
+import { isNewerVersion } from './version';
+import type { PendingUpdate } from './desktop';
 
 /** Android and iOS (Capacitor) implementations behind `platform/index.ts`. */
 
@@ -32,4 +36,25 @@ async function toBase64(blob: Blob): Promise<string> {
     binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
   }
   return btoa(binary);
+}
+
+/**
+ * Android has no store here, so the release publishes `android.json` beside the APK.
+ * The request goes through the native HTTP client, which is not limited by the page's CSP.
+ */
+export async function checkForUpdate(): Promise<PendingUpdate | null> {
+  const res = await CapacitorHttp.get({ url: ANDROID_MANIFEST_URL });
+  const data = res.data as { version?: unknown; url?: unknown } | undefined;
+  if (res.status !== 200 || typeof data?.version !== 'string' || typeof data.url !== 'string')
+    throw new Error('The update information could not be read.');
+  // Only ever hand the user a file from this project's releases.
+  if (!data.url.startsWith(`${RELEASES_URL}/`)) throw new Error('Unexpected update location.');
+  if (!isNewerVersion(data.version, __APP_VERSION__)) return null;
+  const { version, url } = data;
+  return {
+    version,
+    kind: 'download',
+    // Opens the APK in the browser's downloader; the user taps it to install.
+    install: async () => void location.assign(url),
+  };
 }

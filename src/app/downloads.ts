@@ -21,6 +21,9 @@ export interface DownloadTarget {
 
 export const latestUrl = (file: string) => `${RELEASES_URL}/latest/download/${file}`;
 
+/** What the Android app reads to learn whether a newer APK exists. */
+export const ANDROID_MANIFEST_URL = latestUrl(ASSET_NAMES.androidManifest);
+
 export const DOWNLOADS: DownloadTarget[] = [
   {
     os: 'windows',

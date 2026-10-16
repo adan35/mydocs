@@ -8,10 +8,15 @@ export function UpdatePrompt() {
   if (!open || (status.phase !== 'available' && status.phase !== 'installing')) return null;
   const installing = status.phase === 'installing';
   const notes = status.phase === 'available' ? status.notes?.trim() : undefined;
+  const download = status.phase === 'available' && status.download;
   return (
     <Dialog
       title={`My Doc ${status.version} is available`}
-      description="Your documents stay on this device. My Doc saves your open edits, installs the update, and restarts."
+      description={
+        download
+          ? 'Your documents stay on this device. Download the new version and open it to update; Android may ask you to allow installs from your browser.'
+          : 'Your documents stay on this device. My Doc saves your open edits, installs the update, and restarts.'
+      }
       onClose={() => !installing && dismissPrompt()}
       footer={
         <>
@@ -37,7 +42,7 @@ export function UpdatePrompt() {
             disabled={installing}
             onClick={() => void installUpdate()}
           >
-            {installing ? 'Installing…' : 'Install and restart'}
+            {installing ? 'Installing…' : download ? 'Download update' : 'Install and restart'}
           </button>
         </>
       }

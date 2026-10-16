@@ -2,7 +2,7 @@
 // Release helpers used by .github/workflows/apps.yml.
 //
 //   node scripts/release.mjs set-version v1.2.3
-//       Stamps 1.2.3 into src-tauri/tauri.conf.json so the installed app knows its version.
+//       Stamps 1.2.3 into src-tauri/tauri.conf.json and package.json so installed apps know their version.
 //   node scripts/release.mjs publish <tag> <repo> <inDir> <outDir>
 //       Gives the downloaded build artifacts stable names in <outDir> and writes latest.json,
 //       the manifest the desktop app's updater reads.
@@ -66,12 +66,24 @@ export function buildManifest({ version, tag, repo, notes, signatures, now = new
   return { version, notes, pub_date: now.toISOString(), platforms };
 }
 
+/** What the Android app reads to learn that a newer APK exists (it can't use latest.json). */
+export function buildAndroidManifest({ version, tag, repo }) {
+  return {
+    version,
+    url: `https://github.com/${repo}/releases/download/${tag}/${ASSET_NAMES.android}`,
+  };
+}
+
 function setVersion(tag) {
   const version = versionFromTag(tag);
   const path = 'src-tauri/tauri.conf.json';
   const conf = JSON.parse(readFileSync(path, 'utf8'));
   conf.version = version;
   writeFileSync(path, `${JSON.stringify(conf, null, 2)}\n`);
+  // The web build (and so the Android app) reads its version from package.json.
+  const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+  pkg.version = version;
+  writeFileSync('package.json', `${JSON.stringify(pkg, null, 2)}\n`);
   console.log(`Desktop app version set to ${version}`);
 }
 
@@ -99,8 +111,14 @@ function publish(tag, repo, inDir, outDir) {
   // Release APK when signing secrets exist; otherwise the debug APK.
   const apks = files.filter((f) => f.endsWith('.apk'));
   const apk = apks.find((f) => /release/i.test(f)) ?? apks[0];
-  if (apk) copyFileSync(apk, join(outDir, ASSET_NAMES.android));
-  else missing.push(ASSET_NAMES.android);
+  if (apk) {
+    copyFileSync(apk, join(outDir, ASSET_NAMES.android));
+    const manifest = buildAndroidManifest({ version, tag, repo });
+    writeFileSync(
+      join(outDir, ASSET_NAMES.androidManifest),
+      `${JSON.stringify(manifest, null, 2)}\n`,
+    );
+  } else missing.push(ASSET_NAMES.android);
   const aab = files.find((f) => f.endsWith('.aab'));
   if (aab) copyFileSync(aab, join(outDir, 'My-Doc-android.aab'));
   const ios = files.find((f) => /ios-simulator\.zip$/.test(f));

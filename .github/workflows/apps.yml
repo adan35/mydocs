@@ -133,6 +133,9 @@ jobs:
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
       - run: npm ci
+      - name: Stamp the tag's version into the app
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: node scripts/release.mjs set-version "$GITHUB_REF_NAME"
       - run: npm run build
       - run: npx cap sync android
       - name: Build debug APK

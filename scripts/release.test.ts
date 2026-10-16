@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error plain ESM script without types
-import { buildManifest, versionFromTag, ASSET_NAMES } from './release.mjs';
+import { buildManifest, buildAndroidManifest, versionFromTag, ASSET_NAMES } from './release.mjs';
 import { DOWNLOADS } from '../src/app/downloads';
 
 describe('release helpers', () => {
@@ -46,6 +46,13 @@ describe('release helpers', () => {
       signatures: { [ASSET_NAMES.linuxAppImage]: 's' },
     });
     expect(Object.keys(m.platforms)).toEqual(['linux-x86_64']);
+  });
+
+  it('points the Android app at the release APK', () => {
+    expect(buildAndroidManifest({ version: '1.2.3', tag: 'v1.2.3', repo: 'o/r' })).toEqual({
+      version: '1.2.3',
+      url: 'https://github.com/o/r/releases/download/v1.2.3/My-Doc-android.apk',
+    });
   });
 
   it('download page only links to files the release job publishes', () => {
