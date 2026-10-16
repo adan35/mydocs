@@ -23,8 +23,17 @@
     max-width: none;
   }
   .prose .copy-code,
-  .prose .heading-anchor {
+  .prose .heading-anchor,
+  .prose .table-rows-btn {
     display: none !important;
+  }
+  /* Printed tables show every line, whatever the row height on screen. */
+  .prose .cell-clip {
+    display: block !important;
+    max-width: none !important;
+    white-space: normal !important;
+    -webkit-line-clamp: none !important;
+    line-clamp: none !important;
   }
   .prose pre,
   .prose .code-block,

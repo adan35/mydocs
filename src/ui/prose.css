@@ -250,6 +250,60 @@
   color: var(--ink);
   font-weight: 600;
 }
+/* Row height (Settings › Table row height, or the "Rows" button on each table). Cell
+   content sits in a .cell-clip box, since table cells themselves can't be clamped. */
+.prose .table-rows-btn {
+  display: block;
+  height: 22px;
+  margin: 0 0 4px auto;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  color: var(--stone);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 22px;
+  white-space: nowrap;
+}
+.prose .table-rows-btn:hover,
+.prose .table-rows-btn:focus-visible {
+  background: var(--hover);
+  color: var(--ink);
+}
+.prose[data-rows] .cell-clip {
+  overflow: hidden;
+}
+.prose[data-rows='default'] .cell-clip {
+  max-width: 22rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.prose[data-rows='normal'] .cell-clip,
+.prose[data-rows='medium'] .cell-clip {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+.prose[data-rows='medium'] .cell-clip {
+  -webkit-line-clamp: 6;
+  line-clamp: 6;
+}
+.prose[data-rows='default'] td,
+.prose[data-rows='normal'] td,
+.prose[data-rows='medium'] td {
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+.prose[data-rows] tr.row-open .cell-clip {
+  display: block;
+  max-width: none;
+  white-space: normal;
+  -webkit-line-clamp: none;
+  line-clamp: none;
+}
+.prose[data-rows] tr.row-open > * {
+  background: var(--surface-soft);
+}
 .prose img {
   max-width: 100%;
   height: auto;

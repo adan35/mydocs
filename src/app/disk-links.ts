@@ -301,7 +301,8 @@ async function check(id: EntryId): Promise<boolean> {
     }
     const known = stamps.get(id);
     if (known && known.lastModified === file.lastModified && known.size === file.size) {
-      if (state === 'error' && !pendingText.has(id)) patch(id, { state: 'synced', error: undefined });
+      if (state === 'error' && !pendingText.has(id))
+        patch(id, { state: 'synced', error: undefined });
       return false;
     }
     const binary = binaries.has(id);
@@ -461,7 +462,8 @@ export const diskLinks = {
       useDiskLinks.setState({ links });
       for (const [id, h] of handles) {
         const mode = binaries.has(id) ? 'read' : 'readwrite';
-        if ((await permission(h, false, mode)) !== 'granted') patch(id, { state: 'needs-permission' });
+        if ((await permission(h, false, mode)) !== 'granted')
+          patch(id, { state: 'needs-permission' });
       }
       // Files changed while My Doc was closed show their new contents right away.
       void round(true);

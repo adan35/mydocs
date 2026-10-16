@@ -225,6 +225,22 @@ export function SettingsView() {
             ]}
           />
         </Row>
+        <Row
+          label="Table row height"
+          hint="Tables in documents and spreadsheets. Default keeps each row to one line, like a spreadsheet."
+        >
+          <Segmented
+            label="Table row height"
+            value={s.tableRowHeight}
+            onChange={(tableRowHeight) => set({ tableRowHeight })}
+            options={[
+              ['default', 'Default'],
+              ['normal', 'Normal'],
+              ['medium', 'Medium'],
+              ['full', 'Full'],
+            ]}
+          />
+        </Row>
       </Section>
 
       <Section title="Editor">
