@@ -41,6 +41,8 @@ function useLifecycle() {
     let cancelled = false;
     const workspace = session.workspace;
     void diskLinks.load(workspace.id, (id) => !!workspace.get(id));
+    // Files changed on disk (in another app) show their new contents here.
+    const stopWatching = diskLinks.watch();
     void editorActions.restoreSession().then(() => {
       if (cancelled) return;
       // Validate the deep-linked document after restore.
@@ -67,6 +69,7 @@ function useLifecycle() {
     return () => {
       cancelled = true;
       unsub();
+      stopWatching();
     };
   }, [session]);
 

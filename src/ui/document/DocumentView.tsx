@@ -783,7 +783,7 @@ function DocHeader({
         </button>
       </nav>
       {textual && <SaveStatus id={entry.id} />}
-      {textual && <DiskStatus id={entry.id} />}
+      <DiskStatus id={entry.id} />
       {isMd && !readingMode && (
         <div
           role="group"

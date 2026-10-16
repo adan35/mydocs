@@ -469,7 +469,8 @@ export async function runImport(items: ImportItem[], targetId: EntryId | null = 
       dialogs.conflict({ name, count: remaining }),
     );
     dismissToast(progressToast);
-    for (const { id, handle } of result.diskLinks) await diskLinks.link(id, handle);
+    for (const { id, handle, binary } of result.diskLinks)
+      await diskLinks.link(id, handle, { binary });
     // Ask for write access while the picker's click still counts as a user gesture.
     void diskLinks.requestAll(result.diskLinks.map((l) => l.id));
     if (targetId) appActions.setExpanded(targetId, true);
