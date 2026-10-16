@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Download, FileOutput } from 'lucide-react';
 import type { Entry } from '@/domain/types';
 import { ws } from '@/app/app-store';
@@ -8,6 +8,8 @@ import { MEDIA_SRC } from '@/lib/convert/docx';
 import type { ReportData } from '@/lib/convert/doc-ast';
 import { StaticMarkdown, type MediaItem } from './StaticMarkdown';
 import { ReportList } from './ReportList';
+import { publishOutline } from '@/app/outline-store';
+import { textOutline } from '../document/text-outline';
 
 /**
  * A Word document shown formatted, read-only. Editing means converting to Markdown,
@@ -48,6 +50,50 @@ export function DocxView({ entry, onConvert }: { entry: Entry; onConvert(): void
     };
   }, [entry.id, entry.updatedAt]);
 
+  // Outline: the Word file's headings, tracked as you scroll.
+  const scroller = useRef<HTMLDivElement>(null);
+  const markdown = state.kind === 'ready' ? state.markdown : '';
+  const outline = useMemo(() => textOutline(markdown, 'document.md'), [markdown]);
+  const [active, setActive] = useState(-1);
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el || !outline.items.length) return;
+    let raf = 0;
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const top = el.getBoundingClientRect().top + 60;
+        let i = -1;
+        for (const [k, line] of outline.lines.entries()) {
+          const h = el.querySelector(`[data-line="${line}"]`);
+          if (h && h.getBoundingClientRect().top <= top) i = k;
+          else if (h) break;
+        }
+        setActive(i);
+      });
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [outline]);
+  useEffect(() => {
+    if (state.kind !== 'ready') return;
+    publishOutline(entry.id, {
+      items: outline.items,
+      active,
+      noun: 'headings',
+      summary: outline.summary,
+      empty: 'This Word document has no headings. Headings (Heading 1, Heading 2…) appear here.',
+      jump: (i) => {
+        const line = outline.lines[i];
+        const h = scroller.current?.querySelector(`[data-line="${line}"]`);
+        h?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        setActive(i);
+      },
+    });
+  }, [entry.id, state.kind, outline, active]);
+  useEffect(() => () => publishOutline(entry.id, null), [entry.id]);
+
   const hidden =
     state.kind === 'ready'
       ? {
@@ -73,7 +119,7 @@ export function DocxView({ entry, onConvert }: { entry: Entry; onConvert(): void
           <FileOutput size={14} aria-hidden /> Convert or export…
         </button>
       </div>
-      <div className="scroll-area min-h-0 flex-1">
+      <div ref={scroller} className="scroll-area min-h-0 flex-1">
         <div className="mx-auto max-w-[840px] px-5 pt-8 pb-24 sm:px-10">
           {state.kind === 'loading' && (
             <div className="skeleton h-60" aria-busy="true" aria-label="Loading document" />

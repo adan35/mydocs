@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Table2 } from 'lucide-react';
 import type { EntryId } from '@/domain/types';
 import { extensionOf } from '@/domain/names';
@@ -19,6 +19,7 @@ import {
 import type { Cell, Sheet } from '@/lib/convert/workbook';
 import { SheetGrid, type RowAction, type Selection } from './SheetGrid';
 import { SheetRibbon, type SheetCommand } from './SheetRibbon';
+import { publishOutline } from '@/app/outline-store';
 
 /** Replaces the document text with one minimal change, so undo and other views stay exact. */
 function applyText(id: EntryId, prev: string, next: string) {
@@ -42,6 +43,8 @@ const rowsOf = (sheet: Sheet): string[][] => {
   return sheet.rows.map((r) => Array.from({ length: width }, (_, c) => cellText(r?.[c])));
 };
 const cellText = (c: Cell | undefined) => (c ? String(c.v ?? '') : '');
+const colLetter = (c: number): string =>
+  (c >= 26 ? colLetter(Math.floor(c / 26) - 1) : '') + String.fromCharCode(65 + (c % 26));
 
 /**
  * Edits CSV/TSV/UNL files and Markdown tables as a grid. Every change is written back to the
@@ -76,6 +79,48 @@ export function TextSheetView({
     if (dialect) return delimitedToSheet(text, dialect).sheet;
     return table ? tableToSheet(table.table) : null;
   }, [dialect, text, table]);
+
+  // Outline: the document's tables (Markdown), or the file's columns (CSV and the like).
+  const activeTable = Math.min(tableIndex, tables.length - 1);
+  const header = headerRow || markdown;
+  useEffect(() => {
+    if (markdown) {
+      publishOutline(docId, {
+        items: tables.map((t) => ({
+          key: `${t.index}`,
+          level: 1,
+          text: t.label ? t.label : `Table ${t.index + 1}`,
+          badge: `T${t.index + 1}`,
+          detail: `${Math.max(0, t.table.rows.length - 1)} rows`,
+        })),
+        active: activeTable,
+        noun: 'tables',
+        empty: 'This document has no tables.',
+        jump: (i) => {
+          setTableIndex(i);
+          setSelection({ r: 0, c: 0 });
+        },
+      });
+      return;
+    }
+    const first = sheet?.rows[0] ?? [];
+    const width = Math.max(0, ...(sheet?.rows.map((r) => r?.length ?? 0) ?? [0]));
+    const rows = sheet ? sheet.rows.length - (header ? 1 : 0) : 0;
+    publishOutline(docId, {
+      items: Array.from({ length: width }, (_, c) => ({
+        key: `${c}`,
+        level: 1,
+        text: (header && first[c] ? String(first[c]!.v ?? '') : '') || `Column ${colLetter(c)}`,
+        badge: colLetter(c),
+      })),
+      active: selection.c,
+      noun: 'columns',
+      summary: `${rows.toLocaleString()} rows`,
+      empty: 'This file is empty.',
+      jump: (c) => setSelection({ r: header ? 1 : 0, c }),
+    });
+  }, [markdown, tables, activeTable, sheet, header, selection.c, docId]);
+  useEffect(() => () => publishOutline(docId, null), [docId]);
 
   const write = (rows: string[][]) => {
     if (dialect) {

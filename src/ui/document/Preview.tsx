@@ -192,10 +192,15 @@ export function Preview({
     const onScroll = () => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
-        const top = container.getBoundingClientRect().top;
+        const box = container.getBoundingClientRect();
+        // At the very end the last sections can't reach the top: count what's on screen.
+        const atEnd =
+          container.scrollTop > 0 &&
+          container.scrollTop + container.clientHeight >= container.scrollHeight - 4;
+        const limit = atEnd ? box.bottom - 40 : box.top + 40;
         let line = 0;
         for (const node of el.querySelectorAll<HTMLElement>('[data-line]')) {
-          if (node.getBoundingClientRect().top - top > 40) break;
+          if (node.getBoundingClientRect().top > limit) break;
           line = Number(node.dataset.line);
         }
         callbacks.current.onVisibleLine?.(line);
