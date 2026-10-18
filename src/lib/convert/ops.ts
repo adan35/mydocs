@@ -3,14 +3,60 @@
  * structured-cloneable data so the same functions run in the worker or, where workers
  * are unavailable, directly.
  */
-import { astToDocx, docxToAst, type ExtractedMedia } from './docx';
+import { astToDocx, docxToAst, MEDIA_SRC, type ExtractedMedia } from './docx';
+import { astToPdf } from './pdf';
 import { astToMarkdown, markdownToAst } from './markdown';
 import { workbookToXlsx, xlsxToWorkbook } from './xlsx';
 import { recalculate } from './formula';
-import type { ReportData } from './doc-ast';
+import { ConversionReport, type DocAst, type ReportData } from './doc-ast';
 import type { Workbook } from './workbook';
 
+type PageSize = 'a4' | 'letter';
+
+function writePdf(
+  ast: DocAst,
+  input: { images?: Record<string, Uint8Array>; pageSize?: PageSize },
+  readReport?: ReportData,
+): { data: Uint8Array; report: ReportData } {
+  const { data, report } = astToPdf(ast, {
+    images: (src) => input.images?.[src],
+    pageSize: input.pageSize,
+  });
+  // What the source file lost on the way in counts too.
+  const merged = readReport ? ConversionReport.from(readReport) : new ConversionReport();
+  for (const n of report.notes) merged.notes.push({ ...n });
+  for (const [k, v] of report.kept) merged.kept.set(k, v);
+  return { data, report: merged.toJSON() };
+}
+
 export const ops = {
+  markdownToPdf(input: {
+    markdown: string;
+    images: Record<string, Uint8Array>;
+    title?: string;
+    pageSize?: PageSize;
+  }): { data: Uint8Array; report: ReportData } {
+    const ast = markdownToAst(input.markdown);
+    if (!ast.meta.title && input.title) ast.meta.title = input.title;
+    return writePdf(ast, input);
+  },
+  docxToPdf(input: { data: Uint8Array; title?: string; pageSize?: PageSize }): {
+    data: Uint8Array;
+    report: ReportData;
+  } {
+    const { ast, media, report } = docxToAst(input.data);
+    if (!ast.meta.title && input.title) ast.meta.title = input.title;
+    const images: Record<string, Uint8Array> = {};
+    for (const m of media) images[MEDIA_SRC + m.name] = m.data;
+    return writePdf(ast, { images, pageSize: input.pageSize }, report.toJSON());
+  },
+  /** For sources parsed on the main thread (HTML needs the DOM). */
+  astToPdf(input: { ast: DocAst; readReport?: ReportData; pageSize?: PageSize }): {
+    data: Uint8Array;
+    report: ReportData;
+  } {
+    return writePdf(input.ast, input, input.readReport);
+  },
   markdownToDocx(input: { markdown: string; images: Record<string, Uint8Array>; title?: string }): {
     data: Uint8Array;
     report: ReportData;

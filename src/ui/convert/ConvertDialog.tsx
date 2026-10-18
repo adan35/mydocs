@@ -24,6 +24,7 @@ import { Dialog } from '../components/Dialog';
 import { SheetGrid } from '../sheet/SheetGrid';
 import { StaticMarkdown } from './StaticMarkdown';
 import { ReportList } from './ReportList';
+import { PdfPreview } from './PdfPreview';
 
 /**
  * Convert (new file in the workspace) or export (a copy outside MyDocs). The preview and
@@ -71,7 +72,7 @@ export function ConvertDialog({
   }, [entryId, from]);
 
   useEffect(() => {
-    if (!to || to === 'pdf') {
+    if (!to) {
       setResult(null);
       return;
     }
@@ -138,40 +139,38 @@ export function ConvertDialog({
           <button type="button" className="btn btn-secondary" onClick={onClose}>
             Cancel
           </button>
-          {to === 'pdf' ? (
+          {to === 'pdf' && from === 'md' && canPrint && (
+            <button
+              type="button"
+              className="btn btn-secondary mr-auto"
+              title="Opens your system's print dialog with the reading view. Choose “Save as PDF”. Keeps every script, emoji, equation and diagram."
+              onClick={() => {
+                onClose();
+                void exportEntry(entryId, 'print');
+              }}
+            >
+              <Printer size={15} aria-hidden /> Print instead…
+            </button>
+          )}
+          {option?.kinds.includes('export') && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={!canExport}
+              onClick={() => void doExport()}
+            >
+              <Download size={15} aria-hidden /> Export
+            </button>
+          )}
+          {option?.kinds.includes('convert') && (
             <button
               type="button"
               className="btn btn-primary"
-              onClick={() => {
-                onClose();
-                void exportEntry(entryId, 'pdf');
-              }}
+              disabled={!canConvert}
+              onClick={() => void doConvert()}
             >
-              <Printer size={15} aria-hidden /> {canPrint ? 'Print to PDF…' : 'Share as HTML'}
+              <FilePlus2 size={15} aria-hidden /> Create {result?.name ?? 'file'}
             </button>
-          ) : (
-            <>
-              {option?.kinds.includes('export') && (
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  disabled={!canExport}
-                  onClick={() => void doExport()}
-                >
-                  <Download size={15} aria-hidden /> Export
-                </button>
-              )}
-              {option?.kinds.includes('convert') && (
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  disabled={!canConvert}
-                  onClick={() => void doConvert()}
-                >
-                  <FilePlus2 size={15} aria-hidden /> Create {result?.name ?? 'file'}
-                </button>
-              )}
-            </>
           )}
         </>
       }
@@ -219,13 +218,6 @@ export function ConvertDialog({
               </select>
             </label>
           )}
-          {to === 'pdf' && (
-            <p className="text-caption text-charcoal">
-              {canPrint
-                ? 'PDF uses your system’s print dialog with the reading view, so what you see is what is printed. Choose “Save as PDF” as the printer.'
-                : 'The mobile app has no print dialog, so it can’t make a PDF. It shares a print-ready HTML file instead, which you can print or save as PDF from another app.'}
-            </p>
-          )}
           {error && (
             <p
               className="flex items-start gap-2 rounded-md bg-danger-soft p-3 text-caption text-charcoal"
@@ -244,7 +236,12 @@ export function ConvertDialog({
               </div>
               <div>
                 <p className="mb-1 text-caption font-medium text-ink">
-                  Preview {result.to === 'docx' ? '(the Word file, read back)' : ''}
+                  Preview{' '}
+                  {result.to === 'docx'
+                    ? '(the Word file, read back)'
+                    : result.to === 'pdf'
+                      ? '(the PDF file)'
+                      : ''}
                 </p>
                 <div
                   className="max-h-[42vh] overflow-auto rounded-md border border-hairline bg-canvas"
@@ -259,6 +256,7 @@ export function ConvertDialog({
                       />
                     </div>
                   )}
+                  {result.preview.kind === 'pdf' && <PdfPreview blob={result.blob} />}
                   {result.preview.kind === 'text' && (
                     <pre className="p-4 font-mono text-[12.5px] whitespace-pre-wrap text-charcoal">
                       {result.preview.text}

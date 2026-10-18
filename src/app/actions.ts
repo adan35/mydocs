@@ -508,7 +508,7 @@ function dismissToast(id: number) {
 
 export async function exportEntry(
   id: EntryId | null,
-  format: 'file' | 'html' | 'zip' | 'pdf' | 'txt',
+  format: 'file' | 'html' | 'zip' | 'pdf' | 'print' | 'txt',
 ) {
   await editorActions.flushAll();
   await guard('Unable to export.', async () => {
@@ -518,13 +518,21 @@ export async function exportEntry(
     if (format === 'html') return exportHtml(ws(), id);
     if (format === 'txt') return exportText(ws(), id);
     if (format === 'pdf') {
-      if (!canPrint) {
-        // Mobile web views have no print dialog; share a print-ready HTML file instead.
+      // A real PDF file, made here; the print dialog isn't needed (or available on phones).
+      const { runConversion, exportConversion } = await import('./convert');
+      const result = await runConversion(id, 'pdf');
+      if (!(await exportConversion(result))) return;
+      const warnings = result.report.notes.filter((n) => n.severity === 'warning');
+      if (warnings.length)
         toast({
-          message: "PDF export isn't available in the mobile app. Sharing as HTML instead.",
+          message: `Saved ${result.name}. ${warnings[0]!.message}`,
+          action: { label: 'Details', run: () => void dialogs.convert(id, 'pdf') },
         });
-        return exportHtml(ws(), id);
-      }
+      return;
+    }
+    if (format === 'print') {
+      if (!canPrint) return exportEntry(id, 'pdf');
+      // Prints the reading view through the system dialog ("Save as PDF" as the printer).
       await openEntry(id);
       useUi.getState().setReadingMode(true);
       setTimeout(() => window.print(), 400);

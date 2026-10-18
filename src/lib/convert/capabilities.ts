@@ -110,6 +110,24 @@ const MD_TO_WORD_KEEPS = [
   'Title, author and tags',
 ];
 
+const PDF_KEEPS = [
+  'Headings (also as PDF bookmarks)',
+  'Bold, italic, strikethrough, inline code',
+  'Bulleted, numbered, nested and task lists',
+  'Tables with alignment, wrapping cells and a header row that repeats on every page',
+  'Quotes and code blocks',
+  'JPEG and PNG images stored in the workspace',
+  'Web and email links (clickable)',
+  'Title, author and subject (as document properties)',
+];
+
+const PDF_LOSES = [
+  'Text outside Western European alphabets and emoji (written as ?). Print to PDF keeps them',
+  'Links to other documents, files and headings (written as plain text)',
+  'Equations and diagrams (written as their source text)',
+  'Images that are not JPEG or PNG, and images from the web',
+];
+
 export const CONVERSIONS: Conversion[] = [
   {
     from: 'md',
@@ -147,12 +165,9 @@ export const CONVERSIONS: Conversion[] = [
   {
     from: 'md',
     to: 'pdf',
-    kinds: ['export'],
-    keeps: ['The reading view, as printed by your system'],
-    loses: [
-      'Links between documents',
-      'Not available in the Android and iOS apps (no print dialog): they share HTML instead',
-    ],
+    kinds: ['convert', 'export'],
+    keeps: PDF_KEEPS,
+    loses: PDF_LOSES,
   },
   {
     from: 'md',
@@ -317,6 +332,39 @@ export const CONVERSIONS: Conversion[] = [
       'Scripts, forms and embedded media',
       'Merged table cells (split)',
     ],
+  },
+  {
+    from: 'docx',
+    to: 'pdf',
+    kinds: ['convert', 'export'],
+    keeps: [
+      'Headings, lists, tables, links and quotes as read from the Word file',
+      'JPEG and PNG images',
+      'Bold, italic, underline, strikethrough and code',
+    ],
+    loses: [
+      'Page layout, fonts, colors, headers, footers, comments and tracked changes',
+      'Text outside Western European alphabets and emoji (written as ?)',
+      'Images that are not JPEG or PNG',
+    ],
+  },
+  {
+    from: 'html',
+    to: 'pdf',
+    kinds: ['convert', 'export'],
+    keeps: ['Headings, lists, tables, links, quotes and code', 'Title and author'],
+    loses: [
+      'Styles and layout (the PDF uses its own page design)',
+      'Images',
+      'Text outside Western European alphabets and emoji (written as ?)',
+    ],
+  },
+  {
+    from: 'txt',
+    to: 'pdf',
+    kinds: ['convert', 'export'],
+    keeps: ['All words; blank lines separate paragraphs'],
+    loses: ['Text outside Western European alphabets and emoji (written as ?)'],
   },
   {
     from: 'txt',

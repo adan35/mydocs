@@ -39,6 +39,7 @@ import {
   Network,
   Type,
   Palette,
+  Printer,
 } from 'lucide-react';
 import * as A from '@/app/actions';
 import { ws } from '@/app/app-store';
@@ -52,6 +53,7 @@ import { dialogs } from '@/app/dialog-store';
 import { SHORTCUTS } from '@/app/shortcuts';
 import { isMarkdownName } from '@/domain/names';
 import { conversionsFrom, formatOf } from '@/lib/convert/capabilities';
+import { canPrint } from '@/platform';
 
 const convertible = (name: string) => {
   const f = formatOf(name)?.id;
@@ -586,11 +588,24 @@ export function getCommands(): Command[] {
         },
         {
           id: 'export-pdf',
-          title: 'Export as PDF (print)',
+          title: 'Export as PDF',
           group: 'Document',
           icon: <Download />,
+          keywords: 'save pdf',
           run: () => void A.exportEntry(doc.id, 'pdf'),
         },
+        ...(canPrint
+          ? [
+              {
+                id: 'print',
+                title: 'Print or save as PDF with the system dialog',
+                group: 'Document' as const,
+                icon: <Printer />,
+                keywords: 'print pdf',
+                run: () => void A.exportEntry(doc.id, 'print'),
+              },
+            ]
+          : []),
       );
     }
   }

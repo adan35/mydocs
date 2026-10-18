@@ -44,6 +44,8 @@ export type Preview =
   | { kind: 'markdown'; text: string; media?: Record<string, Blob> }
   | { kind: 'sheet'; workbook: Workbook }
   | { kind: 'text'; text: string }
+  /** The PDF itself; the dialog shows its pages. */
+  | { kind: 'pdf' }
   | { kind: 'none'; message: string };
 
 export interface ConversionResult {
@@ -77,6 +79,12 @@ const MIME: Record<FormatId, string> = {
   txt: 'text/plain;charset=utf-8',
   pdf: 'application/pdf',
 };
+
+/** US-style paper where that's the norm, A4 elsewhere. */
+const pageSize = (): 'a4' | 'letter' =>
+  /^(en-(US|CA|PH)|es-(MX|US))\b/i.test(typeof navigator === 'undefined' ? '' : navigator.language)
+    ? 'letter'
+    : 'a4';
 
 const bytes = async (b: Blob) => new Uint8Array(await b.arrayBuffer());
 const blobOf = (data: Uint8Array | string, to: FormatId) =>
@@ -189,6 +197,15 @@ export async function runConversion(
         out.report,
       );
     }
+    if (to === 'pdf') {
+      const out = await convert('markdownToPdf', {
+        markdown: md,
+        images: await workspaceImages(id, md),
+        title: base,
+        pageSize: pageSize(),
+      });
+      return result(blobOf(out.data, 'pdf'), { kind: 'pdf' }, out.report);
+    }
     if (to === 'html') {
       const html = await exportableHtml(id, base, md);
       return result(blobOf(html, 'html'), { kind: 'markdown', text: md });
@@ -253,6 +270,14 @@ export async function runConversion(
           blob: new Blob([m.data as BlobPart], { type: m.mime }),
         })),
       };
+    if (to === 'pdf') {
+      const pdf = await convert('docxToPdf', {
+        data: await bytes(blob),
+        title: base,
+        pageSize: pageSize(),
+      });
+      return result(blobOf(pdf.data, 'pdf'), { kind: 'pdf' }, pdf.report);
+    }
     if (to === 'html') {
       let html = await documentHtml(base, out.markdown);
       for (const m of out.media) {
@@ -341,6 +366,18 @@ export async function runConversion(
   }
 
   // ---------------------------------------------------------------- HTML and text
+  if (from === 'html' && to === 'pdf') {
+    const { ast, report: r } = htmlToAst(await currentText(id));
+    if (!ast.meta.title) ast.meta.title = base;
+    const out = await convert('astToPdf', { ast, readReport: r.toJSON(), pageSize: pageSize() });
+    return result(blobOf(out.data, 'pdf'), { kind: 'pdf' }, out.report);
+  }
+  if (from === 'txt' && to === 'pdf') {
+    const ast = textToAst(await currentText(id));
+    ast.meta.title = base;
+    const out = await convert('astToPdf', { ast, pageSize: pageSize() });
+    return result(blobOf(out.data, 'pdf'), { kind: 'pdf' }, out.report);
+  }
   if (from === 'html' && to === 'md') {
     const { ast, report: r } = htmlToAst(await currentText(id));
     if (!ast.meta.title) ast.meta.title = base;

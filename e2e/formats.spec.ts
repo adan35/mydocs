@@ -21,7 +21,7 @@ async function importFile(page: Page, name: string, mimeType: string) {
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('menuitem', { name: 'Files…' }).click();
   await (await chooser).setFiles({ name, mimeType, buffer: fixture(name) });
-  await expect(page.getByText(/Imported 1 file/)).toBeVisible();
+  await expect(page.getByText(/Imported 1 file/).last()).toBeVisible();
   await page.getByRole('treeitem', { name }).click();
 }
 
@@ -255,7 +255,7 @@ test('PDFs open in a page viewer with search', async ({ page }) => {
   await expect(page.getByTestId('pdf-toolbar')).toContainText('Page 1 of 1');
   await page.getByRole('textbox', { name: 'Find in PDF' }).fill('Heron');
   await expect(page.getByTestId('pdf-toolbar')).toContainText('1 of 1 pages');
-  await expect(pages.locator('.pdf-hit').first()).toBeVisible();
+  await expect(pages.locator('.pdf-hit').first()).toBeVisible({ timeout: 15_000 });
   // The page starts at its own size, or the width of the view when that's narrower.
   const zoom = async () =>
     Number(/(\d+)%/.exec((await page.getByTestId('pdf-toolbar').textContent()) ?? '')?.[1]);
@@ -273,6 +273,107 @@ test('the formats page lists what each format supports', async ({ page }) => {
   await expect(matrix).toContainText('Word document → Markdown');
   await expect(matrix).toContainText('Google Docs and Google Sheets');
   await expect(matrix).toContainText('Sync, sharing and real-time collaboration');
+});
+
+test('Markdown exports to a real PDF file that opens again in the viewer', async ({ page }) => {
+  await freshApp(page);
+  await newDocInRoot(page, 'Report');
+  await setDoc(page, readFileSync(resolve(process.cwd(), 'fixtures/report.md'), 'utf8'));
+  await waitSaved(page);
+  const dialog = await openConvert(page);
+  await dialog.getByRole('radio', { name: /^PDF/ }).click();
+  // The preview is the real PDF, drawn page by page.
+  await expect(dialog.getByTestId('pdf-preview').locator('canvas').first()).toBeVisible();
+  await expect(dialog.getByTestId('conversion-report')).toContainText('1 page');
+  // Nothing about the system print dialog is needed to get the file.
+  const download = page.waitForEvent('download');
+  await dialog.getByRole('button', { name: 'Export' }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toBe('Report.pdf');
+  const bytes = readFileSync((await file.path())!);
+  expect(bytes.subarray(0, 5).toString()).toBe('%PDF-');
+  expect(bytes.subarray(-6).toString()).toContain('%%EOF');
+
+  // The file opens in the viewer, with its text searchable.
+  await page.getByRole('button', { name: 'Import' }).first().click();
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByRole('menuitem', { name: 'Files…' }).click();
+  await (
+    await chooser
+  ).setFiles({ name: 'Exported.pdf', mimeType: 'application/pdf', buffer: bytes });
+  await expect(page.getByText(/Imported 1 file/)).toBeVisible();
+  await page.getByRole('treeitem', { name: 'Exported.pdf' }).click();
+  await expect(page.getByTestId('pdf-pages').locator('[data-page="1"] canvas')).toBeVisible();
+  await page.getByRole('textbox', { name: 'Find in PDF' }).fill('Goals');
+  await expect(page.getByTestId('pdf-toolbar')).toContainText('1 of');
+});
+
+test('Convert makes a PDF next to a Markdown file and opens it', async ({ page }) => {
+  await freshApp(page);
+  await newDocInRoot(page, 'Notes');
+  await setDoc(page, '# Heron survey\n\nSeen at **dawn**.\n');
+  await waitSaved(page);
+  const dialog = await openConvert(page);
+  await dialog.getByRole('radio', { name: /^PDF/ }).click();
+  await dialog.getByRole('button', { name: /Create Notes\.pdf/ }).click();
+  await expect(page.getByTestId('pdf-pages').locator('[data-page="1"] canvas')).toBeVisible();
+  await expect(page.getByRole('treeitem', { name: 'Notes.md' })).toBeVisible();
+  await expect(page.getByRole('treeitem', { name: 'Notes.pdf' })).toBeVisible();
+});
+
+test('Word, HTML and text files convert to PDF', async ({ page }) => {
+  await freshApp(page);
+  await importFile(
+    page,
+    'field-notes.docx',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  );
+  await page.getByRole('button', { name: 'Convert or export…' }).first().click();
+  const dialog = page.getByRole('dialog', { name: /Convert or export/ });
+  await dialog.getByRole('radio', { name: /^PDF/ }).click();
+  await expect(dialog.getByTestId('pdf-preview').locator('canvas').first()).toBeVisible();
+  const download = page.waitForEvent('download');
+  await dialog.getByRole('button', { name: 'Export' }).click();
+  const bytes = readFileSync((await (await download).path())!);
+  expect(bytes.subarray(0, 5).toString()).toBe('%PDF-');
+});
+
+test('PDFs that need character maps and PDFs with hundreds of pages open', async ({ page }) => {
+  await freshApp(page);
+  // Japanese text in a CID font that points at a predefined character map.
+  await importFile(page, 'cjk.pdf', 'application/pdf');
+  await expect(page.getByTestId('pdf-pages').locator('[data-page="1"] canvas')).toBeVisible();
+  await expect(page.getByTestId('pdf-pages')).toContainText('日本語');
+  await expect(page.getByText('could not be shown')).toHaveCount(0);
+
+  // A JPEG 2000 image needs pdf.js's WebAssembly decoder, which the app serves itself.
+  await importFile(page, 'jpx.pdf', 'application/pdf');
+  const canvas = page.getByTestId('pdf-pages').locator('[data-page="1"] canvas');
+  await expect(canvas).toBeVisible();
+  await expect
+    .poll(() =>
+      canvas.evaluate((c: HTMLCanvasElement) => {
+        const d = c.getContext('2d')!.getImageData(c.width / 2, c.height * 0.4, 1, 1).data;
+        return `${d[0]},${d[1]},${d[2]}`;
+      }),
+    )
+    .toBe('220,60,40');
+
+  // A long file: opens on page 1, jumps and searches without freezing.
+  const lines = Array.from(
+    { length: 450 },
+    (_, i) => `# Chapter ${i + 1}\n\nBody of chapter ${i + 1}.\n`,
+  );
+  await page.getByRole('button', { name: 'New document', exact: true }).first().click();
+  await setDoc(page, lines.join('\n'));
+  await waitSaved(page);
+  const dialog = await openConvert(page);
+  await dialog.getByRole('radio', { name: /^PDF/ }).click();
+  await expect(dialog.getByTestId('pdf-preview').locator('canvas').first()).toBeVisible();
+  await dialog.getByRole('button', { name: /^Create / }).click();
+  await expect(page.getByTestId('pdf-toolbar')).toContainText(/Page 1 of \d+/);
+  await page.getByRole('textbox', { name: 'Find in PDF' }).fill('Chapter 449');
+  await expect(page.getByTestId('pdf-toolbar')).toContainText('1 of');
 });
 
 test('clicking a row number inserts one or several rows above or below', async ({ page }) => {

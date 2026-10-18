@@ -97,7 +97,7 @@ export function exportSubmenu(e: Entry): MenuEntry[] {
   if (isMarkdownName(e.name)) {
     items.push(
       { label: 'HTML page', icon: <FileCode />, onSelect: () => void A.exportEntry(e.id, 'html') },
-      { label: 'PDF (print)', icon: <Printer />, onSelect: () => void A.exportEntry(e.id, 'pdf') },
+      { label: 'PDF', icon: <Printer />, onSelect: () => void A.exportEntry(e.id, 'pdf') },
       {
         label: 'Plain text (.txt)',
         icon: <FileText />,
