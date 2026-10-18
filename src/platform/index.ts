@@ -80,6 +80,33 @@ export function onBeforeQuit(save: () => Promise<void> | void): () => void {
   };
 }
 
+/**
+ * How this build learns about new versions. The desktop app installs verified updates by
+ * itself; Android points the user at the new APK; the web updates through its service
+ * worker and iOS has no native app to update.
+ */
+export const updateMode: 'in-app' | 'download' | null =
+  platform === 'desktop' ? 'in-app' : platform === 'android' ? 'download' : null;
+
+export type PendingUpdate = import('./desktop').PendingUpdate;
+
+/** Resolves to the newer version, or null when this one is current. */
+export async function checkForUpdate(): Promise<PendingUpdate | null> {
+  if (updateMode === 'in-app') return (await import('./desktop')).checkForUpdate();
+  if (updateMode === 'download') return (await import('./mobile')).checkForUpdate();
+  return null;
+}
+
+export async function relaunchApp(): Promise<void> {
+  if (updateMode === 'in-app') await (await import('./desktop')).relaunchApp();
+}
+
+/** The installed app's version, or null on the web and iOS. */
+export async function installedVersion(): Promise<string | null> {
+  if (updateMode === 'in-app') return (await import('./desktop')).appVersion();
+  return updateMode === 'download' ? __APP_VERSION__ : null;
+}
+
 const EXTERNAL = /^(https?:|mailto:)/i;
 
 /**

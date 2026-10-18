@@ -9,9 +9,15 @@
 | Excel workbook (.xlsx) | Sheet view with sheet tabs and formulas | Cell values and formulas; every save keeps a version |
 | CSV (.csv) | Sheet view, or as text | Cells (only edited rows are rewritten) or raw text |
 | TSV (.tsv, .tab) | Sheet view, or as text | Cells (only edited rows are rewritten) or raw text |
+| UNL (.unl) | Sheet view (pipe-delimited, columns A, B, C… with an optional header row), or as text | Cells (only edited rows are rewritten, keeping the trailing delimiter) or raw text |
 | HTML (.html, .htm) | Source with highlighting | Source text |
 | Plain text (.txt, .text, .log) | Text editor | Text |
 | PDF (.pdf) | Page viewer with search, zoom and page navigation | No |
+| PowerPoint (.pptx) | Text-only slide preview in presentation order (up to 20 MB) | No |
+| OpenDocument (.odt, .ods, .odp) | Text-only content preview (up to 20 MB) | No |
+| Audio and video | Playback controls when the device supports the codec | No |
+| Images | Image preview when the device supports the format | No |
+| Other files | Text editor when readable as text; otherwise file details and a 512-byte hexadecimal preview | Text files only |
 
 ## Converting and exporting
 
@@ -37,6 +43,10 @@
 | TSV → Excel workbook | convert, export | Every value; Plain numbers as numbers | Nothing |
 | TSV → Markdown | convert | Every value, as a table | Line breaks inside cells (become spaces) |
 | TSV → CSV | convert, export | Every value | Nothing |
+| UNL → Excel workbook | convert, export | Every value, one row per record; Plain numbers as numbers (250.0 keeps its decimal place); Leading zeros, dates and codes exactly as text | The trailing delimiter (it ends a row, it is not a column) |
+| UNL → CSV | convert, export | Every value, including escaped delimiters and line breaks | The trailing delimiter (it ends a row, it is not a column) |
+| UNL → TSV | convert, export | Every value | The trailing delimiter (it ends a row, it is not a column) |
+| UNL → Markdown | convert | Every value, as a table with columns named A, B, C… | Line breaks inside cells (become spaces) |
 | HTML → Markdown | convert | Headings, paragraphs, lists, quotes, code, tables, links, images; Bold, italic, strikethrough, underline, sub/superscript; Title, author, description and keywords | Styling and layout; Scripts, forms and embedded media; Merged table cells (split) |
 | Word document → PDF | convert, export | Headings, lists, tables, links and quotes as read from the Word file; JPEG and PNG images; Bold, italic, underline, strikethrough and code | Page layout, fonts, colors, headers, footers, comments and tracked changes; Text outside Western European alphabets and emoji (written as ?); Images that are not JPEG or PNG |
 | HTML → PDF | convert, export | Headings, lists, tables, links, quotes and code; Title and author | Styles and layout (the PDF uses its own page design); Images; Text outside Western European alphabets and emoji (written as ?) |
@@ -51,4 +61,4 @@
 | Editing PDFs, or converting PDFs to text documents | PDFs have no reliable structure; text extraction would guess at headings, tables and reading order. |
 | Editing Word documents in place | Word layout features (sections, fonts, comments) have no Markdown equivalent; converting first makes every loss visible before it happens. |
 | Sync, sharing and real-time collaboration | MyDocs keeps documents on this device only. There is no server. |
-| .doc, .xls, .odt, .ods, .rtf, .pptx | Stored and downloadable, but not opened. Save them as .docx or .xlsx first. |
+| Formatted viewing of legacy .doc, .xls, .ppt and .rtf | These open as raw text or bytes with the original available to download. Save them as .docx, .xlsx or .pptx for a document preview. |

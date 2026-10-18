@@ -8,6 +8,9 @@ import { formatBytes } from '@/domain/names';
 import { Page } from '../components/Page';
 import { PaletteGrid } from '../components/ThemePicker';
 import { useEffect, useState } from 'react';
+import { installedVersion, isNativeApp, updateMode } from '@/platform';
+import { checkNow, installUpdate, useUpdates } from '@/app/updates';
+import { navigate } from '@/app/router';
 
 function Section({
   title,
@@ -79,6 +82,47 @@ function Segmented<T extends string | number>({
         </button>
       ))}
     </div>
+  );
+}
+
+function UpdatesSection() {
+  const status = useUpdates((u) => u.status);
+  const [version, setVersion] = useState<string | null>(null);
+  useEffect(() => {
+    void installedVersion().then(setVersion, () => setVersion(null));
+  }, []);
+  const busy = status.phase === 'checking' || status.phase === 'installing';
+  const message = {
+    idle: 'My Doc checks for updates in the background.',
+    checking: 'Checking…',
+    current: 'You have the latest version.',
+    available: status.phase === 'available' ? `Version ${status.version} is available.` : '',
+    installing: 'Installing the update…',
+    ready: 'Restarting…',
+    error: status.phase === 'error' ? `Could not check: ${status.message}` : '',
+  }[status.phase];
+  return (
+    <Section title="Updates" description="Updates are signed and verified before they install.">
+      <Row label="Version" hint={message}>
+        <div className="flex items-center gap-3">
+          {version && <span className="text-[14px] text-charcoal">{version}</span>}
+          {status.phase === 'available' ? (
+            <button type="button" className="btn btn-primary" onClick={() => void installUpdate()}>
+              {status.download ? 'Download update' : 'Install and restart'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={busy}
+              onClick={() => void checkNow()}
+            >
+              Check for updates
+            </button>
+          )}
+        </div>
+      </Row>
+    </Section>
   );
 }
 
@@ -177,6 +221,22 @@ export function SettingsView() {
               ['narrow', 'Narrow'],
               ['normal', 'Normal'],
               ['wide', 'Wide'],
+              ['full', 'Full'],
+            ]}
+          />
+        </Row>
+        <Row
+          label="Table row height"
+          hint="Tables in documents and spreadsheets. Default keeps each row to one line, like a spreadsheet."
+        >
+          <Segmented
+            label="Table row height"
+            value={s.tableRowHeight}
+            onChange={(tableRowHeight) => set({ tableRowHeight })}
+            options={[
+              ['default', 'Default'],
+              ['normal', 'Normal'],
+              ['medium', 'Medium'],
               ['full', 'Full'],
             ]}
           />
@@ -363,6 +423,23 @@ export function SettingsView() {
         </Row>
       </Section>
 
+      {updateMode && <UpdatesSection />}
+
+      {!isNativeApp && (
+        <Section title="Apps" description="The same My Doc, installed on your computer or phone.">
+          <Row label="Desktop and mobile apps" hint="Windows, macOS, Linux and Android.">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => navigate({ name: 'download' })}
+            >
+              <Download size={15} aria-hidden /> Download
+            </button>
+          </Row>
+        </Section>
+      )}
+
+      <img src="/favicon.svg" alt="" width={32} height={32} className="mx-auto mb-2 rounded-lg" />
       <p className="text-center text-xs text-stone">
         My Doc · Markdown at its core · Your documents never leave this device.
       </p>

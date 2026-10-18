@@ -21,7 +21,7 @@ async function importFile(page: Page, name: string, mimeType: string) {
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('menuitem', { name: 'Files…' }).click();
   await (await chooser).setFiles({ name, mimeType, buffer: fixture(name) });
-  await expect(page.getByText(/Imported 1 file/)).toBeVisible();
+  await expect(page.getByText(/Imported 1 file/).last()).toBeVisible();
   await page.getByRole('treeitem', { name }).click();
 }
 
@@ -180,6 +180,43 @@ test('a CSV file edits as a sheet and rewrites only the edited row', async ({ pa
   await expect(preview.locator('[data-cell="B2"]')).toHaveClass(/text-right/);
 });
 
+test('a .unl export opens as a sheet without the trailing empty column and converts to CSV', async ({
+  page,
+}) => {
+  await freshApp(page);
+  await importFile(page, 'transactions.unl', 'application/octet-stream');
+  const grid = page.getByTestId('sheet-grid');
+  // No header row: the first record is row 1, under column letters.
+  await expect(grid.locator('[data-cell="A1"]')).toHaveText('27747620');
+  await expect(grid.locator('[data-cell="F1"]')).toHaveText('REISSUE_FUND');
+  await expect(grid.locator('[data-cell="Q1"]')).toHaveText('0.0');
+  await expect(grid.locator('[data-cell="F6"]')).toHaveText('PRE_AUTH');
+  await expect(page.getByRole('checkbox', { name: 'Header row' })).not.toBeChecked();
+  // Editing a cell rewrites only that record and keeps its trailing pipe.
+  await grid.locator('[data-cell="F3"]').dblclick();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.type('REFUND');
+  await page.keyboard.press('Enter');
+  await waitSaved(page);
+  await page.getByRole('button', { name: 'Text', exact: true }).click();
+  const text = await sourceText(page);
+  expect(text.split('\n')[2]).toBe(
+    '27744742|0.0|6.0|250.0|250.0|REFUND|F||SD|40|10/15/2026|0642|H|-1|JSNWS|0.0|0.0|',
+  );
+  expect(text.split('\n')[0]).toBe(fixture('transactions.unl').toString('utf8').split('\n')[0]);
+
+  const dialog = await openConvert(page);
+  await dialog.getByRole('radio', { name: /^CSV/ }).click();
+  const download = page.waitForEvent('download');
+  await dialog.getByRole('button', { name: 'Export' }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toBe('transactions.csv');
+  const csv = readFileSync((await file.path())!, 'utf8').split('\n');
+  expect(csv[0]).toBe(
+    '27747620,-6.0,-6.0,250.0,250.0,REISSUE_FUND,F,,HI,22,10/15/2026,0642,B,-1,BAT_A_ReissueFunds,0.0,0.0',
+  );
+});
+
 test('Markdown tables edit as a sheet, with a picker for several tables', async ({ page }) => {
   await freshApp(page);
   await newDocInRoot(page, 'Tables');
@@ -219,8 +256,12 @@ test('PDFs open in a page viewer with search', async ({ page }) => {
   await page.getByRole('textbox', { name: 'Find in PDF' }).fill('Heron');
   await expect(page.getByTestId('pdf-toolbar')).toContainText('1 of 1 pages');
   await expect(pages.locator('.pdf-hit').first()).toBeVisible({ timeout: 15_000 });
+  // The page starts at its own size, or the width of the view when that's narrower.
+  const zoom = async () =>
+    Number(/(\d+)%/.exec((await page.getByTestId('pdf-toolbar').textContent()) ?? '')?.[1]);
+  const before = await zoom();
   await page.getByRole('button', { name: 'Zoom in' }).click();
-  await expect(page.getByTestId('pdf-toolbar')).toContainText('125%');
+  await expect.poll(zoom).toBeGreaterThan(before);
 });
 
 test('the formats page lists what each format supports', async ({ page }) => {
@@ -333,4 +374,28 @@ test('PDFs that need character maps and PDFs with hundreds of pages open', async
   await expect(page.getByTestId('pdf-toolbar')).toContainText(/Page 1 of \d+/);
   await page.getByRole('textbox', { name: 'Find in PDF' }).fill('Chapter 449');
   await expect(page.getByTestId('pdf-toolbar')).toContainText('1 of');
+});
+
+test('clicking a row number inserts one or several rows above or below', async ({ page }) => {
+  await freshApp(page);
+  await importFile(page, 'inventory.csv', 'text/csv');
+  const grid = page.getByTestId('sheet-grid');
+  await expect(grid.locator('[data-cell="A3"]')).toHaveText('Cup, large');
+  // One row above row 3.
+  await grid.getByRole('rowheader', { name: '3', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Insert row above' }).click();
+  await expect(grid.locator('[data-cell="A3"]')).toHaveText('');
+  await expect(grid.locator('[data-cell="A4"]')).toHaveText('Cup, large');
+  // Three rows below row 1.
+  await grid.getByRole('rowheader', { name: '1', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Insert rows below…' }).click();
+  await page.getByRole('dialog').getByRole('textbox').fill('3');
+  await page.getByRole('dialog').getByRole('button', { name: 'Insert' }).click();
+  await expect(grid.locator('[data-cell="A2"]')).toHaveText('');
+  await expect(grid.locator('[data-cell="A5"]')).toHaveText('Pen');
+  await waitSaved(page);
+  await page.getByRole('button', { name: 'Text', exact: true }).click();
+  expect(await sourceText(page)).toBe(
+    'name,qty,code\n,,\n,,\n,,\nPen,3,007\n,,\n"Cup, large",2,0042\nLamp,1,100\n',
+  );
 });

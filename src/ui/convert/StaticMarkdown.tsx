@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { renderMarkdown } from '@/lib/markdown/render';
+import { useSettings } from '@/app/settings-store';
+import { applyRowHeight, toggleRowAt } from '../row-height';
 
 /**
  * Read-only rendering of Markdown that is not a workspace document (a Word file's
@@ -23,6 +25,10 @@ export function StaticMarkdown({
 }) {
   const ref = useRef<HTMLElement>(null);
   const html = useMemo(() => renderMarkdown(text).html, [text]);
+  const rowHeight = useSettings((s) => s.tableRowHeight);
+  useLayoutEffect(() => {
+    if (ref.current) applyRowHeight(ref.current, rowHeight);
+  }, [html, rowHeight]);
 
   useEffect(() => {
     const el = ref.current;
@@ -59,6 +65,7 @@ export function StaticMarkdown({
     <article
       ref={ref}
       className={`prose ${className}`}
+      onClick={(e) => toggleRowAt(e.target as HTMLElement)}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );

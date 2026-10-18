@@ -20,7 +20,7 @@ async function importFixture(page: Page, name: string, mimeType: string) {
   await (
     await chooser
   ).setFiles({ name, mimeType, buffer: readFileSync(resolve(process.cwd(), 'fixtures', name)) });
-  await expect(page.getByText(/Imported 1 file/)).toBeVisible();
+  await expect(page.getByText(/Imported 1 file/).last()).toBeVisible();
   await page.getByRole('treeitem', { name }).click();
 }
 

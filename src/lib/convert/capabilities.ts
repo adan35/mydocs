@@ -4,7 +4,7 @@
  * docs/FORMATS.md are all generated from this table, so they cannot disagree.
  */
 
-export type FormatId = 'md' | 'docx' | 'xlsx' | 'csv' | 'tsv' | 'html' | 'txt' | 'pdf';
+export type FormatId = 'md' | 'docx' | 'xlsx' | 'csv' | 'tsv' | 'unl' | 'html' | 'txt' | 'pdf';
 
 export interface FormatInfo {
   id: FormatId;
@@ -51,6 +51,13 @@ export const FORMATS: FormatInfo[] = [
     extensions: ['tsv', 'tab'],
     view: 'Sheet view, or as text',
     edit: 'Cells (only edited rows are rewritten) or raw text',
+  },
+  {
+    id: 'unl',
+    label: 'UNL',
+    extensions: ['unl'],
+    view: 'Sheet view (pipe-delimited, columns A, B, C… with an optional header row), or as text',
+    edit: 'Cells (only edited rows are rewritten, keeping the trailing delimiter) or raw text',
   },
   {
     id: 'html',
@@ -280,6 +287,38 @@ export const CONVERSIONS: Conversion[] = [
   },
   { from: 'tsv', to: 'csv', kinds: ['convert', 'export'], keeps: ['Every value'], loses: [] },
   {
+    from: 'unl',
+    to: 'xlsx',
+    kinds: ['convert', 'export'],
+    keeps: [
+      'Every value, one row per record',
+      'Plain numbers as numbers (250.0 keeps its decimal place)',
+      'Leading zeros, dates and codes exactly as text',
+    ],
+    loses: ['The trailing delimiter (it ends a row, it is not a column)'],
+  },
+  {
+    from: 'unl',
+    to: 'csv',
+    kinds: ['convert', 'export'],
+    keeps: ['Every value, including escaped delimiters and line breaks'],
+    loses: ['The trailing delimiter (it ends a row, it is not a column)'],
+  },
+  {
+    from: 'unl',
+    to: 'tsv',
+    kinds: ['convert', 'export'],
+    keeps: ['Every value'],
+    loses: ['The trailing delimiter (it ends a row, it is not a column)'],
+  },
+  {
+    from: 'unl',
+    to: 'md',
+    kinds: ['convert'],
+    keeps: ['Every value, as a table with columns named A, B, C…'],
+    loses: ['Line breaks inside cells (become spaces)'],
+  },
+  {
     from: 'html',
     to: 'md',
     kinds: ['convert'],
@@ -356,8 +395,8 @@ export const NOT_SUPPORTED: { what: string; why: string }[] = [
     why: 'MyDocs keeps documents on this device only. There is no server.',
   },
   {
-    what: '.doc, .xls, .odt, .ods, .rtf, .pptx',
-    why: 'Stored and downloadable, but not opened. Save them as .docx or .xlsx first.',
+    what: 'Formatted viewing of legacy .doc, .xls, .ppt and .rtf',
+    why: 'These open as raw text or bytes with the original available to download. Save them as .docx, .xlsx or .pptx for a document preview.',
   },
 ];
 
@@ -389,6 +428,11 @@ export function capabilityMarkdown(): string {
     '| Format | Opens as | Edit in place |',
     '| --- | --- | --- |',
     ...rows,
+    '| PowerPoint (.pptx) | Text-only slide preview in presentation order (up to 20 MB) | No |',
+    '| OpenDocument (.odt, .ods, .odp) | Text-only content preview (up to 20 MB) | No |',
+    '| Audio and video | Playback controls when the device supports the codec | No |',
+    '| Images | Image preview when the device supports the format | No |',
+    '| Other files | Text editor when readable as text; otherwise file details and a 512-byte hexadecimal preview | Text files only |',
     '',
     '## Converting and exporting',
     '',

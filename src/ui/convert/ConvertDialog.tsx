@@ -290,7 +290,7 @@ export function ConvertDialog({
                             result.preview.workbook.sheets[0]!
                           }
                           readOnly
-                          headerRow
+                          headerRow={from !== 'unl'}
                           label="Preview"
                           selection={{ r: 0, c: 0 }}
                           onSelect={() => undefined}

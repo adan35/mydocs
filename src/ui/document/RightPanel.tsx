@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronRight,
   History,
@@ -11,7 +11,8 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import type { EntryId } from '@/domain/types';
-import { extractHeadings } from '@/domain/outline';
+import type { OutlineItem } from '@/domain/outline';
+import type { DocOutline } from '@/app/outline-store';
 import { countWords } from '@/domain/tasks';
 import { formatBytes, fileTypeOf } from '@/domain/names';
 import { session } from '@/app/app-store';
@@ -31,9 +32,9 @@ import { relativeTime, useIndexVersion, useTree } from '../hooks';
 
 interface Props {
   docId: EntryId;
-  text: string;
-  activeLine: number;
-  onJump(line: number): void;
+  /** The document's text (text documents only). */
+  text?: string;
+  outline: DocOutline;
   onClose?(): void;
 }
 
@@ -43,8 +44,14 @@ const TABS: { id: Panel; label: string; icon: React.ReactNode }[] = [
   { id: 'info', label: 'Info', icon: <Info size={15} /> },
 ];
 
-export function RightPanel({ docId, text, activeLine, onJump, onClose }: Props) {
-  const panel = useUi((s) => s.rightPanel);
+export function RightPanel({ docId, text, outline, onClose }: Props) {
+  const stored = useUi((s) => s.rightPanel);
+  const tree = useTree()!;
+  const entry = tree.get(docId);
+  // Links are between Markdown documents; other files have an outline and info.
+  const hasLinks = !!entry && fileTypeOf(entry.name) === 'markdown';
+  const tabs = TABS.filter((t) => t.id !== 'backlinks' || hasLinks);
+  const panel = tabs.some((t) => t.id === stored) ? stored : 'outline';
   return (
     <aside aria-label="Document details" className="flex h-full min-h-0 w-full flex-col bg-canvas">
       <div
@@ -52,7 +59,7 @@ export function RightPanel({ docId, text, activeLine, onJump, onClose }: Props) 
         aria-label="Panels"
         className="flex items-center gap-0.5 border-b border-hairline px-2 py-1.5"
       >
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
@@ -73,7 +80,7 @@ export function RightPanel({ docId, text, activeLine, onJump, onClose }: Props) 
         )}
       </div>
       <div role="tabpanel" className="scroll-area min-h-0 flex-1 p-3">
-        {panel === 'outline' && <Outline text={text} activeLine={activeLine} onJump={onJump} />}
+        {panel === 'outline' && <Outline outline={outline} />}
         {panel === 'backlinks' && <Links docId={docId} />}
         {panel === 'info' && <DocInfo docId={docId} text={text} />}
       </div>
@@ -81,80 +88,158 @@ export function RightPanel({ docId, text, activeLine, onJump, onClose }: Props) 
   );
 }
 
-export function Outline({
-  text,
-  activeLine,
-  onJump,
-}: {
-  text: string;
-  activeLine: number;
-  onJump(line: number): void;
-}) {
-  const headings = useMemo(() => extractHeadings(text), [text]);
+/** Shows a filter box once an outline is longer than this. */
+const FILTER_FROM = 15;
+
+/**
+ * The document's structure: headings (with nesting, level and size of each section), or a
+ * PDF's bookmarks or pages, a workbook's sheets, the tables in the sheet view, the
+ * functions of a source file. The item in view is highlighted; clicking one goes there.
+ */
+export function Outline({ outline }: { outline: DocOutline }) {
+  const { items, active, noun } = outline;
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
-  if (!headings.length) {
+  const [query, setQuery] = useState('');
+  const activeRef = useRef<HTMLButtonElement>(null);
+  const minLevel = items.length ? Math.min(...items.map((h) => h.level)) : 1;
+  const parents = useMemo(
+    () => new Set(items.filter((h, i) => (items[i + 1]?.level ?? 0) > h.level).map((h) => h.key)),
+    [items],
+  );
+  // The item in view, or the nearest visible heading above it when it's folded away.
+  const visible: { h: OutlineItem; i: number }[] = [];
+  const q = query.trim().toLocaleLowerCase();
+  let shownActive = -1;
+  let hideBelow = Infinity;
+  for (let i = 0; i < items.length; i++) {
+    const h = items[i]!;
+    if (q) {
+      if (h.text.toLocaleLowerCase().includes(q)) visible.push({ h, i });
+      continue;
+    }
+    if (h.level <= hideBelow) hideBelow = Infinity;
+    if (hideBelow !== Infinity) {
+      if (i === active) shownActive = visible[visible.length - 1]?.i ?? -1;
+      continue;
+    }
+    visible.push({ h, i });
+    if (i === active) shownActive = i;
+    if (parents.has(h.key) && collapsed.has(h.key)) hideBelow = h.level;
+  }
+  if (q) shownActive = active;
+
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [shownActive]);
+
+  if (!items.length) {
     return (
       <p className="px-1 text-caption text-steel">
-        Headings you add (# Title, ## Section) appear here for quick navigation.
+        {outline.empty ??
+          'Headings you add (# Title, ## Section) appear here for quick navigation.'}
       </p>
     );
   }
-  const minLevel = Math.min(...headings.map((h) => h.level));
-  let current = -1;
-  for (let i = 0; i < headings.length; i++) if (headings[i]!.line <= activeLine) current = i;
-  // A heading has children when the next heading is deeper; collapsed ones hide them.
-  const visible: { h: (typeof headings)[number]; i: number; parent: boolean }[] = [];
-  let hideBelow = Infinity;
-  for (let i = 0; i < headings.length; i++) {
-    const h = headings[i]!;
-    if (h.level <= hideBelow) hideBelow = Infinity;
-    if (hideBelow !== Infinity) continue;
-    const parent = (headings[i + 1]?.level ?? 0) > h.level;
-    visible.push({ h, i, parent });
-    if (parent && collapsed.has(h.slug)) hideBelow = h.level;
-  }
-  const toggle = (slug: string) =>
+  const toggle = (key: string) =>
     setCollapsed((prev) => {
       const next = new Set(prev);
-      if (!next.delete(slug)) next.add(slug);
+      if (!next.delete(key)) next.add(key);
       return next;
     });
+  const allCollapsed = parents.size > 0 && [...parents].every((k) => collapsed.has(k));
   return (
-    <nav aria-label="Outline">
-      <ul className="space-y-px">
-        {visible.map(({ h, i, parent }) => (
-          <li
-            key={`${h.line}-${h.slug}`}
-            className="flex items-center"
-            style={{ paddingLeft: (h.level - minLevel) * 12 }}
+    <nav aria-label="Outline" className="space-y-2">
+      <div className="flex items-center gap-1 px-1">
+        <p className="min-w-0 flex-1 truncate text-xs text-stone" data-testid="outline-summary">
+          {items.length.toLocaleString()} {items.length === 1 ? noun.replace(/s$/, '') : noun}
+          {outline.summary ? ` · ${outline.summary}` : ''}
+        </p>
+        {parents.size > 0 && !q && (
+          <button
+            type="button"
+            className="h-6 shrink-0 rounded px-1.5 text-xs text-steel hover:bg-hover hover:text-ink"
+            onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(parents))}
           >
-            {parent ? (
-              <button
-                type="button"
-                className="flex size-5 shrink-0 items-center justify-center rounded text-stone hover:bg-hover hover:text-ink"
-                aria-label={`${collapsed.has(h.slug) ? 'Expand' : 'Collapse'} ${h.text}`}
-                aria-expanded={!collapsed.has(h.slug)}
-                onClick={() => toggle(h.slug)}
-              >
-                <ChevronRight
-                  size={12}
-                  className={`transition-transform motion-reduce:transition-none ${collapsed.has(h.slug) ? '' : 'rotate-90'}`}
+            {allCollapsed ? 'Expand all' : 'Collapse all'}
+          </button>
+        )}
+      </div>
+      {items.length >= FILTER_FROM && (
+        <input
+          type="search"
+          className="input h-8 w-full py-0 text-[13px]"
+          placeholder={`Filter ${noun}`}
+          aria-label={`Filter ${noun}`}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      )}
+      <ul className="space-y-px">
+        {visible.map(({ h, i }) => {
+          const isActive = i === shownActive;
+          const depth = q ? 0 : h.level - minLevel;
+          const parent = !q && parents.has(h.key);
+          return (
+            <li key={h.key} className="relative flex items-center">
+              {/* Guide lines show which section an item belongs to. */}
+              {Array.from({ length: depth }, (_, d) => (
+                <span
+                  key={d}
+                  aria-hidden
+                  className="absolute top-0 bottom-0 w-px bg-hairline-soft"
+                  style={{ left: d * 14 + 9 }}
                 />
+              ))}
+              <span className="shrink-0" style={{ width: depth * 14 }} />
+              {parent ? (
+                <button
+                  type="button"
+                  className="flex size-5 shrink-0 items-center justify-center rounded text-stone hover:bg-hover hover:text-ink"
+                  aria-label={`${collapsed.has(h.key) ? 'Expand' : 'Collapse'} ${h.text}`}
+                  aria-expanded={!collapsed.has(h.key)}
+                  onClick={() => toggle(h.key)}
+                >
+                  <ChevronRight
+                    size={12}
+                    className={`transition-transform motion-reduce:transition-none ${collapsed.has(h.key) ? '' : 'rotate-90'}`}
+                  />
+                </button>
+              ) : (
+                <span className="w-5 shrink-0" />
+              )}
+              <button
+                ref={isActive ? activeRef : undefined}
+                type="button"
+                aria-current={isActive ? 'location' : undefined}
+                className={`relative flex min-w-0 flex-1 items-center gap-1.5 rounded-md py-1 pr-1.5 pl-1.5 text-left text-[13px] leading-snug ${isActive ? 'bg-active font-medium text-ink' : 'text-slate hover:bg-hover'}`}
+                onClick={() => outline.jump(i)}
+                aria-label={h.text}
+                title={h.detail ? `${h.text} · ${h.detail}` : h.text}
+              >
+                {isActive && (
+                  <span
+                    aria-hidden
+                    className="absolute top-1 bottom-1 left-0 w-0.5 rounded bg-primary"
+                  />
+                )}
+                {h.badge && (
+                  <span className="shrink-0 font-mono text-[10px] text-stone uppercase">
+                    {h.badge}
+                  </span>
+                )}
+                <span className="min-w-0 flex-1 truncate">{h.text}</span>
+                {h.detail && (
+                  <span className="shrink-0 text-[11px] font-normal text-stone tabular-nums">
+                    {h.detail}
+                  </span>
+                )}
               </button>
-            ) : (
-              <span className="w-5 shrink-0" />
-            )}
-            <button
-              type="button"
-              aria-current={i === current ? 'location' : undefined}
-              className={`block min-w-0 flex-1 truncate rounded-md py-1 pr-2 pl-1 text-left text-[13px] leading-snug hover:bg-hover ${i === current ? 'font-medium text-ink' : 'text-slate'}`}
-              onClick={() => onJump(h.line)}
-              title={h.text}
-            >
-              {h.text}
-            </button>
-          </li>
-        ))}
+            </li>
+          );
+        })}
+        {q && !visible.length && (
+          <li className="px-1 text-caption text-steel">Nothing matches “{query.trim()}”.</li>
+        )}
       </ul>
     </nav>
   );
@@ -355,11 +440,11 @@ function EntryList({ ids, icon }: { ids: EntryId[]; icon?: React.ReactNode }) {
   );
 }
 
-function DocInfo({ docId, text }: { docId: EntryId; text: string }) {
+function DocInfo({ docId, text }: { docId: EntryId; text?: string }) {
   const tree = useTree()!;
   useIndexVersion();
   const e = tree.get(docId);
-  const words = useMemo(() => countWords(text), [text]);
+  const words = useMemo(() => (text === undefined ? 0 : countWords(text)), [text]);
   if (!e) return null;
   const tags = session().knowledge.tagsOf(docId);
   const isMd = fileTypeOf(e.name) === 'markdown';
@@ -367,10 +452,14 @@ function DocInfo({ docId, text }: { docId: EntryId; text: string }) {
     ['Location', tree.dirOf(docId) || 'Workspace root'],
     ['Type', fileTypeOf(e.name)],
     ['Size', formatBytes(e.size)],
-    ['Words', words.toLocaleString()],
-    ['Characters', text.length.toLocaleString()],
-    ['Lines', (text ? text.split('\n').length : 0).toLocaleString()],
-    ['Reading time', `${Math.max(1, Math.round(words / 230))} min`],
+    ...(text === undefined
+      ? []
+      : ([
+          ['Words', words.toLocaleString()],
+          ['Characters', text.length.toLocaleString()],
+          ['Lines', (text ? text.split('\n').length : 0).toLocaleString()],
+          ['Reading time', `${Math.max(1, Math.round(words / 230))} min`],
+        ] as [string, React.ReactNode][])),
     [
       'Modified',
       <span title={new Date(e.updatedAt).toLocaleString()}>{relativeTime(e.updatedAt)}</span>,

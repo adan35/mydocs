@@ -13,6 +13,7 @@ import {
   Rows3,
 } from 'lucide-react';
 import { formatShortcut } from '../hooks';
+import { RowHeightButton } from '../row-height';
 
 export interface SheetAction {
   id: string;
@@ -161,6 +162,9 @@ export function SheetRibbon({
           })}
         </div>
       ))}
+      <span className="flex-1" />
+      <span className="mx-1 h-5 w-px bg-hairline" aria-hidden />
+      <RowHeightButton />
     </div>
   );
 }

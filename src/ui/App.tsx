@@ -8,10 +8,13 @@ import { AppShell } from './layout/AppShell';
 import { DialogHost } from './dialogs/DialogHost';
 import { MenuHost } from './components/Menu';
 import { Toaster } from './components/Toaster';
+import { UpdatePrompt } from './dialogs/UpdateDialog';
+import { startUpdateChecks } from '@/app/updates';
 import { useResolvedTheme } from './hooks';
 import { installNativeLinkHandler, onBeforeQuit } from '@/platform';
 import { useUi } from '@/app/ui-store';
 import { useSettings } from '@/app/settings-store';
+import { watchDesktopFiles } from '@/app/desktop-open';
 
 function useThemeAttribute() {
   const theme = useResolvedTheme();
@@ -39,12 +42,16 @@ function useLifecycle() {
     let cancelled = false;
     const workspace = session.workspace;
     void diskLinks.load(workspace.id, (id) => !!workspace.get(id));
+    // Files changed on disk (in another app) show their new contents here.
+    const stopWatching = diskLinks.watch();
+    let stopOpening: (() => void) | undefined;
     void editorActions.restoreSession().then(() => {
       if (cancelled) return;
       // Validate the deep-linked document after restore.
       const route = useRouter.getState().route;
       if (route.name === 'doc' && !session.workspace.get(route.id))
         navigate({ name: 'home' }, { replace: true });
+      stopOpening = watchDesktopFiles();
     });
     const unsub = session.workspace.subscribe((e) => {
       if (e.type === 'content' && e.source === 'external') editorActions.onExternalContent(e.ids);
@@ -64,7 +71,9 @@ function useLifecycle() {
     });
     return () => {
       cancelled = true;
+      stopOpening?.();
       unsub();
+      stopWatching();
     };
   }, [session]);
 
@@ -135,6 +144,7 @@ export function App() {
   const error = useApp((s) => s.error);
   useThemeAttribute();
   useLifecycle();
+  useEffect(() => startUpdateChecks(), []);
 
   useEffect(() => {
     void appActions.init();
@@ -206,6 +216,7 @@ export function App() {
       <AppShell />
       <DialogHost />
       <MenuHost />
+      <UpdatePrompt />
       <Toaster />
     </>
   );

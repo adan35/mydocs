@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { publishOutline } from '@/app/outline-store';
 import {
   AlertTriangle,
   ChevronDown,
@@ -99,6 +100,52 @@ export function PdfView({ entry }: { entry: Entry }) {
     el?.scrollIntoView({ block: 'start' });
     setPage(n);
   }, []);
+
+  // Outline: the PDF's bookmarks, or its pages when it has none.
+  const [bookmarks, setBookmarks] = useState<{ title: string; level: number; page: number }[]>([]);
+  useEffect(() => {
+    setBookmarks([]);
+    if (!doc) return;
+    let cancelled = false;
+    void pdfBookmarks(doc).then((b) => !cancelled && setBookmarks(b));
+    return () => {
+      cancelled = true;
+    };
+  }, [doc]);
+  useEffect(() => {
+    if (!doc) return;
+    const total = doc.numPages;
+    const pages = `${total} page${total === 1 ? '' : 's'}`;
+    if (bookmarks.length) {
+      let active = -1;
+      for (const [i, b] of bookmarks.entries()) if (b.page <= page) active = i;
+      publishOutline(entry.id, {
+        items: bookmarks.map((b, i) => ({
+          key: `${i}`,
+          level: b.level,
+          text: b.title,
+          detail: `p. ${b.page}`,
+        })),
+        active,
+        noun: 'bookmarks',
+        summary: pages,
+        jump: (i) => goTo(bookmarks[i]!.page),
+      });
+    } else {
+      publishOutline(entry.id, {
+        items: Array.from({ length: total }, (_, i) => ({
+          key: `${i + 1}`,
+          level: 1,
+          text: `Page ${i + 1}`,
+        })),
+        active: page - 1,
+        noun: 'pages',
+        summary: 'no bookmarks in this PDF',
+        jump: (i) => goTo(i + 1),
+      });
+    }
+  }, [doc, bookmarks, page, entry.id, goTo]);
+  useEffect(() => () => publishOutline(entry.id, null), [entry.id]);
 
   const runSearch = async (q: string) => {
     setQuery(q);
@@ -264,6 +311,37 @@ export function PdfView({ entry }: { entry: Entry }) {
       </div>
     </div>
   );
+}
+
+/** The PDF's bookmarks (its own table of contents), flattened, with page numbers. */
+async function pdfBookmarks(
+  doc: PDFDocumentProxy,
+): Promise<{ title: string; level: number; page: number }[]> {
+  try {
+    const tree = await doc.getOutline();
+    if (!tree?.length) return [];
+    const out: { title: string; level: number; page: number }[] = [];
+    const walk = async (nodes: typeof tree, level: number) => {
+      for (const n of nodes) {
+        if (out.length >= 1000) return;
+        let page = 0;
+        try {
+          const dest = typeof n.dest === 'string' ? await doc.getDestination(n.dest) : n.dest;
+          const ref = dest?.[0];
+          if (ref && typeof ref === 'object') page = (await doc.getPageIndex(ref)) + 1;
+          else if (typeof ref === 'number') page = ref + 1;
+        } catch {
+          /* a bookmark to nowhere keeps page 0 */
+        }
+        if (page) out.push({ title: n.title.trim() || 'Untitled', level, page });
+        if (n.items?.length) await walk(n.items, level + 1);
+      }
+    };
+    await walk(tree, 1);
+    return out;
+  } catch {
+    return [];
+  }
 }
 
 export function PdfPage({

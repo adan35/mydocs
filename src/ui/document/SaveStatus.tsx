@@ -1,4 +1,15 @@
-import { AlertCircle, Check, HardDrive, Loader2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import {
+  AlertCircle,
+  AlertTriangle,
+  Check,
+  HardDrive,
+  HardDriveDownload,
+  HardDriveUpload,
+  Loader2,
+  RefreshCw,
+} from 'lucide-react';
+import { openMenuAt } from '../components/Menu';
 import { useEditor } from '@/app/editor-store';
 import { editorActions } from '@/app/editor-store';
 import { diskLinks, useDiskLinks } from '@/app/disk-links';
@@ -60,12 +71,56 @@ export function SaveStatus({ id }: { id: EntryId }) {
 /** For documents imported from the user's computer: is the original file up to date? */
 export function DiskStatus({ id }: { id: EntryId }) {
   const link = useDiskLinks((s) => s.links[id]);
+  const [fresh, setFresh] = useState(false);
+  const refreshedAt = link?.refreshedAt;
+  // "Updated from disk" shows for a moment after the file changed on disk.
+  useEffect(() => {
+    if (!refreshedAt || Date.now() - refreshedAt > 4000) return;
+    setFresh(true);
+    const t = setTimeout(() => setFresh(false), 4000);
+    return () => clearTimeout(t);
+  }, [refreshedAt]);
   if (!link) return null;
   const allow = () => {
+    if (link.binary) {
+      void diskLinks.allow(id);
+      return;
+    }
     const b = useEditor.getState().buffers[id];
     const text = b?.savedText ?? ws().allTexts().get(id);
     if (text !== undefined) void diskLinks.allow(id, text);
   };
+  if (link.state === 'conflict') {
+    return (
+      <button
+        type="button"
+        className="btn btn-secondary h-7 gap-1.5 px-2 text-caption whitespace-nowrap text-warning"
+        title={`"${link.fileName}" changed on your computer while this document had edits that aren't in the file. Choose which version to keep.`}
+        aria-haspopup="menu"
+        data-testid="disk-conflict"
+        onClick={(e) =>
+          openMenuAt(
+            e.currentTarget,
+            [
+              {
+                label: 'Load the version on disk',
+                icon: <HardDriveDownload />,
+                onSelect: () => void diskLinks.resolve(id, 'disk'),
+              },
+              {
+                label: link.binary ? 'Keep the version in My Doc' : 'Keep mine and save it to disk',
+                icon: <HardDriveUpload />,
+                onSelect: () => void diskLinks.resolve(id, 'mine'),
+              },
+            ],
+            'Changed on disk',
+          )
+        }
+      >
+        <AlertTriangle size={13} aria-hidden /> Changed on disk
+      </button>
+    );
+  }
   if (link.state === 'needs-permission' || link.state === 'error') {
     const permissionNeeded = link.state === 'needs-permission';
     return (
@@ -74,7 +129,9 @@ export function DiskStatus({ id }: { id: EntryId }) {
         className={`btn h-7 gap-1.5 px-2 text-caption whitespace-nowrap ${permissionNeeded ? 'btn-secondary' : 'btn-ghost text-danger'}`}
         title={
           permissionNeeded
-            ? `Your edits are saved in My Doc. Allow access to also save them to "${link.fileName}" on your computer.`
+            ? link.binary
+              ? `Allow access to "${link.fileName}" on your computer so changes made there show here.`
+              : `Your edits are saved in My Doc. Allow access to also save them to "${link.fileName}" on your computer, and to see changes made there.`
             : `${link.error ?? 'Unable to write the file.'} Your edits are still saved in My Doc.`
         }
         onClick={allow}
@@ -84,22 +141,37 @@ export function DiskStatus({ id }: { id: EntryId }) {
         ) : (
           <AlertCircle size={13} aria-hidden />
         )}
-        {permissionNeeded ? 'Allow saving to disk' : 'Disk save failed · Retry'}
+        {permissionNeeded
+          ? link.binary
+            ? 'Allow disk access'
+            : 'Allow saving to disk'
+          : link.binary
+            ? 'Disk file unavailable · Retry'
+            : 'Disk save failed · Retry'}
       </button>
     );
   }
   return (
     <span
-      className="flex items-center gap-1 text-caption whitespace-nowrap text-steel"
-      title={`Also saved to "${link.fileName}" on your computer`}
+      className={`flex items-center gap-1 text-caption whitespace-nowrap ${fresh ? 'text-primary' : 'text-steel'}`}
+      title={
+        link.binary
+          ? `Linked to "${link.fileName}" on your computer. Changes made there show here.`
+          : `Also saved to "${link.fileName}" on your computer. Changes made there show here.`
+      }
       data-testid="disk-status"
+      role={fresh ? 'status' : undefined}
     >
       {link.state === 'writing' ? (
         <Loader2 size={13} className="animate-spin" aria-hidden />
+      ) : fresh ? (
+        <RefreshCw size={13} aria-hidden />
       ) : (
         <HardDrive size={13} aria-hidden />
       )}
-      <span className="hidden md:inline">On disk</span>
+      <span className={fresh ? 'inline' : 'hidden md:inline'}>
+        {fresh ? 'Updated from disk' : 'On disk'}
+      </span>
     </span>
   );
 }

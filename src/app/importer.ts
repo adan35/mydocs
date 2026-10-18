@@ -1,6 +1,6 @@
 import { unzipSync } from 'fflate';
 import type { EntryId, FileContent } from '@/domain/types';
-import { fileTypeOf, isTextType, sanitizeName, extensionOf } from '@/domain/names';
+import { fileTypeOf, isTextType, sanitizeName, extensionOf, mediaKindOf } from '@/domain/names';
 import { normalizePath } from '@/domain/paths';
 import type { ConflictChoice } from './dialog-store';
 import { canSaveToDisk } from './disk-links';
@@ -42,8 +42,13 @@ export interface ImportResult {
   replaced: number;
   skipped: { path: string; reason: string }[];
   firstFileId?: EntryId;
-  /** Imported text files that can be saved back to their original file on disk. */
-  diskLinks: { id: EntryId; handle: FileSystemFileHandle }[];
+  /** The top-level folder holding the first imported file, when it came inside a folder. */
+  firstFolderId?: EntryId;
+  /**
+   * Imported files that stay linked to their original file on disk: text files are saved
+   * back to it, and every linked file is refreshed when it changes there.
+   */
+  diskLinks: { id: EntryId; handle: FileSystemFileHandle; binary?: boolean }[];
 }
 
 export type ConflictResolver = (name: string, count: number) => Promise<ConflictChoice>;
@@ -54,20 +59,21 @@ export async function readAsTextIfText(blob: Blob, name: string): Promise<string
   return textFromBytes(new Uint8Array(await blob.arrayBuffer()), name);
 }
 
-function textFromBytes(buf: Uint8Array, name: string): string | null {
+export function textFromBytes(buf: Uint8Array, name: string): string | null {
   if (buf.byteLength > MAX_TEXT_BYTES) return null;
   const type = fileTypeOf(name);
-  if (type === 'image' || type === 'pdf') return null;
+  if (type === 'image' || type === 'pdf' || mediaKindOf(name)) return null;
   const known = isTextType(type) && extensionOf(name) !== '';
   if (!known) {
     const sample = buf.subarray(0, 8192);
     if (sample.includes(0)) return null;
   }
   try {
-    const text = new TextDecoder('utf-8', { fatal: !known }).decode(buf);
-    return text.replace(/^\uFEFF/, '');
+    return new TextDecoder('utf-8', { fatal: true }).decode(buf).replace(/^\uFEFF/, '');
   } catch {
-    return null;
+    // A known text format that isn't UTF-8 is most often Windows-1252/Latin-1 (database
+    // exports such as .unl and .csv); decoding it that way keeps accented letters intact.
+    return known ? new TextDecoder('windows-1252').decode(buf) : null;
   }
 }
 
@@ -227,8 +233,12 @@ export async function importItems(
     );
     created.forEach((e, i) => {
       const handle = pending[i]?.handle;
-      if (handle && typeof pending[i]?.content === 'string')
-        result.diskLinks.push({ id: e.id, handle });
+      if (handle)
+        result.diskLinks.push({
+          id: e.id,
+          handle,
+          binary: typeof pending[i]?.content !== 'string',
+        });
     });
     result.files += created.length;
     result.firstFileId ??= created[0]?.id;
@@ -274,15 +284,18 @@ export async function importItems(
       }
       if (choice.action === 'replace') {
         await ws.replaceContent(clash.id, content);
-        if (handle && text !== null) result.diskLinks.push({ id: clash.id, handle });
+        if (handle) result.diskLinks.push({ id: clash.id, handle, binary: text === null });
         result.replaced++;
         result.firstFileId ??= clash.id;
+        if (segments.length > 1)
+          result.firstFolderId ??= folderCache.get(segments[0]!) ?? undefined;
         done++;
         onProgress?.(done, items.length);
         continue;
       }
     }
     pending.push({ parentId, name, content, handle });
+    if (segments.length > 1) result.firstFolderId ??= folderCache.get(segments[0]!) ?? undefined;
     pendingBytes += read.bytes.byteLength;
     pendingNames.add(`${parentId}/${name.toLowerCase()}`);
     if (pending.length >= BATCH || pendingBytes >= BATCH_BYTES) await flush();

@@ -7,6 +7,10 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, normalize, sep } from 'node:path';
 import { createHash } from 'node:crypto';
 
+const { version: APP_VERSION } = JSON.parse(
+  readFileSync(new URL('./package.json', import.meta.url), 'utf8'),
+) as { version: string };
+
 /**
  * Production Content-Security-Policy. Documents are untrusted, so even if sanitizing
  * ever failed, inline and third-party scripts still could not run.
@@ -19,6 +23,7 @@ const CSP = [
   "script-src 'self' 'wasm-unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
+  "media-src 'self' blob:",
   "font-src 'self' data:",
   // The desktop app talks to its native side over Tauri's IPC protocol.
   `connect-src 'self'${process.env.TAURI_ENV_PLATFORM ? ' ipc: http://ipc.localhost' : ''}`,
@@ -112,6 +117,7 @@ const serviceWorkerPlugin = (): Plugin => ({
 });
 
 export default defineConfig({
+  define: { __APP_VERSION__: JSON.stringify(APP_VERSION) },
   plugins: [react(), tailwindcss(), cspPlugin(), pdfjsAssetsPlugin(), serviceWorkerPlugin()],
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
@@ -123,7 +129,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
-    include: ['src/**/*.test.{ts,tsx}'],
+    include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.ts'],
     exclude: ['e2e/**', 'node_modules/**'],
   },
 });

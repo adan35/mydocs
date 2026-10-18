@@ -58,8 +58,10 @@ export async function openEntry(id: EntryId, anchor?: string) {
   }
   appActions.touchRecent(id);
   appActions.reveal(id);
-  await editorActions.open(id);
+  // Switch views at once; the document shows its loading state until its text is read.
+  const opening = editorActions.open(id);
   navigate({ name: 'doc', id, anchor });
+  await opening;
 }
 
 async function guard<T>(message: string, fn: () => Promise<T>): Promise<T | undefined> {
@@ -467,7 +469,8 @@ export async function runImport(items: ImportItem[], targetId: EntryId | null = 
       dialogs.conflict({ name, count: remaining }),
     );
     dismissToast(progressToast);
-    for (const { id, handle } of result.diskLinks) await diskLinks.link(id, handle);
+    for (const { id, handle, binary } of result.diskLinks)
+      await diskLinks.link(id, handle, { binary });
     // Ask for write access while the picker's click still counts as a user gesture.
     void diskLinks.requestAll(result.diskLinks.map((l) => l.id));
     if (targetId) appActions.setExpanded(targetId, true);
@@ -486,10 +489,13 @@ export async function runImport(items: ImportItem[], targetId: EntryId | null = 
             .join('; ')}${skipped.length > 3 ? '…' : ''}`
         : undefined,
       tone: skipped.length ? 'info' : 'success',
-      action: result.firstFileId
-        ? { label: 'Open', run: () => void openEntry(result.firstFileId!) }
-        : undefined,
     });
+    // Take the user to what they just imported: into the imported folder, or the first file.
+    if (result.firstFolderId) {
+      appActions.reveal(result.firstFolderId);
+      appActions.setExpanded(result.firstFolderId, true);
+      await openEntry(result.firstFolderId);
+    } else if (result.firstFileId) await openEntry(result.firstFileId);
   } catch (err) {
     dismissToast(progressToast);
     toastError('The import stopped before finishing. Files imported so far were kept.', err);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BookOpen,
   Columns2,
@@ -31,6 +31,8 @@ import {
 import type { Entry, EntryId } from '@/domain/types';
 import { isMarkdownName } from '@/domain/names';
 import { extractHeadings } from '@/domain/outline';
+import { useOutlines, type DocOutline } from '@/app/outline-store';
+import { textOutline, type TextOutline } from './text-outline';
 import { toggleTaskAt } from '@/domain/tasks';
 import { findFirstMatch } from '@/app/search';
 import { ws } from '@/app/app-store';
@@ -80,22 +82,83 @@ export function DocumentView({ id, anchor }: { id: EntryId; anchor?: string }) {
   }
   const textual = ws().isEditable(entry);
   if (textual) return <TextDocument entry={entry} anchor={anchor} />;
+  return <FileDocument entry={entry} />;
+}
+
+/** Word, Excel, PDF, images and other files that aren't edited as text. */
+function FileDocument({ entry }: { entry: Entry }) {
+  const { wide } = useLayout();
+  const panelOpen = useUi((s) => s.rightPanelOpen);
+  const panelWidth = useUi((s) => s.rightPanelWidth);
+  const focusMode = useUi((s) => s.focusMode);
+  const readingMode = useUi((s) => s.readingMode);
+  const [outlineSheet, setOutlineSheet] = useState(false);
+  useEffect(() => setOutlineSheet(false), [entry.id]);
+  useEffect(() => {
+    const onCmd = (e: Event) => {
+      if ((e as CustomEvent<string>).detail === 'panel-sheet') setOutlineSheet((v) => !v);
+    };
+    addEventListener('mydoc:doc-command', onCmd);
+    return () => removeEventListener('mydoc:doc-command', onCmd);
+  }, []);
+  const published = useOutlines((s) => s[entry.id]);
+  const outline: DocOutline = published
+    ? {
+        ...published,
+        jump: (i) => {
+          setOutlineSheet(false);
+          published.jump(i);
+        },
+      }
+    : {
+        items: [],
+        active: -1,
+        noun: 'items',
+        empty: 'This file has no outline. Its details are under Info.',
+        jump: () => {},
+      };
   const format = formatOf(entry.name)?.id;
   const onConvert = () => void dialogs.convert(entry.id);
+  const showPanel = panelOpen && wide && !focusMode && !readingMode;
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <DocHeader entry={entry} mode="edit" setMode={() => {}} />
-      <div className="min-h-0 flex-1">
-        {format === 'xlsx' ? (
-          <XlsxView entry={entry} onConvert={onConvert} />
-        ) : format === 'docx' ? (
-          <DocxView entry={entry} onConvert={onConvert} />
-        ) : format === 'pdf' ? (
-          <PdfView entry={entry} />
-        ) : (
-          <BinaryView entry={entry} />
-        )}
+    <div className="flex h-full min-h-0">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <DocHeader
+          entry={entry}
+          mode="edit"
+          setMode={() => {}}
+          onOutline={() => setOutlineSheet(true)}
+        />
+        <div className="min-h-0 flex-1">
+          {format === 'xlsx' ? (
+            <XlsxView entry={entry} onConvert={onConvert} />
+          ) : format === 'docx' ? (
+            <DocxView entry={entry} onConvert={onConvert} />
+          ) : format === 'pdf' ? (
+            <PdfView entry={entry} />
+          ) : (
+            <BinaryView entry={entry} />
+          )}
+        </div>
       </div>
+      {showPanel && (
+        <div
+          className="relative shrink-0 border-l border-hairline no-print"
+          style={{ width: panelWidth }}
+        >
+          <PanelResizeHandle />
+          <RightPanel
+            docId={entry.id}
+            outline={outline}
+            onClose={() => useUi.getState().setRightPanel(false)}
+          />
+        </div>
+      )}
+      {outlineSheet && (
+        <OutlineSheet onClose={() => setOutlineSheet(false)}>
+          <RightPanel docId={entry.id} outline={outline} onClose={() => setOutlineSheet(false)} />
+        </OutlineSheet>
+      )}
     </div>
   );
 }
@@ -133,6 +196,8 @@ function MissingDocument({ trashed }: { trashed: boolean }) {
     </div>
   );
 }
+
+const NO_OUTLINE: TextOutline = { items: [], lines: [], noun: 'headings', empty: '' };
 
 function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
   const id = entry.id;
@@ -182,7 +247,7 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
   useEffect(() => setOutlineSheet(false), [id]);
   const focusRequest = useEditor((s) => s.focusRequest);
 
-  const delimited = /\.(csv|tsv|tab)$/i.test(entry.name);
+  const delimited = /\.(csv|tsv|tab|unl)$/i.test(entry.name);
   let mode: ViewMode = isMd
     ? (storedMode ?? defaultMode)
     : delimited
@@ -192,10 +257,32 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
   if (readingMode && isMd) mode = 'preview';
   const setMode = (m: ViewMode) => useUi.getState().setViewMode(id, m);
   const text = buffer?.text ?? '';
+  // Worked out only while the outline can be seen, a beat behind typing.
+  const outlineText = useDeferredValue(text);
+  const outlineShown = (panelOpen && wide) || outlineSheet;
+  const structure = useMemo(
+    () => (outlineShown ? textOutline(outlineText, entry.name) : NO_OUTLINE),
+    [outlineShown, outlineText, entry.name],
+  );
+  // A view that knows its own structure (the sheet view's tables or columns) takes over.
+  const published = useOutlines((s) => s[id]);
 
+  // After a jump the outline shows the target, even when scrolling lands a little short.
+  const jumpLock = useRef(0);
+  const followLine = useCallback((line: number) => {
+    if (Date.now() >= jumpLock.current) setActiveLine(line);
+  }, []);
   const jumpTo = useCallback(
     (line: number) => {
       setOutlineSheet(false);
+      setActiveLine(line);
+      jumpLock.current = Date.now() + 900;
+      if (mode === 'sheet') {
+        // The sheet view has no lines to scroll to: read the document there instead.
+        setMode('preview');
+        setTimeout(() => previewRef.current?.scrollToLine(line), 60);
+        return;
+      }
       if (mode === 'split') {
         // The editor leads; the preview follows through scroll sync (or directly if it's off).
         sync.authority = 'editor';
@@ -204,6 +291,7 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
       } else if (mode === 'edit') editorRef.current?.scrollToLine(line);
       else previewRef.current?.scrollToLine(line, true);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [mode, sync, syncScroll],
   );
 
@@ -273,7 +361,7 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
       } else if (cmd.startsWith('style:')) applyBlockStyle(toolCtx, cmd.slice(6) as BlockType);
       else if (cmd === 'split' && isMd) setMode(mode === 'split' ? 'edit' : 'split');
       else if (cmd === 'focus-editor') editorRef.current?.focus();
-      else if (cmd === 'panel-sheet' && isMd && !readingMode) setOutlineSheet((v) => !v);
+      else if (cmd === 'panel-sheet' && !readingMode) setOutlineSheet((v) => !v);
       else if (cmd === 'insert-table' && isMd) {
         if (mode === 'preview' || mode === 'rich') setMode('edit');
         setTimeout(() => {
@@ -287,7 +375,7 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
   });
 
   const onPreviewScroll = (line: number) => {
-    if (mode !== 'edit') setActiveLine(line);
+    if (mode !== 'edit') followLine(line);
   };
 
   const surface: EditSurface | null =
@@ -322,7 +410,21 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
 
   // Full width: the column fills the pane, keeping only a small margin.
   const widthPx = { narrow: 640, normal: 760, wide: 980, full: null }[readingWidth];
-  const showPanel = isMd && panelOpen && wide && !focusMode && !readingMode;
+  const showPanel = panelOpen && wide && !focusMode && !readingMode;
+  let active = -1;
+  for (let i = 0; i < structure.lines.length; i++)
+    if (structure.lines[i]! <= activeLine) active = i;
+  const outline: DocOutline = published ?? {
+    items: structure.items,
+    active,
+    noun: structure.noun,
+    summary: structure.summary,
+    empty: structure.empty,
+    jump: (i) => {
+      const line = structure.lines[i];
+      if (line !== undefined) jumpTo(line);
+    },
+  };
   const editorStyle = {
     '--editor-size': `${fontSize - (editorFont === 'mono' ? 1 : 0)}px`,
     '--editor-font': editorFont === 'mono' ? 'var(--font-mono)' : 'var(--font-sans)',
@@ -442,7 +544,7 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
                     text={text}
                     onUpdate={bumpTick}
                     onScrollLine={(line) => {
-                      if (mode === 'edit') setActiveLine(line);
+                      if (mode === 'edit') followLine(line);
                     }}
                   />
                 </div>
@@ -472,8 +574,7 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
           <RightPanel
             docId={id}
             text={text}
-            activeLine={activeLine}
-            onJump={jumpTo}
+            outline={outline}
             onClose={() => useUi.getState().setRightPanel(false)}
           />
         </div>
@@ -483,8 +584,7 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
           <RightPanel
             docId={id}
             text={text}
-            activeLine={activeLine}
-            onJump={jumpTo}
+            outline={outline}
             onClose={() => setOutlineSheet(false)}
           />
         </OutlineSheet>
@@ -636,7 +736,7 @@ function DocHeader({
   const isMd = isMarkdownName(entry.name);
   const textual = ws().isEditable(entry);
   const ancestors = tree.ancestors(entry.id);
-  const delimited = /\.(csv|tsv|tab)$/i.test(entry.name);
+  const delimited = /\.(csv|tsv|tab|unl)$/i.test(entry.name);
   const format = formatOf(entry.name)?.id;
   const canConvert = !!format && conversionsFrom(format).length > 0;
   const hasTables = useEditor((s) =>
@@ -806,7 +906,7 @@ function DocHeader({
         </button>
       </nav>
       {textual && <SaveStatus id={entry.id} />}
-      {textual && <DiskStatus id={entry.id} />}
+      <DiskStatus id={entry.id} />
       {isMd && !readingMode && (
         <div
           role="group"
@@ -900,7 +1000,7 @@ function DocHeader({
         <Star size={16} className={entry.favorite ? 'fill-[#f5c84c] text-[#e0a800]' : ''} />
       </button>
       {readingMode && !phone && <FullscreenButton />}
-      {isMd && !wide && onOutline && (
+      {!wide && onOutline && (
         <button
           type="button"
           className="icon-btn"
@@ -911,7 +1011,7 @@ function DocHeader({
           <PanelRight size={16} />
         </button>
       )}
-      {isMd && wide && !readingMode && (
+      {wide && !readingMode && (
         <button
           type="button"
           className="icon-btn"

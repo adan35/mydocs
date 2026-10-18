@@ -1,3 +1,6 @@
+/** The version in package.json, stamped from the release tag on release builds. */
+declare const __APP_VERSION__: string;
+
 declare module 'markdown-it-task-lists' {
   import type { MarkdownIt } from 'markdown-it';
   const plugin: (

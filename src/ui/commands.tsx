@@ -45,6 +45,7 @@ import * as A from '@/app/actions';
 import { ws } from '@/app/app-store';
 import { editorActions, useEditor } from '@/app/editor-store';
 import { navigate, useRouter } from '@/app/router';
+import { isNativeApp } from '@/platform';
 import { useSettings } from '@/app/settings-store';
 import { PALETTES } from '@/app/themes';
 import { useUi } from '@/app/ui-store';
@@ -282,6 +283,18 @@ export function getCommands(): Command[] {
       keywords: 'preferences options',
       run: () => navigate({ name: 'settings' }),
     },
+    ...(isNativeApp
+      ? []
+      : [
+          {
+            id: 'download-apps',
+            title: 'Download the desktop and mobile apps',
+            group: 'Workspace' as const,
+            icon: <Download />,
+            keywords: 'install windows mac linux android app',
+            run: () => navigate({ name: 'download' }),
+          },
+        ]),
     {
       id: 'shortcuts',
       title: 'Keyboard shortcuts',

@@ -2,7 +2,9 @@ name: Apps
 
 # Builds the desktop installers (Tauri) and mobile apps (Capacitor) from the same
 # web code. Pull requests that touch the shells get a build check; tags like
-# `v0.2.0` also publish a draft GitHub release with every installer attached.
+# `v0.2.0` also publish a GitHub release with every installer attached and, once
+# the updater signing key exists, the `latest.json` the installed desktop app
+# checks for updates (see docs/APPS.md).
 
 on:
   pull_request:
@@ -12,6 +14,7 @@ on:
       - 'ios/**'
       - 'capacitor.config.ts'
       - 'src/platform/**'
+      - 'scripts/release*'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/apps.yml'
@@ -43,6 +46,10 @@ jobs:
             args: --target universal-apple-darwin
             bundles: src-tauri/target/universal-apple-darwin/release/bundle
     runs-on: ${{ matrix.os }}
+    env:
+      # Signs the update packages. Without it the installers still build, just no updater files.
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -61,11 +68,43 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
       - run: npm ci
-      - run: npx tauri build ${{ matrix.args }}
+      # Optional Apple certificate (docs/APPS.md). Tauri treats an empty APPLE_CERTIFICATE as
+      # "sign with this", so the variables are exported only when the secrets actually exist.
+      - name: Enable macOS signing and notarization
+        if: matrix.name == 'macOS'
+        shell: bash
+        run: |
+          [ -n "$APPLE_CERTIFICATE" ] || { echo "No Apple certificate: building an unsigned app."; exit 0; }
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            echo "$name=${!name}" >> "$GITHUB_ENV"
+          done
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Stamp the tag's version into the app
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: node scripts/release.mjs set-version "$GITHUB_REF_NAME"
+        shell: bash
+      - name: Build installers
+        shell: bash
+        run: |
+          extra=""
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            extra="--config src-tauri/tauri.updater.conf.json"
+          else
+            echo "::notice::TAURI_SIGNING_PRIVATE_KEY is not set: building without update packages."
+          fi
+          npx tauri build ${{ matrix.args }} $extra
       - uses: actions/upload-artifact@v4
         with:
           name: my-doc-desktop-${{ matrix.name }}
           path: |
+            ${{ matrix.bundles }}/macos/*.app.tar.gz
+            ${{ matrix.bundles }}/*/*.sig
             ${{ matrix.bundles }}/deb/*.deb
             ${{ matrix.bundles }}/rpm/*.rpm
             ${{ matrix.bundles }}/appimage/*.AppImage
@@ -94,6 +133,9 @@ jobs:
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
       - run: npm ci
+      - name: Stamp the tag's version into the app
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: node scripts/release.mjs set-version "$GITHUB_REF_NAME"
       - run: npm run build
       - run: npx cap sync android
       - name: Build debug APK
@@ -150,19 +192,25 @@ jobs:
           if-no-files-found: error
 
   release:
-    name: Draft release
+    name: Publish release
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [desktop, android, ios]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: out
           merge-multiple: true
+      # Stable file names (so the Download page can link to "latest") plus latest.json.
+      - name: Prepare release files
+        run: node scripts/release.mjs publish "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" out release
+      # Published, not a draft: the app's updater and the Download page read the latest release.
+      # Tags with a suffix (v1.2.0-beta.1) are marked pre-release and are not offered as "latest".
       - uses: softprops/action-gh-release@v2
         with:
-          draft: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
-          files: out/**/*
+          files: release/*
