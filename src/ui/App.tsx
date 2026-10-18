@@ -14,6 +14,7 @@ import { useResolvedTheme } from './hooks';
 import { installNativeLinkHandler, onBeforeQuit } from '@/platform';
 import { useUi } from '@/app/ui-store';
 import { useSettings } from '@/app/settings-store';
+import { watchDesktopFiles } from '@/app/desktop-open';
 
 function useThemeAttribute() {
   const theme = useResolvedTheme();
@@ -43,12 +44,14 @@ function useLifecycle() {
     void diskLinks.load(workspace.id, (id) => !!workspace.get(id));
     // Files changed on disk (in another app) show their new contents here.
     const stopWatching = diskLinks.watch();
+    let stopOpening: (() => void) | undefined;
     void editorActions.restoreSession().then(() => {
       if (cancelled) return;
       // Validate the deep-linked document after restore.
       const route = useRouter.getState().route;
       if (route.name === 'doc' && !session.workspace.get(route.id))
         navigate({ name: 'home' }, { replace: true });
+      stopOpening = watchDesktopFiles();
     });
     const unsub = session.workspace.subscribe((e) => {
       if (e.type === 'content' && e.source === 'external') editorActions.onExternalContent(e.ids);
@@ -68,6 +71,7 @@ function useLifecycle() {
     });
     return () => {
       cancelled = true;
+      stopOpening?.();
       unsub();
       stopWatching();
     };

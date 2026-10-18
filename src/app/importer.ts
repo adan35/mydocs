@@ -1,6 +1,6 @@
 import { unzipSync } from 'fflate';
 import type { EntryId, FileContent } from '@/domain/types';
-import { fileTypeOf, isTextType, sanitizeName, extensionOf } from '@/domain/names';
+import { fileTypeOf, isTextType, sanitizeName, extensionOf, mediaKindOf } from '@/domain/names';
 import { normalizePath } from '@/domain/paths';
 import type { ConflictChoice } from './dialog-store';
 import { canSaveToDisk } from './disk-links';
@@ -62,7 +62,7 @@ export async function readAsTextIfText(blob: Blob, name: string): Promise<string
 export function textFromBytes(buf: Uint8Array, name: string): string | null {
   if (buf.byteLength > MAX_TEXT_BYTES) return null;
   const type = fileTypeOf(name);
-  if (type === 'image' || type === 'pdf') return null;
+  if (type === 'image' || type === 'pdf' || mediaKindOf(name)) return null;
   const known = isTextType(type) && extensionOf(name) !== '';
   if (!known) {
     const sample = buf.subarray(0, 8192);

@@ -3,7 +3,8 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PALETTES } from './themes';
 
-const css = (file: string) => readFileSync(resolve(process.cwd(), 'src', file), 'utf8');
+const css = (file: string) =>
+  readFileSync(resolve(process.cwd(), 'src', file), 'utf8').replace(/\r\n/g, '\n');
 const base = css('styles.css');
 const palettes = css('themes.css');
 

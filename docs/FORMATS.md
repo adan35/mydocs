@@ -13,6 +13,11 @@
 | HTML (.html, .htm) | Source with highlighting | Source text |
 | Plain text (.txt, .text, .log) | Text editor | Text |
 | PDF (.pdf) | Page viewer with search, zoom and page navigation | No |
+| PowerPoint (.pptx) | Text-only slide preview in presentation order (up to 20 MB) | No |
+| OpenDocument (.odt, .ods, .odp) | Text-only content preview (up to 20 MB) | No |
+| Audio and video | Playback controls when the device supports the codec | No |
+| Images | Image preview when the device supports the format | No |
+| Other files | Text editor when readable as text; otherwise file details and a 512-byte hexadecimal preview | Text files only |
 
 ## Converting and exporting
 
@@ -53,4 +58,4 @@
 | Editing PDFs, or converting PDFs to text documents | PDFs have no reliable structure; text extraction would guess at headings, tables and reading order. |
 | Editing Word documents in place | Word layout features (sections, fonts, comments) have no Markdown equivalent; converting first makes every loss visible before it happens. |
 | Sync, sharing and real-time collaboration | MyDocs keeps documents on this device only. There is no server. |
-| .doc, .xls, .odt, .ods, .rtf, .pptx | Stored and downloadable, but not opened. Save them as .docx or .xlsx first. |
+| Formatted viewing of legacy .doc, .xls, .ppt and .rtf | These open as raw text or bytes with the original available to download. Save them as .docx, .xlsx or .pptx for a document preview. |

@@ -347,8 +347,8 @@ export const NOT_SUPPORTED: { what: string; why: string }[] = [
     why: 'MyDocs keeps documents on this device only. There is no server.',
   },
   {
-    what: '.doc, .xls, .odt, .ods, .rtf, .pptx',
-    why: 'Stored and downloadable, but not opened. Save them as .docx or .xlsx first.',
+    what: 'Formatted viewing of legacy .doc, .xls, .ppt and .rtf',
+    why: 'These open as raw text or bytes with the original available to download. Save them as .docx, .xlsx or .pptx for a document preview.',
   },
 ];
 
@@ -380,6 +380,11 @@ export function capabilityMarkdown(): string {
     '| Format | Opens as | Edit in place |',
     '| --- | --- | --- |',
     ...rows,
+    '| PowerPoint (.pptx) | Text-only slide preview in presentation order (up to 20 MB) | No |',
+    '| OpenDocument (.odt, .ods, .odp) | Text-only content preview (up to 20 MB) | No |',
+    '| Audio and video | Playback controls when the device supports the codec | No |',
+    '| Images | Image preview when the device supports the format | No |',
+    '| Other files | Text editor when readable as text; otherwise file details and a 512-byte hexadecimal preview | Text files only |',
     '',
     '## Converting and exporting',
     '',

@@ -162,10 +162,33 @@ const MIME_BY_EXT: Record<string, string> = {
   avif: 'image/avif',
   pdf: 'application/pdf',
   zip: 'application/zip',
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+  ogg: 'audio/ogg',
+  oga: 'audio/ogg',
+  opus: 'audio/ogg',
+  flac: 'audio/flac',
+  m4a: 'audio/mp4',
+  aac: 'audio/aac',
+  mp4: 'video/mp4',
+  m4v: 'video/mp4',
+  webm: 'video/webm',
+  ogv: 'video/ogg',
+  mov: 'video/quicktime',
+  mkv: 'video/x-matroska',
+  avi: 'video/x-msvideo',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 };
 
 export function mimeOf(name: string): string {
   return MIME_BY_EXT[extensionOf(name)] ?? 'application/octet-stream';
+}
+
+export function mediaKindOf(name: string): 'audio' | 'video' | null {
+  const mime = mimeOf(name);
+  return mime.startsWith('audio/') ? 'audio' : mime.startsWith('video/') ? 'video' : null;
 }
 
 export function formatBytes(bytes: number): string {
