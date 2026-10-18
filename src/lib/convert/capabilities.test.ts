@@ -20,6 +20,6 @@ describe('capability matrix', () => {
   it('matches docs/FORMATS.md', () => {
     const doc = HEADER + capabilityMarkdown();
     if (process.env.UPDATE_FORMATS || !existsSync(DOC)) writeFileSync(DOC, doc);
-    expect(readFileSync(DOC, 'utf8')).toBe(doc);
+    expect(readFileSync(DOC, 'utf8').replace(/\r\n/g, '\n')).toBe(doc);
   });
 });

@@ -23,6 +23,34 @@ My Doc ships as one web app in four shells. Every feature lives in `src/`, so an
 
 ## Building locally
 
+### Opening files from Windows
+
+The Windows setup installer registers MyDocs for common document, text, code, image,
+audio, video and archive extensions. Choose **Open with → My Doc** in Explorer, or
+choose My Doc as the default for an extension in **Settings → Apps → Default apps**.
+The setup installer also adds **Open with MyDocs** to the context menu for any file,
+including unfamiliar extensions (on Windows 11, look under **Show more options**).
+This context-menu entry is included in the `.exe` setup installer, not the `.msi`.
+
+Launching a file opens MyDocs, or focuses the existing window and sends it the file.
+Files are imported as workspace copies; opening from Explorer does not link saves
+back to the original. Reopening a same-named file uses the normal import conflict
+dialog. Each file must be at most 100 MB.
+Folders can still be imported through the app's folder picker.
+
+Audio and video use local playback controls, subject to the device's codec support.
+PowerPoint `.pptx` and OpenDocument `.odt`, `.ods`, `.odp` have text-only previews;
+these do not reproduce layout, images, animations or full spreadsheet behavior.
+Office text previews are limited to 20 MB source files. Other binary formats,
+including legacy `.doc`, `.xls`, `.ppt`, show file details and the first 512 bytes
+in hexadecimal with a download of the unchanged original. Importing `.zip` expands
+its contents through the existing archive importer. Files are never executed.
+
+Install a newly built app to enable Explorer integration; source changes do not
+update an existing installed copy or change Windows' current default apps.
+
+### Build commands
+
 ```bash
 npm install
 

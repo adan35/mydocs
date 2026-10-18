@@ -25,6 +25,7 @@ Your documents stay plain Markdown and text. Everything My Doc adds, like tags a
 - An outline for every kind of file: headings with their level and section size (Markdown, text, Word), bookmarks or pages (PDF), sheets (Excel), tables or columns (sheet view, CSV) and functions and classes (code). It folds, filters long outlines, follows what's on screen, and jumps on click. The Info tab shows words, characters, lines and reading time.
 - Table row height like a spreadsheet: Default (one line per row), Normal (up to 3 lines), Medium (up to 6) or Full, from the Rows button on any table, the sheet toolbar or Settings. Click a row to see all of it.
 - Front matter shows as a properties table above the rendered document. Callouts (`> [!NOTE]`, `> [!WARNING]`…) render with a title.
+- Audio and video open with playback controls when the device supports their codec. PowerPoint and OpenDocument files have text-only previews. Unknown binary formats show file details, a bounded hexadecimal preview, and an unchanged original download.
 - Click an image in the preview to zoom, open it full size, copy or download it.
 
 **Saving and history**
