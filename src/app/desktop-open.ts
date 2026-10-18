@@ -5,8 +5,19 @@ import { toast, toastError } from './toast-store';
 
 interface OpenedFile {
   name: string;
-  bytes: number[];
+  bytes: Uint8Array<ArrayBuffer>;
   error: string | null;
+}
+
+/** Native replies are a u32 header length, a JSON header, then the file bytes; empty means none. */
+export function decodeOpenedFile(reply: ArrayBuffer): OpenedFile | null {
+  if (reply.byteLength < 4) return null;
+  const length = new DataView(reply).getUint32(0, true);
+  const header = JSON.parse(new TextDecoder().decode(new Uint8Array(reply, 4, length))) as {
+    name: string;
+    error: string | null;
+  };
+  return { ...header, bytes: new Uint8Array(reply, 4 + length) };
 }
 
 /** Subscribe before draining so cold starts and subsequent Explorer opens cannot race. */
@@ -25,7 +36,7 @@ export function watchDesktopFiles(): () => void {
       chain = chain
         .then(async () => {
           while (!cancelled) {
-            const file = await invoke<OpenedFile | null>('take_open_file');
+            const file = decodeOpenedFile(await invoke<ArrayBuffer>('take_open_file'));
             if (!file) break;
             if (file.error) {
               toast({ message: `Unable to open ${file.name}.`, detail: file.error, tone: 'error' });
@@ -35,7 +46,7 @@ export function watchDesktopFiles(): () => void {
               [
                 {
                   path: file.name,
-                  file: new File([new Uint8Array(file.bytes)], file.name, {
+                  file: new File([file.bytes], file.name, {
                     type: mimeOf(file.name),
                   }),
                 },

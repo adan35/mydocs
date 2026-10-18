@@ -54,7 +54,8 @@ test('binary files show details instead of pretending to be text', async ({ page
     buffer: Buffer.from([0, 1, 2, 3, 0, 255]),
   });
   await page.getByRole('treeitem', { name: 'data.bin' }).click();
-  await expect(page.getByText("My Doc can store this file but can't edit it.")).toBeVisible();
+  await expect(page.getByText(/Download preserves the original file/)).toBeVisible();
+  await expect(page.getByLabel('File byte preview')).toContainText('00 01 02 03 00 ff');
   await expect(page.getByRole('button', { name: 'Download' })).toBeVisible();
 });
 

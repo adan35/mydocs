@@ -2,7 +2,7 @@
 //! request arbitrary disk paths; opening a file imports a copy into its workspace.
 use serde::Serialize;
 use std::{collections::VecDeque, io::Read, path::PathBuf, sync::Mutex};
-use tauri::{Emitter, Manager};
+use tauri::{ipc::Response, Emitter, Manager};
 
 const MAX_BYTES: u64 = 100 * 1024 * 1024;
 
@@ -10,10 +10,21 @@ const MAX_BYTES: u64 = 100 * 1024 * 1024;
 pub struct OpenFiles(Mutex<VecDeque<PathBuf>>);
 
 #[derive(Serialize)]
-pub struct OpenedFile {
+struct Header {
     name: String,
-    bytes: Vec<u8>,
     error: Option<String>,
+}
+
+/// Raw binary reply, so large files don't cross IPC as a JSON number array:
+/// a little-endian u32 header length, the JSON header, then the file bytes.
+/// An empty reply means the queue is empty.
+fn reply(name: String, error: Option<String>, bytes: Vec<u8>) -> Response {
+    let header = serde_json::to_vec(&Header { name, error }).unwrap_or_default();
+    let mut body = Vec::with_capacity(4 + header.len() + bytes.len());
+    body.extend_from_slice(&(header.len() as u32).to_le_bytes());
+    body.extend_from_slice(&header);
+    body.extend_from_slice(&bytes);
+    Response::new(body)
 }
 
 pub fn enqueue(app: &tauri::AppHandle, args: Vec<String>, cwd: &str) {
@@ -38,7 +49,7 @@ pub fn enqueue(app: &tauri::AppHandle, args: Vec<String>, cwd: &str) {
 }
 
 #[tauri::command]
-pub async fn take_open_file(app: tauri::AppHandle) -> Result<Option<OpenedFile>, String> {
+pub async fn take_open_file(app: tauri::AppHandle) -> Result<Response, String> {
     let path = app
         .state::<OpenFiles>()
         .0
@@ -46,7 +57,7 @@ pub async fn take_open_file(app: tauri::AppHandle) -> Result<Option<OpenedFile>,
         .map_err(|e| e.to_string())?
         .pop_front();
     let Some(path) = path else {
-        return Ok(None);
+        return Ok(Response::new(Vec::new()));
     };
     tauri::async_runtime::spawn_blocking(move || {
         let name = path
@@ -73,19 +84,10 @@ pub async fn take_open_file(app: tauri::AppHandle) -> Result<Option<OpenedFile>,
             Ok(bytes)
         };
         match read() {
-            Ok(bytes) => OpenedFile {
-                name,
-                bytes,
-                error: None,
-            },
-            Err(error) => OpenedFile {
-                name,
-                bytes: vec![],
-                error: Some(error),
-            },
+            Ok(bytes) => reply(name, None, bytes),
+            Err(error) => reply(name, Some(error), Vec::new()),
         }
     })
     .await
-    .map(Some)
     .map_err(|e| e.to_string())
 }

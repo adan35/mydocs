@@ -15,14 +15,23 @@ vi.mock('./actions', () => ({ runImport: mocks.runImport }));
 vi.mock('./toast-store', () => ({ toast: mocks.toast, toastError: mocks.toastError }));
 import { watchDesktopFiles } from './desktop-open';
 
+/** Encodes a reply the way the native take_open_file command does. */
+function reply(name: string, bytes: number[], error: string | null = null): ArrayBuffer {
+  const header = new TextEncoder().encode(JSON.stringify({ name, error }));
+  const out = new Uint8Array(4 + header.length + bytes.length);
+  new DataView(out.buffer).setUint32(0, header.length, true);
+  out.set(header, 4);
+  out.set(bytes, 4 + header.length);
+  return out.buffer;
+}
+const none = new ArrayBuffer(0);
+
 afterEach(() => vi.resetAllMocks());
 
 it('subscribes before consuming cold-start files and keeps later requests serialized', async () => {
   mocks.listen.mockResolvedValue(mocks.off);
   mocks.runImport.mockResolvedValue(undefined);
-  mocks.invoke
-    .mockResolvedValueOnce({ name: 'first.txt', bytes: [65], error: null })
-    .mockResolvedValueOnce(null);
+  mocks.invoke.mockResolvedValueOnce(reply('first.txt', [65])).mockResolvedValueOnce(none);
   const stop = watchDesktopFiles();
   await vi.waitFor(() => expect(mocks.runImport).toHaveBeenCalledTimes(1));
   expect(mocks.listen.mock.invocationCallOrder[0]).toBeLessThan(
@@ -33,9 +42,9 @@ it('subscribes before consuming cold-start files and keeps later requests serial
   expect(imported.file.size).toBe(1);
   await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
   mocks.invoke
-    .mockResolvedValueOnce({ name: 'missing.txt', bytes: [], error: 'Not found' })
-    .mockResolvedValueOnce({ name: 'next.txt', bytes: [66], error: null })
-    .mockResolvedValue(null);
+    .mockResolvedValueOnce(reply('missing.txt', [], 'Not found'))
+    .mockResolvedValueOnce(reply('next.txt', [66]))
+    .mockResolvedValue(none);
   const notify = mocks.listen.mock.calls[0]![1];
   notify();
   notify();
