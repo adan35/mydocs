@@ -12,9 +12,13 @@ export function downloadBlob(blob: Blob, filename: string): Promise<boolean> {
 }
 
 /** Builds a zip of `rootId` (or the whole workspace when null), preserving structure. */
-export async function buildZip(ws: Workspace, rootId: EntryId | null): Promise<Uint8Array> {
+export async function buildZip(
+  ws: Workspace,
+  rootId: EntryId | null,
+  drafts: ReadonlyMap<EntryId, string> = new Map(),
+): Promise<Uint8Array> {
   const tree = ws.tree;
-  const files: Record<string, Uint8Array | Record<string, never>> = {};
+  const files: Record<string, Uint8Array | Record<string, never>> = Object.create(null);
   const add = async (e: Entry, prefix: string) => {
     if (e.trashedAt !== undefined) return;
     const path = prefix ? `${prefix}/${e.name}` : e.name;
@@ -24,7 +28,8 @@ export async function buildZip(ws: Workspace, rootId: EntryId | null): Promise<U
       for (const c of children) await add(c, path);
       return;
     }
-    const blob = await ws.readBlob(e.id);
+    const text = drafts.get(e.id);
+    const blob = text === undefined ? await ws.readBlob(e.id) : new Blob([text]);
     files[path] = blob ? new Uint8Array(await blob.arrayBuffer()) : new Uint8Array();
   };
   const roots = rootId ? tree.childrenOf(rootId) : tree.childrenOf(null);
@@ -32,8 +37,12 @@ export async function buildZip(ws: Workspace, rootId: EntryId | null): Promise<U
   return zipSync(files as Parameters<typeof zipSync>[0], { level: 6 });
 }
 
-export async function exportZip(ws: Workspace, rootId: EntryId | null) {
-  const data = await buildZip(ws, rootId);
+export async function exportZip(
+  ws: Workspace,
+  rootId: EntryId | null,
+  drafts?: ReadonlyMap<EntryId, string>,
+) {
+  const data = await buildZip(ws, rootId, drafts);
   const name = rootId ? ws.get(rootId)!.name : ws.name;
   await downloadBlob(
     new Blob([data as Uint8Array<ArrayBuffer>], { type: 'application/zip' }),
@@ -41,10 +50,10 @@ export async function exportZip(ws: Workspace, rootId: EntryId | null) {
   );
 }
 
-export async function exportFile(ws: Workspace, id: EntryId) {
+export async function exportFile(ws: Workspace, id: EntryId, draft?: string) {
   const e = ws.get(id);
   if (!e) return;
-  const blob = await ws.readBlob(id);
+  const blob = draft === undefined ? await ws.readBlob(id) : new Blob([draft], { type: e.mime });
   if (blob) await downloadBlob(blob, e.name);
 }
 
@@ -95,10 +104,10 @@ export async function documentHtml(
 <body><main>${html}</main></body></html>`;
 }
 
-export async function exportHtml(ws: Workspace, id: EntryId) {
+export async function exportHtml(ws: Workspace, id: EntryId, draft?: string) {
   const e = ws.get(id);
   if (!e) return;
-  const text = await ws.readText(id);
+  const text = draft ?? (await ws.readText(id));
   const tree = ws.tree;
   const fromDir = tree.dirOf(id);
   const resolveWiki = (target: string) => {
@@ -112,10 +121,13 @@ export async function exportHtml(ws: Workspace, id: EntryId) {
 }
 
 /** Plain text: Markdown syntax is dropped so the words read cleanly anywhere. */
-export async function exportText(ws: Workspace, id: EntryId) {
+export async function exportText(ws: Workspace, id: EntryId, draft?: string) {
   const e = ws.get(id);
   if (!e) return;
-  const text = await ws.readText(id);
+  const text = draft ?? (await ws.readText(id));
   const plain = isMarkdownName(e.name) ? markdownToPlainText(text) : text;
-  downloadBlob(new Blob([plain], { type: 'text/plain;charset=utf-8' }), `${baseName(e.name)}.txt`);
+  await downloadBlob(
+    new Blob([plain], { type: 'text/plain;charset=utf-8' }),
+    `${baseName(e.name)}.txt`,
+  );
 }

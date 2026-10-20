@@ -9,11 +9,13 @@
 const LOCK_NAME = 'mydoc-owner';
 const CHANNEL_NAME = 'mydoc-owner';
 
-type Message = { type: 'takeover' };
+type Message = { type: 'takeover'; requestId: string } | { type: 'denied'; requestId: string };
 
 let releaseLock: (() => void) | null = null;
 let channel: BroadcastChannel | null = null;
 const takeoverListeners = new Set<() => void | Promise<void>>();
+const waiting = new Map<string, () => void>();
+let handingOver = false;
 
 const supported = () => typeof navigator !== 'undefined' && !!navigator.locks;
 
@@ -21,16 +23,25 @@ function ensureChannel() {
   if (channel || typeof BroadcastChannel === 'undefined') return;
   channel = new BroadcastChannel(CHANNEL_NAME);
   channel.onmessage = (e: MessageEvent<Message>) => {
-    if (e.data?.type !== 'takeover' || !releaseLock) return;
+    if (e.data?.type === 'denied') {
+      waiting.get(e.data.requestId)?.();
+      return;
+    }
+    if (e.data?.type !== 'takeover' || !releaseLock || handingOver) return;
+    const requestId = e.data.requestId;
+    handingOver = true;
     void (async () => {
-      for (const fn of takeoverListeners) {
-        try {
+      try {
+        for (const fn of takeoverListeners) {
           await fn();
-        } catch (err) {
-          console.error(err);
         }
+        ownership.release();
+      } catch (err) {
+        console.error(err);
+        channel?.postMessage({ type: 'denied', requestId } satisfies Message);
+      } finally {
+        handingOver = false;
       }
-      ownership.release();
     })();
   };
 }
@@ -45,12 +56,12 @@ export const ownership = {
    * Takes ownership. Without `wait`, resolves false right away if another tab owns it;
    * with `wait`, resolves once the other tab has let go.
    */
-  acquire(wait = false): Promise<boolean> {
+  acquire(wait = false, signal?: AbortSignal): Promise<boolean> {
     ensureChannel();
     if (!supported() || releaseLock) return Promise.resolve(true);
     return new Promise<boolean>((resolve) => {
       navigator.locks
-        .request(LOCK_NAME, wait ? {} : { ifAvailable: true }, (lock) => {
+        .request(LOCK_NAME, wait ? { signal } : { ifAvailable: true }, (lock) => {
           if (!lock) {
             resolve(false);
             return;
@@ -63,17 +74,26 @@ export const ownership = {
             resolve(true);
           });
         })
-        // Locks can be unavailable in some sandboxed contexts: fall back to owning.
-        .catch(() => resolve(true));
+        // A failed request supplies no proof of ownership; do not allow writes.
+        .catch(() => resolve(false));
     });
   },
 
   /** Asks the owning tab to save and step back, then waits for ownership. */
-  takeOver(): Promise<boolean> {
+  async takeOver(): Promise<boolean> {
     ensureChannel();
-    const granted = ownership.acquire(true);
-    channel?.postMessage({ type: 'takeover' } satisfies Message);
-    return granted;
+    const requestId = crypto.randomUUID();
+    const abort = new AbortController();
+    waiting.set(requestId, () => abort.abort());
+    const timer = setTimeout(() => abort.abort(), 15_000);
+    const granted = ownership.acquire(true, abort.signal);
+    channel?.postMessage({ type: 'takeover', requestId } satisfies Message);
+    try {
+      return await granted;
+    } finally {
+      clearTimeout(timer);
+      waiting.delete(requestId);
+    }
   },
 
   release() {

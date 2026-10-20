@@ -1,0 +1,49 @@
+.workspace-safety {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(120deg, var(--surface-soft), var(--canvas));
+}
+
+.workspace-safety-icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  background: var(--canvas);
+  color: var(--primary);
+}
+
+@media (max-width: 767px) {
+  .workspace-safety {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .workspace-safety .workspace-backup {
+    width: 100%;
+    margin-top: 2px;
+  }
+
+  .document-modes > button {
+    flex: 1;
+    min-width: 0;
+    justify-content: center;
+    padding-inline: 6px;
+  }
+}
+
+@media (max-width: 359px) {
+  .document-modes > button > svg {
+    display: none;
+  }
+}

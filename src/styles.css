@@ -346,6 +346,13 @@
     border-color: var(--danger);
     box-shadow: 0 0 0 1px var(--danger);
   }
+  @media (pointer: coarse) {
+    .input {
+      /* Avoid Safari zooming the whole workspace when the keyboard opens. */
+      font-size: 16px;
+      min-height: 40px;
+    }
+  }
   .kbd {
     display: inline-flex;
     align-items: center;

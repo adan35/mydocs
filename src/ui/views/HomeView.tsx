@@ -18,6 +18,8 @@ import * as A from '@/app/actions';
 import { Page } from '../components/Page';
 import { FileIcon } from '../components/FileIcon';
 import { EntryList } from '../components/EntryList';
+import { WorkspaceSafety } from '../components/WorkspaceSafety';
+import './workspace-views.css';
 import { openMenuAt } from '../components/Menu';
 import { importSubmenu } from '../entry-menu';
 import { formatShortcut, relativeTime, useLayout, useTree } from '../hooks';
@@ -72,6 +74,7 @@ export function HomeView() {
 
   return (
     <Page title={greeting()} subtitle={`${wsName} · ${total} document${total === 1 ? '' : 's'}`}>
+      <WorkspaceSafety />
       {phone && (
         <button
           type="button"
@@ -225,7 +228,7 @@ function QuickAction({
   return (
     <button
       type="button"
-      className={`flex h-[72px] flex-col items-start justify-between rounded-lg border p-3 text-left transition-colors ${primary ? 'border-transparent bg-primary text-on-primary hover:bg-primary-pressed' : 'border-hairline bg-canvas text-ink hover:bg-surface-soft'}`}
+      className={`flex h-[72px] flex-col items-start justify-between rounded-lg border p-3 text-left transition-colors ${primary ? 'border-transparent bg-[var(--primary-solid)] text-on-primary hover:bg-[var(--primary-solid-pressed)]' : 'border-hairline bg-canvas text-ink hover:bg-surface-soft'}`}
       onClick={(e) => onClick(e.currentTarget)}
     >
       <span className={`[&>svg]:size-[18px] ${primary ? '' : 'text-steel'}`}>{icon}</span>

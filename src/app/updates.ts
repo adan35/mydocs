@@ -89,15 +89,15 @@ export async function installUpdate(): Promise<void> {
   const { version } = s;
   if (s.download) {
     // Android: the browser downloads the APK and the user taps it to install.
-    await editorActions.flushAll();
+    if (!(await editorActions.saveBeforeAction())) return;
     await pending.install(() => {});
     set({ phase: 'available', version, download: true, notes: s.notes });
     dismissPrompt();
     return;
   }
+  if (!(await editorActions.saveBeforeAction())) return;
   set({ phase: 'installing', version, progress: null });
   try {
-    await editorActions.flushAll();
     await pending.install((progress) => set({ phase: 'installing', version, progress }));
   } catch (err) {
     console.error('Update failed.', err);
@@ -115,7 +115,7 @@ export async function installUpdate(): Promise<void> {
 
 /** Restarts into the installed version. Open edits are saved first. */
 export async function restartNow(): Promise<void> {
-  await editorActions.flushAll();
+  if (!(await editorActions.saveBeforeAction())) return;
   await relaunchApp();
 }
 

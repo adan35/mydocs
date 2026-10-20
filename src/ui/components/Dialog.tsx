@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { create } from 'zustand';
 import { restoreFocus } from '../focus';
+import { lockBackground } from '../modal';
 
 interface Props {
   title: string;
@@ -16,7 +17,7 @@ interface Props {
 }
 
 const FOCUSABLE =
-  'a[href],button:not([disabled]),input:not([disabled]),select,textarea,[tabindex]:not([tabindex="-1"])';
+  'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"]):not([disabled])';
 
 const useOpenDialogs = create<{ count: number }>(() => ({ count: 0 }));
 /** True while any modal dialog is open (toasts move out of its way). */
@@ -46,6 +47,7 @@ export function Dialog({
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     const el = ref.current!;
+    const unlock = lockBackground();
     (initialFocus?.current ?? el.querySelector<HTMLElement>(FOCUSABLE) ?? el).focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -56,7 +58,11 @@ export function Dialog({
         const items = [...el.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
           (n) => n.offsetParent !== null,
         );
-        if (!items.length) return;
+        if (!items.length) {
+          e.preventDefault();
+          el.focus();
+          return;
+        }
         const first = items[0]!;
         const last = items[items.length - 1]!;
         if (e.shiftKey && document.activeElement === first) {
@@ -71,6 +77,7 @@ export function Dialog({
     el.addEventListener('keydown', onKey);
     return () => {
       el.removeEventListener('keydown', onKey);
+      unlock();
       restoreFocus(previous);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -61,8 +61,11 @@ export function registerServiceWorker() {
       duration: 60_000,
       action: {
         label: 'Reload',
-        run: () =>
-          void editorActions.flushAll().finally(() => worker.postMessage({ type: 'skip-waiting' })),
+        run: () => {
+          void editorActions.saveBeforeAction().then((saved) => {
+            if (saved) worker.postMessage({ type: 'skip-waiting' });
+          });
+        },
       },
     });
 

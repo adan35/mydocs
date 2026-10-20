@@ -48,7 +48,7 @@ self.addEventListener('fetch', (event) => {
     // PDF fonts, character maps and decoders: large, rarely needed, so cached on first use.
     event.respondWith(
       caches.open(CACHE).then((cache) =>
-        cache.match(req).then(
+        cache.match(req, { ignoreVary: true }).then(
           (hit) =>
             hit ||
             fetch(req).then((res) => {
@@ -60,5 +60,10 @@ self.addEventListener('fetch', (event) => {
     );
     return;
   }
-  event.respondWith(caches.match(req, { cacheName: CACHE }).then((hit) => hit || fetch(req)));
+  // These are this app's static files. Precache requests and module requests can
+  // carry different Origin headers; a server's Vary: Origin must not hide a
+  // cached same-origin script or stylesheet when the device is offline.
+  event.respondWith(
+    caches.match(req, { cacheName: CACHE, ignoreVary: true }).then((hit) => hit || fetch(req)),
+  );
 });

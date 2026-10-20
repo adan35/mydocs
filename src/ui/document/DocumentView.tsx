@@ -27,6 +27,7 @@ import {
   FileOutput,
   Table2,
   FileText,
+  AlertCircle,
 } from 'lucide-react';
 import type { Entry, EntryId } from '@/domain/types';
 import { isMarkdownName } from '@/domain/names';
@@ -296,7 +297,7 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
   );
 
   // Two-way scroll sync in split view.
-  const bufferReady = !!buffer && buffer.status !== 'loading';
+  const bufferReady = !!buffer && buffer.status !== 'loading' && buffer.status !== 'load-error';
   useEffect(() => {
     sync.enabled = syncScroll;
     if (mode !== 'split' || !bufferReady) {
@@ -310,7 +311,7 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
 
   // Deep links to a heading (#/doc/id?h=slug).
   useEffect(() => {
-    if (!anchor || buffer?.status === 'loading' || !buffer) return;
+    if (!anchor || !buffer || buffer.status === 'loading' || buffer.status === 'load-error') return;
     const h = extractHeadings(buffer.text).find((x) => x.slug === anchor);
     const t = setTimeout(() => {
       if (mode === 'edit' || mode === 'split') {
@@ -324,7 +325,7 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
   // Move focus into the document when asked (new documents, quick open, search results).
   // Deferred a frame so it lands on the editor that ends up mounted.
   useEffect(() => {
-    if (focusRequest?.id !== id || !buffer || buffer.status === 'loading') return;
+    if (focusRequest?.id !== id || !bufferReady) return;
     // Focus right away so early keystrokes land in the editor, then finish a frame later.
     const hasEditor = mode === 'edit' || mode === 'split';
     if (hasEditor) editorRef.current?.focus();
@@ -343,7 +344,7 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
     });
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusRequest, id, buffer?.status, mode]);
+  }, [focusRequest, id, buffer?.status, bufferReady, mode]);
 
   // Listen for "find" and "toggle mode" commands sent from the shell/palette.
   useEffect(() => {
@@ -403,6 +404,28 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
           <div className="skeleton h-4 w-full" />
           <div className="skeleton h-4 w-5/6" />
           <div className="skeleton h-4 w-4/6" />
+        </div>
+      </div>
+    );
+  }
+
+  if (buffer.status === 'load-error') {
+    return (
+      <div className="flex h-full flex-col">
+        <DocHeader entry={entry} mode={mode} setMode={setMode} />
+        <div className="m-auto max-w-md px-6 py-10 text-center" role="alert">
+          <AlertCircle className="mx-auto mb-3 text-warning" size={28} aria-hidden />
+          <h2 className="text-lg font-semibold">This document could not be opened</h2>
+          <p className="mt-2 text-sm text-steel">
+            Editing is paused to protect the saved document. Try opening it again.
+          </p>
+          <button
+            type="button"
+            className="btn btn-primary mt-5"
+            onClick={() => void editorActions.retryLoad(id)}
+          >
+            Try again
+          </button>
         </div>
       </div>
     );
@@ -833,7 +856,7 @@ function DocHeader({
   }
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-1 px-2 sm:px-3 no-print">
+    <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-1 px-2 py-1 md:flex-nowrap sm:px-3 md:py-0 no-print">
       {phone && (
         <button
           type="button"
@@ -911,7 +934,7 @@ function DocHeader({
         <div
           role="group"
           aria-label="View mode"
-          className="ml-1 flex items-center rounded-md bg-surface p-0.5"
+          className="document-modes ml-1 flex items-center rounded-md bg-surface p-0.5 max-md:order-1 max-md:ml-0 max-md:w-full max-md:justify-center"
         >
           <ModeButton
             label="Source"
@@ -960,7 +983,7 @@ function DocHeader({
         <div
           role="group"
           aria-label="View mode"
-          className="ml-1 flex items-center rounded-md bg-surface p-0.5"
+          className="document-modes ml-1 flex items-center rounded-md bg-surface p-0.5 max-md:order-1 max-md:ml-0 max-md:w-full max-md:justify-center"
         >
           <ModeButton
             label="Sheet"
@@ -1081,8 +1104,8 @@ function ModeButton({
       onClick={onClick}
     >
       {icon}
-      <span className="hidden lg:inline">{label}</span>
-      <span className="sr-only lg:hidden">{label}</span>
+      <span className="md:hidden lg:inline">{label}</span>
+      <span className="sr-only hidden md:inline lg:hidden">{label}</span>
     </button>
   );
 }

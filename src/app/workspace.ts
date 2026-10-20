@@ -107,6 +107,8 @@ export class Workspace {
       );
     }
     await this.store.commit(changes);
+    for (const version of changes.putVersions ?? [])
+      this.snapshotAt.set(version.entryId, Date.now());
     for (const e of changes.putEntries ?? []) this.entries.set(e.id, e);
     for (const id of changes.deleteEntries ?? []) {
       this.entries.delete(id);
@@ -348,7 +350,6 @@ export class Workspace {
       text: previous,
       reason,
     };
-    this.snapshotAt.set(entry.id, now);
     const sorted = [...versions].sort((a, b) => a.createdAt - b.createdAt);
     const excess = sorted.length + 1 - MAX_VERSIONS_PER_DOC;
     return {
@@ -379,7 +380,6 @@ export class Workspace {
           blob: previous,
           reason: 'edit',
         };
-        this.snapshotAt.set(id, now);
         const sorted = [...versions].sort((a, b) => a.createdAt - b.createdAt);
         const excess = sorted.length + 1 - MAX_VERSIONS_PER_DOC;
         changes.putVersions = [version];
@@ -426,7 +426,6 @@ export class Workspace {
           putEntries: [next],
           putContents: [{ id, data: version.blob }],
         });
-        this.snapshotAt.set(id, Date.now());
         this.emit({ type: 'content', ids: [id], source: 'external' });
         return next;
       }
@@ -463,8 +462,8 @@ export class Workspace {
       };
       changes.putEntries = [next];
       changes.putContents = [{ id, data: content }];
-      if (text === null) this.texts.delete(id);
       await this.apply(changes, text !== null ? new Map([[id, text]]) : undefined);
+      if (text === null) this.texts.delete(id);
       this.emit({ type: 'content', ids: [id], source: 'external' });
       return next;
     });

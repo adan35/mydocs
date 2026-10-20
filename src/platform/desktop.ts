@@ -22,11 +22,12 @@ export function openExternal(url: string): Promise<void> {
 
 /** Lets `save` finish before the window closes. Returns an unlisten function. */
 export function onCloseRequested(save: () => Promise<void> | void): Promise<() => void> {
-  return getCurrentWindow().onCloseRequested(async () => {
+  return getCurrentWindow().onCloseRequested(async (event) => {
     try {
       await save();
     } catch {
-      // Never trap the user in a window they can't close; recovery drafts still exist.
+      // Keep the window and its buffers available for retry/export when saving fails.
+      event.preventDefault();
     }
   });
 }

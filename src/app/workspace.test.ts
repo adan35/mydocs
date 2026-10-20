@@ -49,6 +49,34 @@ describe('Workspace', () => {
     expect(await ws.readText(d.id)).toBe('two');
   });
 
+  it('retains the previous text in version history when a failed save is retried', async () => {
+    const d = await ws.createFile(null, 'history.md', 'Original text');
+    store.failNextCommit = true;
+    await expect(ws.saveText(d.id, 'Updated text')).rejects.toThrow();
+    await ws.saveText(d.id, 'Updated text');
+    expect(await ws.listVersions(d.id)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ text: 'Original text' })]),
+    );
+  });
+
+  it('retains the previous binary version when a failed save is retried', async () => {
+    const d = await ws.createFile(null, 'data.xlsx', new Blob(['Original bytes']));
+    store.failNextCommit = true;
+    await expect(ws.saveBlob(d.id, new Blob(['Updated bytes']))).rejects.toThrow();
+    await ws.saveBlob(d.id, new Blob(['Updated bytes']));
+    const versions = await ws.listVersions(d.id);
+    expect(versions).toHaveLength(1);
+    expect(await versions[0]!.blob!.text()).toBe('Original bytes');
+  });
+
+  it('keeps cached text when replacing it with binary content fails', async () => {
+    const d = await ws.createFile(null, 'Notes.md', 'Original text');
+    store.failNextCommit = true;
+    await expect(ws.replaceContent(d.id, new Blob(['Binary replacement']))).rejects.toThrow();
+    expect(ws.allTexts().get(d.id)).toBe('Original text');
+    expect(await ws.readText(d.id)).toBe('Original text');
+  });
+
   it('rewrites links when documents move or are renamed', async () => {
     const docs = await ws.createFolder(null, 'docs');
     const api = await ws.createFile(docs.id, 'API.md', '# API\n\nBack to [readme](../README.md).');
