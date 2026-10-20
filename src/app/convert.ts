@@ -35,6 +35,7 @@ import { sheetToTable } from '@/lib/convert/delimited';
 import { colName, textValue, type Sheet, type Workbook } from '@/lib/convert/workbook';
 import { ws } from './app-store';
 import { editorActions } from './editor-store';
+import { externalSaves } from './external-saves';
 import { ATTACHMENTS_FOLDER } from './attachments';
 import { documentHtml, downloadBlob } from './exporter';
 import { markdownToPlainText } from './search';
@@ -301,7 +302,7 @@ export async function runConversion(
     let wb: Workbook;
     let sourceReport: ReportData | undefined;
     if (from === 'xlsx') {
-      const blob = await ws().readBlob(id);
+      const blob = (await externalSaves.draftBlobs([id])).get(id) ?? (await ws().readBlob(id));
       if (!blob) throw new Error('The file could not be read.');
       const out = await convert('readXlsx', { data: await bytes(blob) });
       wb = out.workbook;

@@ -30,6 +30,7 @@ export function entryMenu(e: Entry): MenuEntry[] {
   const items: MenuEntry[] = [];
   if (e.kind === 'folder') {
     items.push(
+      { label: 'New file…', icon: <FilePlus2 />, onSelect: () => void A.newFile(e.id) },
       { label: 'New document', icon: <FilePlus2 />, onSelect: () => void A.newDocument(e.id) },
       {
         label: 'New from template…',

@@ -6,6 +6,7 @@ import { prefs } from './prefs';
 import { toastError, toast } from './toast-store';
 import { ownership } from './ownership';
 import { docModel } from './doc-model';
+import { externalSaves } from './external-saves';
 import type { TransactionSpec } from '@codemirror/state';
 
 export type SaveStatus = 'loading' | 'load-error' | 'saved' | 'unsaved' | 'saving' | 'error';
@@ -231,6 +232,7 @@ export const editorActions = {
 
   /** Saves a buffer now (if dirty). Resolves once persisted or failed. */
   async flush(id: EntryId): Promise<void> {
+    await externalSaves.flush([id]);
     clearTimeout(timers.get(id));
     timers.delete(id);
     const pending = inflight.get(id);
@@ -283,13 +285,17 @@ export const editorActions = {
   },
 
   async flushAll() {
-    await Promise.all(Object.keys(get().buffers).map((id) => editorActions.flush(id)));
+    const ids = new Set([...Object.keys(get().buffers), ...externalSaves.ids()]);
+    await Promise.all([...ids].map((id) => editorActions.flush(id)));
   },
 
   /** Mutations and navigation must stop if a write failed; autosave itself stays nonthrowing. */
-  async saveBeforeAction(ids = Object.keys(get().buffers)): Promise<boolean> {
+  async saveBeforeAction(
+    ids = [...new Set([...Object.keys(get().buffers), ...externalSaves.ids()])],
+  ): Promise<boolean> {
     await Promise.all(ids.map((id) => editorActions.flush(id)));
     if (
+      externalSaves.hasUnsaved(ids) ||
       ids.some((id) => {
         const b = get().buffers[id];
         return b && b.text !== b.savedText;
@@ -311,20 +317,22 @@ export const editorActions = {
     for (const t of timers.values()) clearTimeout(t);
     timers.clear();
     retries.clear();
+    externalSaves.reset();
     docModel.reset();
     set({ tabs: [], pinned: [], activeId: null, buffers: {}, closed: [], focusRequest: null });
   },
 
   hasUnsaved(): boolean {
-    return Object.values(get().buffers).some(
-      (b) => b.status !== 'loading' && b.text !== b.savedText,
+    return (
+      externalSaves.hasUnsaved() ||
+      Object.values(get().buffers).some((b) => b.status !== 'loading' && b.text !== b.savedText)
     );
   },
 
   async close(id: EntryId) {
     await editorActions.flush(id);
     const b = get().buffers[id];
-    if (b && b.text !== b.savedText) {
+    if ((b && b.text !== b.savedText) || externalSaves.hasUnsaved([id])) {
       toast({
         message: 'This tab has changes that could not be saved yet, so it stays open.',
         tone: 'error',

@@ -153,6 +153,8 @@ export function TabBar() {
               if (ev.dataTransfer.types.includes('application/x-mydoc-tab')) ev.preventDefault();
             }}
             onDrop={(ev) => {
+              if (!ev.dataTransfer.types.includes('application/x-mydoc-tab')) return;
+              ev.preventDefault();
               const from = Number(ev.dataTransfer.getData('application/x-mydoc-tab'));
               if (!Number.isNaN(from) && from !== i) editorActions.reorder(from, i);
               setDragIndex(null);

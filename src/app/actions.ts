@@ -17,6 +17,7 @@ import { isValidTag, normalizeTag } from '@/domain/tags';
 import { appActions, session, useApp, ws } from './app-store';
 import { dialogs } from './dialog-store';
 import { editorActions, useEditor } from './editor-store';
+import { externalSaves } from './external-saves';
 import { navigate, useRouter } from './router';
 import { toast, toastError, useToasts } from './toast-store';
 import { useUi } from './ui-store';
@@ -26,6 +27,7 @@ import { importItems, type ImportItem } from './importer';
 import { canPrint } from '@/platform';
 import { diskLinks } from './disk-links';
 import { resolvePath } from '@/domain/paths';
+import { creationFormat, initialFileText, validateNewFileName } from '@/domain/new-file';
 
 /**
  * User-facing commands. Each one handles its own confirmation, errors and
@@ -128,25 +130,51 @@ export async function newDocument(
   return run;
 }
 
+/** Creates text/code files with any extension, or a valid Excel workbook. */
+export async function newFile(parentId: EntryId | null = contextFolderId()) {
+  const draft = await dialogs.newFile();
+  if (!draft) return;
+  return createNamedFile(parentId, draft.name);
+}
+
+/** The file name determines the content, so changing an extension never makes invalid binary files. */
+async function createNamedFile(parentId: EntryId | null, desired: string) {
+  const run = creating.then(() =>
+    guard('Unable to create the file.', async () => {
+      const error = validateNewFileName(desired);
+      if (error) throw new Error(error);
+      const name = ws().freeName(parentId, desired.trim());
+      const format = creationFormat(name);
+      let content: string | Blob;
+      if (format === 'xlsx') {
+        const { convert } = await import('@/lib/convert/client');
+        const { emptySheet } = await import('@/lib/convert/workbook');
+        const out = await convert('writeXlsx', {
+          workbook: { sheets: [emptySheet('Sheet1', 0, 0)] },
+          title: baseName(name),
+        });
+        content = new Blob([out.data as BlobPart], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        });
+      } else content = initialFileText(format);
+      const entry = await ws().createFile(parentId, name, content);
+      if (parentId) appActions.setExpanded(parentId, true);
+      if (format === 'csv' || format === 'tsv') useUi.getState().setViewMode(entry.id, 'sheet');
+      else if (format !== 'xlsx') {
+        useUi.getState().setViewMode(entry.id, 'edit');
+        editorActions.requestFocus(entry.id, { end: true });
+      }
+      await openEntry(entry.id);
+      return entry;
+    }),
+  );
+  creating = run.then(() => undefined);
+  return run;
+}
+
 /** Creates an empty Excel workbook and opens it in the sheet view. */
 export async function newSpreadsheet(parentId: EntryId | null = contextFolderId()) {
-  return guard('Unable to create the spreadsheet.', async () => {
-    const { convert } = await import('@/lib/convert/client');
-    const { emptySheet } = await import('@/lib/convert/workbook');
-    const sheet = emptySheet('Sheet1', 0, 0);
-    const out = await convert('writeXlsx', { workbook: { sheets: [sheet] } });
-    const name = ws().freeName(parentId, 'Untitled.xlsx');
-    const entry = await ws().createFile(
-      parentId,
-      name,
-      new Blob([out.data as BlobPart], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      }),
-    );
-    if (parentId) appActions.setExpanded(parentId, true);
-    await openEntry(entry.id);
-    return entry;
-  });
+  return createNamedFile(parentId, 'Untitled.xlsx');
 }
 
 export async function newFromTemplate(parentId: EntryId | null = contextFolderId()) {
@@ -361,9 +389,8 @@ export async function moveEntries(ids: EntryId[], targetId?: EntryId | null) {
 }
 
 export async function duplicateEntry(id: EntryId) {
-  const affected = Object.keys(useEditor.getState().buffers).filter((doc) =>
-    ws().tree.isWithin(doc, id),
-  );
+  const editorIds = new Set([...Object.keys(useEditor.getState().buffers), ...externalSaves.ids()]);
+  const affected = [...editorIds].filter((doc) => ws().tree.isWithin(doc, id));
   if (!(await editorActions.saveBeforeAction(affected))) return;
   const copy = await guard('Unable to duplicate.', () => ws().duplicate(id));
   if (copy) toast({ message: `Created "${copy.name}".`, tone: 'success' });
@@ -372,9 +399,8 @@ export async function duplicateEntry(id: EntryId) {
 
 export async function trashEntries(ids: EntryId[]) {
   if (!ids.length) return;
-  const affected = Object.keys(useEditor.getState().buffers).filter((id) =>
-    ids.some((root) => ws().tree.isWithin(id, root)),
-  );
+  const editorIds = new Set([...Object.keys(useEditor.getState().buffers), ...externalSaves.ids()]);
+  const affected = [...editorIds].filter((id) => ids.some((root) => ws().tree.isWithin(id, root)));
   if (!(await editorActions.saveBeforeAction(affected))) return;
   const trashed = await guard('Unable to move to Trash.', () => ws().trash(ids));
   if (!trashed?.length) return;
@@ -518,18 +544,27 @@ export async function exportEntry(
   format: 'file' | 'html' | 'zip' | 'pdf' | 'print' | 'txt',
 ) {
   await editorActions.flushAll();
-  const drafts = new Map(
+  const drafts = new Map<EntryId, string | Blob>(
     Object.keys(useEditor.getState().buffers).flatMap((doc) => {
       const text = editorActions.textOf(doc);
       return text === undefined ? [] : [[doc, text] as const];
     }),
   );
   await guard('Unable to export.', async () => {
+    const binaryIds =
+      format === 'file' && id
+        ? [id]
+        : format === 'zip'
+          ? externalSaves.ids().filter((doc) => !id || ws().tree.isWithin(doc, id))
+          : [];
+    for (const [doc, blob] of await externalSaves.draftBlobs(binaryIds)) drafts.set(doc, blob);
     if (format === 'zip') return exportZip(ws(), id, drafts);
     if (!id) return;
     if (format === 'file') return exportFile(ws(), id, drafts.get(id));
-    if (format === 'html') return exportHtml(ws(), id, drafts.get(id));
-    if (format === 'txt') return exportText(ws(), id, drafts.get(id));
+    const draft = drafts.get(id);
+    const textDraft = typeof draft === 'string' ? draft : undefined;
+    if (format === 'html') return exportHtml(ws(), id, textDraft);
+    if (format === 'txt') return exportText(ws(), id, textDraft);
     if (format === 'pdf') {
       // A real PDF file, made here; the print dialog isn't needed (or available on phones).
       const { runConversion, exportConversion } = await import('./convert');

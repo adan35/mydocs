@@ -10,6 +10,7 @@ import { useTree } from '../hooks';
 import { HistoryDialog } from './HistoryDialog';
 import { ShortcutsDialog } from './ShortcutsDialog';
 import { TableDialog } from './TableDialog';
+import { NewFileDialog } from './NewFileDialog';
 import { ConvertDialog, FormatsDialog } from '../lazy-views';
 
 export function DialogHost() {
@@ -35,6 +36,8 @@ function DialogFor({ req }: { req: DialogRequest }) {
       return <FolderPicker req={req} />;
     case 'template':
       return <TemplateDialog req={req} />;
+    case 'new-file':
+      return <NewFileDialog onClose={req.resolve} />;
     case 'history':
       return <HistoryDialog entryId={req.entryId} onClose={() => req.resolve()} />;
     case 'shortcuts':

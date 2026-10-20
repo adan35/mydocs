@@ -1,12 +1,14 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { PanelLeft, Upload } from 'lucide-react';
-import { useRouter, navigate } from '@/app/router';
+import { useRouter } from '@/app/router';
 import { useUi } from '@/app/ui-store';
 import { useEditor } from '@/app/editor-store';
 import { useSettings } from '@/app/settings-store';
 import { itemsFromDataTransfer } from '@/app/importer';
 import { contextFolderId, runImport } from '@/app/actions';
 import { ws } from '@/app/app-store';
+import type { EntryId } from '@/domain/types';
+import { toastError } from '@/app/toast-store';
 import { Sidebar } from './Sidebar';
 import { TabBar } from './TabBar';
 import { MobileNav } from './MobileNav';
@@ -46,20 +48,24 @@ function DocumentFallback() {
 
 const SIDEBAR_KEY = 'mydoc:sidebar-width';
 
-const isFileDrag = (e: React.DragEvent) =>
-  e.dataTransfer.types.includes('Files') && !e.dataTransfer.types.includes(TREE_DRAG_TYPE);
+const isFileDrag = (e: DragEvent) =>
+  !!e.dataTransfer?.types.includes('Files') && !e.dataTransfer.types.includes(TREE_DRAG_TYPE);
 
 /** What a file drop does where the pointer is: import into a folder, or attach to a doc. */
-type DropHint = { attach: true } | { attach: false; folder: string };
+type DropHint =
+  { attach: true } | { attach: false; folder: string; id: EntryId | null; canAttach: boolean };
 
-function dropHintAt(target: EventTarget | null): DropHint {
-  if (target instanceof Element && target.closest('[data-attach-drop]')) return { attach: true };
-  const id = contextFolderId();
-  return { attach: false, folder: (id && ws().get(id)?.name) || 'All files' };
+function dropHintAt(event: DragEvent): DropHint {
+  const target = event.target instanceof Element ? event.target : null;
+  const canAttach = !!target?.closest('.cm-content')?.closest('[data-attach-drop]');
+  if (canAttach && event.altKey) return { attach: true };
+  const folder = target?.closest<HTMLElement>('[data-file-drop-folder]');
+  const id = folder ? folder.dataset.fileDropFolder || null : contextFolderId();
+  return { attach: false, folder: (id && ws().get(id)?.name) || 'All files', id, canAttach };
 }
 
 const sameHint = (a: DropHint, b: DropHint) =>
-  a.attach || b.attach ? a.attach === b.attach : a.folder === b.folder;
+  a.attach || b.attach ? a.attach === b.attach : a.id === b.id && a.canAttach === b.canAttach;
 
 function DropOverlay({ hint }: { hint: DropHint }) {
   return (
@@ -77,7 +83,7 @@ function DropOverlay({ hint }: { hint: DropHint }) {
             <>
               <p className="text-[16px] font-medium text-ink">Drop to attach to this document</p>
               <p className="text-caption text-steel">
-                To import instead, drop onto a folder in the sidebar.
+                Release Alt to import as separate files instead.
               </p>
             </>
           ) : (
@@ -85,8 +91,11 @@ function DropOverlay({ hint }: { hint: DropHint }) {
               <p className="text-[16px] font-medium text-ink">Drop files or folders to import</p>
               <p className="text-caption text-steel">
                 They go into <span className="font-medium text-ink">{hint.folder}</span>. Drop onto
-                a folder in the sidebar to choose another.
+                a folder to choose another.
               </p>
+              {hint.canAttach && (
+                <p className="text-caption text-steel">Hold Alt to attach to this document.</p>
+              )}
             </>
           )}
         </div>
@@ -151,11 +160,63 @@ export function AppShell() {
       dragDepth.current = 0;
       setFileDrag(null);
     };
-    addEventListener('drop', reset, true);
+    const enter = (event: DragEvent) => {
+      if (!isFileDrag(event)) return;
+      dragDepth.current++;
+      setFileDrag(dropHintAt(event));
+    };
+    const leave = (event: DragEvent) => {
+      if (!isFileDrag(event)) return;
+      dragDepth.current = Math.max(0, dragDepth.current - 1);
+      const outside =
+        !event.relatedTarget &&
+        (event.clientX <= 0 ||
+          event.clientY <= 0 ||
+          event.clientX >= innerWidth ||
+          event.clientY >= innerHeight);
+      if (outside || !dragDepth.current) reset();
+    };
+    const over = (event: DragEvent) => {
+      if (!isFileDrag(event)) return;
+      event.preventDefault();
+      event.dataTransfer!.dropEffect = 'copy';
+      const hint = dropHintAt(event);
+      setFileDrag((prev) => (prev && sameHint(prev, hint) ? prev : hint));
+    };
+    const drop = (event: DragEvent) => {
+      reset();
+      if (!isFileDrag(event)) return;
+      const hint = dropHintAt(event);
+      // Alt-drop is an explicit attachment gesture, handled by the Markdown editor.
+      if (hint.attach) return;
+      // Capture before editors or portalled menus consume the event. Snapshot the files
+      // and destination now: DataTransfer access expires when the drop event returns.
+      event.preventDefault();
+      event.stopPropagation();
+      closeMenu();
+      void itemsFromDataTransfer(event.dataTransfer!)
+        .then((items) => runImport(items, hint.id))
+        .catch((error: unknown) => toastError('Unable to read the dropped files.', error));
+    };
+    const key = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') reset();
+    };
+    // Window capture also covers portal content and file drops inside CodeMirror.
+    addEventListener('dragenter', enter, true);
+    addEventListener('dragleave', leave, true);
+    addEventListener('dragover', over, true);
+    addEventListener('drop', drop, true);
     addEventListener('dragend', reset, true);
+    addEventListener('blur', reset);
+    addEventListener('keydown', key, true);
     return () => {
-      removeEventListener('drop', reset, true);
+      removeEventListener('dragenter', enter, true);
+      removeEventListener('dragleave', leave, true);
+      removeEventListener('dragover', over, true);
+      removeEventListener('drop', drop, true);
       removeEventListener('dragend', reset, true);
+      removeEventListener('blur', reset);
+      removeEventListener('keydown', key, true);
     };
   }, []);
 
@@ -188,35 +249,7 @@ export function AppShell() {
   const showDrawer = (phone || tablet) && drawerOpen;
 
   return (
-    <div
-      className="flex h-full min-h-0 bg-canvas"
-      onDragEnter={(e) => {
-        if (!isFileDrag(e)) return;
-        dragDepth.current++;
-        setFileDrag(dropHintAt(e.target));
-      }}
-      onDragLeave={(e) => {
-        if (!isFileDrag(e)) return;
-        dragDepth.current = Math.max(0, dragDepth.current - 1);
-        if (!dragDepth.current) setFileDrag(null);
-      }}
-      onDragOver={(e) => {
-        if (!isFileDrag(e)) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'copy';
-        const hint = dropHintAt(e.target);
-        setFileDrag((h) => (h && sameHint(h, hint) ? h : hint));
-      }}
-      onDrop={async (e) => {
-        if (!isFileDrag(e)) return;
-        // Reached only when no folder-specific drop zone handled it.
-        e.preventDefault();
-        const items = await itemsFromDataTransfer(e.dataTransfer);
-        await runImport(items);
-        // The import opens what it imported; only a still-empty Home goes to All files.
-        if (useRouter.getState().route.name === 'home') navigate({ name: 'folder', id: null });
-      }}
-    >
+    <div className="flex h-full min-h-0 bg-canvas">
       <a
         href="#main"
         onClick={(e) => {

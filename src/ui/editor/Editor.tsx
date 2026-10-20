@@ -203,8 +203,8 @@ export function Editor({
       ref={host}
       className="h-full min-h-0"
       data-testid="editor"
-      // Files dropped on a Markdown document become attachments, not imports.
-      data-attach-drop={isMarkdownName(name) ? '' : undefined}
+      // Alt-drop explicitly attaches files; a regular drop imports them app-wide.
+      data-attach-drop={isMarkdownName(name) && !readOnly ? '' : undefined}
     />
   );
 }

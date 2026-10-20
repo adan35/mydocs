@@ -13,7 +13,6 @@ import type { Entry } from '@/domain/types';
 import { useApp } from '@/app/app-store';
 import { useUi } from '@/app/ui-store';
 import { navigate } from '@/app/router';
-import { SHORTCUTS } from '@/app/shortcuts';
 import * as A from '@/app/actions';
 import { Page } from '../components/Page';
 import { FileIcon } from '../components/FileIcon';
@@ -22,7 +21,7 @@ import { WorkspaceSafety } from '../components/WorkspaceSafety';
 import './workspace-views.css';
 import { openMenuAt } from '../components/Menu';
 import { importSubmenu } from '../entry-menu';
-import { formatShortcut, relativeTime, useLayout, useTree } from '../hooks';
+import { relativeTime, useLayout, useTree } from '../hooks';
 
 function greeting() {
   const h = new Date().getHours();
@@ -87,10 +86,10 @@ export function HomeView() {
       <section aria-label="Quick actions" className="mb-8 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <QuickAction
           icon={<FilePlus2 />}
-          label="New document"
-          hint={formatShortcut(SHORTCUTS.newDoc)}
+          label="New file"
+          hint="Document, sheet or code"
           primary
-          onClick={() => void A.newDocument(null)}
+          onClick={() => void A.newFile(null)}
         />
         <QuickAction
           icon={<LayoutTemplate />}

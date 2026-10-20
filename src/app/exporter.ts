@@ -6,6 +6,12 @@ import { resolveWikiLink, type Workspace } from './workspace';
 import { encodeHrefPath, relativePath } from '@/domain/paths';
 import { markdownToPlainText } from './search';
 
+/** Current editor contents can be text or a newly serialized binary workbook. */
+export type ExportDraft = string | Blob;
+
+const asBlob = (draft: ExportDraft, mime?: string): Blob =>
+  typeof draft === 'string' ? new Blob([draft], { type: mime }) : draft;
+
 /** Hands an export to the platform: a download on the web, a Save dialog or share sheet in the apps. */
 export function downloadBlob(blob: Blob, filename: string): Promise<boolean> {
   return saveFile(blob, filename);
@@ -15,7 +21,7 @@ export function downloadBlob(blob: Blob, filename: string): Promise<boolean> {
 export async function buildZip(
   ws: Workspace,
   rootId: EntryId | null,
-  drafts: ReadonlyMap<EntryId, string> = new Map(),
+  drafts: ReadonlyMap<EntryId, ExportDraft> = new Map(),
 ): Promise<Uint8Array> {
   const tree = ws.tree;
   const files: Record<string, Uint8Array | Record<string, never>> = Object.create(null);
@@ -28,8 +34,8 @@ export async function buildZip(
       for (const c of children) await add(c, path);
       return;
     }
-    const text = drafts.get(e.id);
-    const blob = text === undefined ? await ws.readBlob(e.id) : new Blob([text]);
+    const draft = drafts.get(e.id);
+    const blob = draft === undefined ? await ws.readBlob(e.id) : asBlob(draft, e.mime);
     files[path] = blob ? new Uint8Array(await blob.arrayBuffer()) : new Uint8Array();
   };
   const roots = rootId ? tree.childrenOf(rootId) : tree.childrenOf(null);
@@ -40,7 +46,7 @@ export async function buildZip(
 export async function exportZip(
   ws: Workspace,
   rootId: EntryId | null,
-  drafts?: ReadonlyMap<EntryId, string>,
+  drafts?: ReadonlyMap<EntryId, ExportDraft>,
 ) {
   const data = await buildZip(ws, rootId, drafts);
   const name = rootId ? ws.get(rootId)!.name : ws.name;
@@ -50,10 +56,10 @@ export async function exportZip(
   );
 }
 
-export async function exportFile(ws: Workspace, id: EntryId, draft?: string) {
+export async function exportFile(ws: Workspace, id: EntryId, draft?: ExportDraft) {
   const e = ws.get(id);
   if (!e) return;
-  const blob = draft === undefined ? await ws.readBlob(id) : new Blob([draft], { type: e.mime });
+  const blob = draft === undefined ? await ws.readBlob(id) : asBlob(draft, e.mime);
   if (blob) await downloadBlob(blob, e.name);
 }
 

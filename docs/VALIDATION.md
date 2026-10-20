@@ -1,9 +1,22 @@
-# Document safety and usability validation
+# Document safety, sheets and usability validation
 
 This pass prioritizes retaining the latest document content and making local saves and backups clear.
 
 ## Changes
 
+- Sheet view fills the workspace with spare cells, readable Markdown values, frozen table
+  headers, resizable columns, address navigation, range selection, quoted multi-cell clipboard
+  operations, bulk clear, undo, selection totals and a wrapping control.
+- Excel supports persisted number formats and column widths, plus sheet rename, duplicate and
+  delete menus on desktop and touch screens. Renaming follows formula references.
+- New file creation supports Markdown, text, CSV, TSV, Excel, JSON, HTML and custom text/code
+  extensions, including dotfiles. Excel files are encoded workbooks, not renamed text files.
+- External file drops import throughout the app, including editors, tabs, menus and sheets.
+  Folder rows/cards route the destination. Alt-drop into Markdown explicitly attaches files;
+  normal drops preserve editor content and internal tab/tree dragging still works.
+- Pending workbook edits participate in save guards. File/ZIP exports and conversions use
+  the latest draft after storage failures; accepting a disk update preserves previous binary
+  bytes in version history. Workbook writes are serialized so older conversions cannot win.
 - Failed saves pause workspace changes, folder trash/duplicate operations, import replacement,
   version restoration, tab handover, desktop close, and application updates/restarts.
 - Exports include current editor text even when local saving fails, including empty documents.
@@ -23,10 +36,11 @@ This pass prioritizes retaining the latest document content and making local sav
 | Check                          | Result                                                                       |
 | ------------------------------ | ---------------------------------------------------------------------------- |
 | TypeScript, ESLint, Prettier   | Passed                                                                       |
-| Unit/integration tests         | 240 passed, 3 optional performance tests skipped                             |
-| Chromium end-to-end suite      | 95 passed                                                                    |
+| Unit/integration tests         | 279 passed, 3 optional performance tests skipped                             |
+| Chromium end-to-end suite      | 107 passed; one startup timeout passed 3/3 on isolated rerun (108 scenarios) |
 | Production service-worker test | Passed: offline reload, edits, save, and second reload                       |
-| Layout audit                   | 100 route/viewport/theme combinations, no horizontal overflow or page errors |
+| Earlier layout audit           | 100 route/viewport/theme combinations, no horizontal overflow or page errors |
+| New file/sheet layout audit    | 22 viewport/theme states; no page overflow or errors                         |
 | Document modes                 | Source, Split, Rich and Read rendered at 320, 390, 768 and 1440px            |
 | Android                        | Debug APK built; APK signature verified                                      |
 | iOS assets                     | Production web assets copied successfully                                    |
@@ -41,6 +55,12 @@ editing, conversion, imports, history, search, links, security, recovery and exp
 The native adapter regression tests mock Tauri and Capacitor APIs. They verify close protection,
 mobile export isolation, export path handling and cancellation; they do not establish that every
 OS dialog, keyboard, codec or device behavior works.
+
+Workbook recovery after a failed save is kept in memory when changing views within the current
+session. Unlike text recovery drafts, it does not survive a browser crash or forced process exit.
+The app warns before unloading with unsaved changes and can export those edits without writing
+to local storage. Unsupported Excel features still require explicit approval before editing;
+this editor does not implement the full Google Sheets feature set or cloud collaboration.
 
 The desktop build was attempted but this machine lacks Cargo/Rust and WebKitGTK development
 libraries. iOS compilation and simulator testing require macOS and Xcode. Android was compiled

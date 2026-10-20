@@ -20,6 +20,7 @@ import type { Cell, Sheet } from '@/lib/convert/workbook';
 import { SheetGrid, type RowAction, type Selection } from './SheetGrid';
 import { SheetRibbon, type SheetCommand } from './SheetRibbon';
 import { publishOutline } from '@/app/outline-store';
+import { markdownCellText } from './markdown-cell';
 
 /** Replaces the document text with one minimal change, so undo and other views stay exact. */
 function applyText(id: EntryId, prev: string, next: string) {
@@ -91,7 +92,7 @@ export function TextSheetView({
           level: 1,
           text: t.label ? t.label : `Table ${t.index + 1}`,
           badge: `T${t.index + 1}`,
-          detail: `${Math.max(0, t.table.rows.length - 1)} rows`,
+          detail: `${t.table.rows.length} rows`,
         })),
         active: activeTable,
         noun: 'tables',
@@ -130,7 +131,9 @@ export function TextSheetView({
     if (!table) return;
     const s: Sheet = {
       name: 'Table',
-      rows: rows.map((r) => r.map((v) => (v === '' ? undefined : { v }))),
+      rows: rows.map((r) =>
+        r.map((v) => (v === '' ? undefined : { v: v.replace(/\r?\n/g, '<br>') })),
+      ),
     };
     const t = sheetToTable(s, table.table.align, true);
     const lines = text.split('\n');
@@ -345,10 +348,19 @@ export function TextSheetView({
             onEdit={onEdit}
             onPaste={onPaste}
             onClear={(r, c) => onEdit(r, c, '')}
+            onClearRange={(from, to) => {
+              const rows = rowsOf(sheet);
+              for (let r = from.r; r <= Math.min(to.r, rows.length - 1); r++) {
+                const row = rows[r]!;
+                for (let c = from.c; c <= Math.min(to.c, row.length - 1); c++) row[c] = '';
+              }
+              write(rows);
+            }}
             onRows={onRows}
             fixedHeader={markdown}
-            pad={markdown ? { rows: 0, cols: 0 } : undefined}
+            key={`${docId}-${markdown ? activeTable : 'data'}`}
             textOnly
+            displayText={markdown ? markdownCellText : undefined}
             align={markdown ? table?.table.align : undefined}
           />
         </div>
