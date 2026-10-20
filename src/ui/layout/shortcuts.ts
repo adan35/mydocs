@@ -23,6 +23,9 @@ function inTextField(target: EventTarget | null) {
 export function useGlobalShortcuts() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Modal controls own their keys. A save/rename prompt must not create files,
+      // change documents or open another overlay behind itself.
+      if (document.querySelector('[role="dialog"], [role="menu"]')) return;
       const ui = useUi.getState();
       const route = useRouter.getState().route;
       const m = (s: string) => matches(e, s, isMac);

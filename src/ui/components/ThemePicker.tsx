@@ -95,9 +95,33 @@ export function PaletteGrid() {
             type="button"
             role="radio"
             aria-checked={selected}
+            tabIndex={selected ? 0 : -1}
+            onKeyDown={(e) => {
+              const step =
+                e.key === 'ArrowRight' || e.key === 'ArrowDown'
+                  ? 1
+                  : e.key === 'ArrowLeft' || e.key === 'ArrowUp'
+                    ? -1
+                    : 0;
+              if (!step && e.key !== 'Home' && e.key !== 'End') return;
+              e.preventDefault();
+              const index = PALETTES.findIndex((palette) => palette.id === p.id);
+              const next =
+                e.key === 'Home'
+                  ? 0
+                  : e.key === 'End'
+                    ? PALETTES.length - 1
+                    : (index + step + PALETTES.length) % PALETTES.length;
+              update({ palette: PALETTES[next]!.id });
+              const radios =
+                e.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
+                  '[role="radio"]',
+                );
+              radios?.[next]?.focus();
+            }}
             title={p.hint}
             onClick={() => update({ palette: p.id })}
-            className={`tap flex items-center gap-2.5 rounded-lg border p-2 text-left transition-colors ${
+            className={`tap flex flex-col items-start gap-2 rounded-lg border p-2.5 text-left transition-colors sm:flex-row sm:items-center ${
               selected
                 ? 'border-primary bg-primary-soft text-primary-soft-ink'
                 : 'border-hairline hover:bg-hover'
@@ -107,11 +131,9 @@ export function PaletteGrid() {
               <PaletteSwatch palette={p.id} mode="light" className="h-6 w-7" />
               <PaletteSwatch palette={p.id} mode="dark" className="h-6 w-7" />
             </span>
-            <span className="min-w-0">
-              <span className="block truncate text-[13px] font-medium">{p.label}</span>
-              <span
-                className={`block truncate text-micro ${selected ? 'opacity-80' : 'text-steel'}`}
-              >
+            <span className="min-w-0 max-w-full">
+              <span className="block text-[13px] font-medium">{p.label}</span>
+              <span className={`block text-micro ${selected ? 'opacity-80' : 'text-steel'}`}>
                 {p.hint}
               </span>
             </span>

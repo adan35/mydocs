@@ -13,17 +13,18 @@ The dev server runs at http://localhost:5173. Data is stored in the browser's In
 
 ## Scripts
 
-| Command                | What it does                                                          |
-| ---------------------- | --------------------------------------------------------------------- |
-| `npm run dev`          | Vite dev server with hot reload.                                      |
-| `npm run build`        | Type-checks, then builds to `dist/` with the Content-Security-Policy. |
-| `npm run preview`      | Serves the production build.                                          |
-| `npm run typecheck`    | `tsc -b --noEmit`.                                                    |
-| `npm run lint`         | ESLint.                                                               |
-| `npm run format`       | Formats everything with Prettier.                                     |
-| `npm run format:check` | Checks formatting (used in CI).                                       |
-| `npm test`             | Unit and integration tests (Vitest, jsdom, fake-indexeddb).           |
-| `npm run test:e2e`     | End-to-end tests (Playwright).                                        |
+| Command                | What it does                                                                 |
+| ---------------------- | ---------------------------------------------------------------------------- |
+| `npm run dev`          | Vite dev server with hot reload.                                             |
+| `npm run build`        | Type-checks, then builds to `dist/` with the Content-Security-Policy.        |
+| `npm run preview`      | Serves the production build.                                                 |
+| `npm run typecheck`    | `tsc -b --noEmit`.                                                           |
+| `npm run lint`         | ESLint.                                                                      |
+| `npm run format`       | Formats everything with Prettier.                                            |
+| `npm run format:check` | Checks formatting (used in CI).                                              |
+| `npm test`             | Unit and integration tests (Vitest, jsdom, fake-indexeddb).                  |
+| `npm run test:e2e`     | End-to-end tests (Playwright).                                               |
+| `npm run test:pwa`     | Builds production, then tests real service-worker offline reloads and saves. |
 
 ## Tests
 
@@ -43,6 +44,17 @@ The dev server runs at http://localhost:5173. Data is stored in the browser's In
 - `responsive.spec.ts`: no horizontal overflow at 11 widths from 320px to 2560px.
 
 Install the browser once with `npx playwright install chromium`. If Chromium is already installed elsewhere, point to it with `PLAYWRIGHT_CHROMIUM_PATH=/path/to/chrome`.
+
+**Document safety**: `src/app/editor-safety.test.ts`, `src/app/updates-safety.test.ts`,
+`src/platform/native-safety.test.ts` and `e2e/document-safety.spec.ts` cover failed saves,
+recovery copies, folder operations, import replacement, exports of unsaved text,
+cross-tab handover, update/restart protection, native close/share behavior and modal navigation.
+The native adapter tests mock the OS APIs; they do not replace testing installed apps on devices.
+
+**Production offline** (`e2e-production/`): `npm run test:pwa` builds the app and serves it on
+port 4175. It caches the real app, disconnects the browser, reloads, edits a document offline,
+then reloads again to verify persistence. This runs separately because service workers are
+disabled in the development server. CI runs both Playwright suites.
 
 ## Continuous integration
 

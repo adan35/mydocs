@@ -22,7 +22,7 @@ export function SaveStatus({ id }: { id: EntryId }) {
   const status = useEditor((s) => s.buffers[id]?.status);
   const error = useEditor((s) => s.buffers[id]?.error);
   const online = useOnline();
-  if (!status || status === 'loading') return null;
+  if (!status || status === 'loading' || status === 'load-error') return null;
   const label =
     status === 'error'
       ? 'Not saved'
@@ -38,10 +38,12 @@ export function SaveStatus({ id }: { id: EntryId }) {
       aria-live="polite"
       title={
         status === 'error'
-          ? `${error ?? ''} Your changes are kept and will be retried.`
-          : online
-            ? 'Saved on this device'
-            : 'Offline: saved on this device'
+          ? `${error ?? 'Unable to save.'} Keep this document open, retry, or export your changes.`
+          : status === 'saved'
+            ? `${online ? '' : 'Offline: '}Saved on this device. Export a backup for another copy.`
+            : status === 'saving'
+              ? 'Saving your changes on this device…'
+              : 'Your latest changes have not been saved yet.'
       }
     >
       {status === 'error' ? (
@@ -61,7 +63,7 @@ export function SaveStatus({ id }: { id: EntryId }) {
           ) : (
             <span className="size-1.5 rounded-full bg-warning" aria-hidden />
           )}
-          <span className="hidden sm:inline">{label}</span>
+          <span>{label}</span>
         </>
       )}
     </span>

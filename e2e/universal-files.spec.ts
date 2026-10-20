@@ -45,7 +45,7 @@ test('audio has native playback controls with a byte fallback', async ({ page })
   wav.writeUInt32LE(wav.length - 44, 40);
   await importFile(page, 'sound.wav', wav);
   await expect(page.getByLabel('Play sound.wav')).toHaveAttribute('controls', '');
-  await page.getByLabel('Play sound.wav').dispatchEvent('error');
+  await page.getByLabel('Play sound.wav').dispatchEvent('error', { bubbles: false });
   await expect(page.getByText(/codec cannot be played/)).toBeVisible();
   await expect(page.getByLabel('File byte preview')).toContainText('52 49 46 46');
 });

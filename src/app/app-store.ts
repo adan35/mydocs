@@ -155,8 +155,15 @@ export const appActions = {
 
   /** Takes the data back from the tab that owns it, then reloads from storage. */
   async takeOver() {
-    set({ phase: 'loading' });
-    await ownership.takeOver();
+    set({ phase: 'loading', error: undefined });
+    if (!(await ownership.takeOver())) {
+      set({
+        phase: 'elsewhere',
+        error:
+          'The other tab could not hand over safely. Save or export your changes there, then try again.',
+      });
+      return;
+    }
     get().session?.dispose();
     set({ session: null });
     await appActions.init();

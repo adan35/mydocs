@@ -1,9 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Check, ChevronRight } from 'lucide-react';
 import { create } from 'zustand';
 import { formatShortcut, useLayout } from '../hooks';
 import { restoreFocus } from '../focus';
+import { lockBackground } from '../modal';
 
 export interface MenuItem {
   label: string;
@@ -61,6 +62,7 @@ function useMenuKeyboard(
   listRef: React.RefObject<HTMLDivElement | null>,
   onEscape: () => void,
   items: MenuEntry[],
+  onBack?: () => void,
 ) {
   useEffect(() => {
     const list = listRef.current;
@@ -88,6 +90,9 @@ function useMenuKeyboard(
         e.preventDefault();
         e.stopPropagation();
         onEscape();
+      } else if (e.key === 'ArrowLeft' && onBack) {
+        e.preventDefault();
+        onBack();
       } else if (e.key === 'Tab') {
         e.preventDefault();
       } else if (e.key.length === 1 && /\S/.test(e.key)) {
@@ -100,7 +105,28 @@ function useMenuKeyboard(
     list.addEventListener('keydown', onKey);
     return () => list.removeEventListener('keydown', onKey);
     // Re-runs when a submenu replaces the items, so focus moves to its first item.
-  }, [listRef, onEscape, items]);
+  }, [listRef, onEscape, items, onBack]);
+}
+
+function useMenuPages(menu: MenuRequest) {
+  const [pages, setPages] = useState([{ items: menu.items, label: menu.label }]);
+  useEffect(() => setPages([{ items: menu.items, label: menu.label }]), [menu]);
+  const back = useCallback(() => setPages((p) => p.slice(0, -1)), []);
+  const open = (item: MenuItem) => {
+    if (item.submenu) setPages((p) => [...p, { items: item.submenu!, label: item.label }]);
+  };
+  return { ...pages[pages.length - 1]!, back: pages.length > 1 ? back : undefined, open };
+}
+
+function MenuBack({ onBack }: { onBack: () => void }) {
+  return (
+    <>
+      <button type="button" role="menuitem" className="menu-item" onClick={onBack}>
+        <ArrowLeft size={16} aria-hidden /> Back
+      </button>
+      <div role="separator" className="my-1 h-px bg-hairline" />
+    </>
+  );
 }
 
 function MenuItems({
@@ -151,9 +177,8 @@ function MenuItems({
 function MenuPopover({ menu }: { menu: MenuRequest }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
-  const [items, setItems] = useState(menu.items);
-  useEffect(() => setItems(menu.items), [menu]);
-  useMenuKeyboard(ref, closeMenu, items);
+  const { items, label, back, open } = useMenuPages(menu);
+  useMenuKeyboard(ref, closeMenu, items, back);
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -189,15 +214,16 @@ function MenuPopover({ menu }: { menu: MenuRequest }) {
     <div
       ref={ref}
       role="menu"
-      aria-label={menu.label}
+      aria-label={label}
       className="popover animate-in fixed z-[60] max-h-[min(480px,calc(100vh-16px))] min-w-[220px] max-w-[320px] overflow-y-auto p-1"
       style={pos ? { left: pos.left, top: pos.top } : { left: -9999, top: 0 }}
       onContextMenu={(e) => e.preventDefault()}
     >
+      {back && <MenuBack onBack={back} />}
       <MenuItems
         items={items}
         onPick={(item) => {
-          if (item.submenu) return setItems(item.submenu);
+          if (item.submenu) return open(item);
           closeMenu();
           item.onSelect?.();
         }}
@@ -208,26 +234,34 @@ function MenuPopover({ menu }: { menu: MenuRequest }) {
 
 function MenuSheet({ menu }: { menu: MenuRequest }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [items, setItems] = useState(menu.items);
-  useMenuKeyboard(ref, closeMenu, items);
+  const { items, label, back, open } = useMenuPages(menu);
+  useMenuKeyboard(ref, closeMenu, items, back);
+  useEffect(() => {
+    const unlock = lockBackground();
+    return () => {
+      unlock();
+      restoreFocus(menu.returnFocus ?? null);
+    };
+  }, [menu]);
   return (
     <div className="fixed inset-0 z-[60] flex flex-col justify-end" onClick={closeMenu}>
       <div className="absolute inset-0 bg-[var(--scrim)]" aria-hidden />
       <div
         ref={ref}
         role="menu"
-        aria-label={menu.label}
-        className="animate-sheet safe-bottom relative max-h-[80vh] overflow-y-auto rounded-t-xl bg-canvas p-2 pb-4"
+        aria-label={label}
+        className="animate-sheet safe-bottom relative max-h-[80dvh] overflow-y-auto rounded-t-xl bg-canvas p-2 pb-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mx-auto mb-2 h-1 w-9 rounded-full bg-hairline-strong" aria-hidden />
-        {menu.label && (
-          <div className="px-3 pb-2 text-caption font-medium text-steel">{menu.label}</div>
+        {label && (
+          <div className="truncate px-3 pb-2 text-caption font-medium text-steel">{label}</div>
         )}
+        {back && <MenuBack onBack={back} />}
         <MenuItems
           items={items}
           onPick={(item) => {
-            if (item.submenu) return setItems(item.submenu);
+            if (item.submenu) return open(item);
             closeMenu();
             item.onSelect?.();
           }}

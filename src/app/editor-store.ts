@@ -8,7 +8,7 @@ import { ownership } from './ownership';
 import { docModel } from './doc-model';
 import type { TransactionSpec } from '@codemirror/state';
 
-export type SaveStatus = 'loading' | 'saved' | 'unsaved' | 'saving' | 'error';
+export type SaveStatus = 'loading' | 'load-error' | 'saved' | 'unsaved' | 'saving' | 'error';
 
 export interface Buffer {
   id: EntryId;
@@ -19,6 +19,8 @@ export interface Buffer {
   error?: string;
   /** Bumps when text is replaced from outside the editor (restore, link rewrite, tag edit). */
   rev: number;
+  /** Recovery retries must retain the pre-recovery version even within the normal history interval. */
+  recovering?: boolean;
 }
 
 /** Asks the document view to move keyboard focus into a document, optionally at a match. */
@@ -74,16 +76,42 @@ function persistTabs() {
 
 async function loadBuffer(id: EntryId) {
   if (get().buffers[id]) return;
+  const workspace = ws();
   set((s) => ({
     buffers: { ...s.buffers, [id]: { id, text: '', savedText: '', status: 'loading', rev: 0 } },
   }));
   try {
-    const text = await ws().readText(id);
+    let text = await workspace.readText(id);
+    if (useApp.getState().session?.workspace !== workspace || !get().buffers[id]) return;
+    const draft = prefs.get<Record<EntryId, { text: string; at: number }>>(
+      recoveryKey(workspace.id),
+      {},
+    )[id];
+    if (typeof draft?.text === 'string' && draft.text !== text) {
+      try {
+        await workspace.saveText(id, draft.text, 'recovery');
+        text = draft.text;
+      } catch (err) {
+        patchBuffer(id, {
+          text: draft.text,
+          savedText: text,
+          status: 'error',
+          error: err instanceof Error ? err.message : 'Unable to recover changes.',
+          rev: 1,
+          recovering: true,
+        });
+        scheduleSave(id, 2000);
+        return;
+      }
+    }
+    if (useApp.getState().session?.workspace !== workspace || !get().buffers[id]) return;
     set((s) => ({
       buffers: { ...s.buffers, [id]: { id, text, savedText: text, status: 'saved', rev: 1 } },
     }));
+    writeRecoveryDrafts();
   } catch (err) {
-    patchBuffer(id, { status: 'error', error: 'This document could not be read.' });
+    if (useApp.getState().session?.workspace !== workspace || !get().buffers[id]) return;
+    patchBuffer(id, { status: 'load-error', error: 'This document could not be read.' });
     toastError('Unable to open this document.', err);
   }
 }
@@ -101,10 +129,15 @@ export function writeRecoveryDrafts() {
   const s = useApp.getState().session;
   // A tab that handed the data to another tab must not overwrite that tab's drafts.
   if (!s || !ownership.isOwner) return;
-  const drafts: Record<EntryId, { text: string; at: number }> = {};
+  // Preserve recovery copies that have not been opened/recovered yet.
+  const drafts = prefs.get<Record<EntryId, { text: string; at: number }>>(
+    recoveryKey(s.workspace.id),
+    {},
+  );
   for (const b of Object.values(get().buffers)) {
-    if (b.status !== 'loading' && b.text !== b.savedText)
-      drafts[b.id] = { text: b.text, at: Date.now() };
+    if (b.status === 'loading' || b.status === 'load-error') continue;
+    if (b.text !== b.savedText) drafts[b.id] = { text: b.text, at: Date.now() };
+    else delete drafts[b.id];
   }
   if (!Object.keys(drafts).length) {
     prefs.remove(recoveryKey(s.workspace.id));
@@ -137,6 +170,16 @@ export const editorActions = {
     set({ focusRequest: { id, ...opts, at: Date.now() } });
   },
 
+  async retryLoad(id: EntryId) {
+    if (get().buffers[id]?.status !== 'load-error') return;
+    set((s) => {
+      const buffers = { ...s.buffers };
+      delete buffers[id];
+      return { buffers };
+    });
+    await loadBuffer(id);
+  },
+
   /** Returns the pending focus request for a document (if still fresh) and clears it. */
   takeFocusRequest(id: EntryId): FocusRequest | null {
     const req = get().focusRequest;
@@ -156,20 +199,22 @@ export const editorActions = {
    */
   edit(id: EntryId, spec: TransactionSpec): boolean {
     const b = get().buffers[id];
-    if (!b || b.status === 'loading') return false;
+    if (!b || b.status === 'loading' || b.status === 'load-error') return false;
     docModel.state(id, b.text);
     return docModel.dispatch(id, spec);
   },
 
   /** The current text of an open document. */
   textOf(id: EntryId): string | undefined {
-    return docModel.text(id) ?? get().buffers[id]?.text;
+    const b = get().buffers[id];
+    if (!b || b.status === 'loading' || b.status === 'load-error') return undefined;
+    return docModel.text(id) ?? b.text;
   },
 
   /** Replaces the whole text of an open document (undoable). */
   replaceText(id: EntryId, text: string): boolean {
     const b = get().buffers[id];
-    if (!b || b.status === 'loading' || b.text === text) return false;
+    if (!b || b.status === 'loading' || b.status === 'load-error' || b.text === text) return false;
     return editorActions.edit(id, {
       changes: { from: 0, to: docModel.state(id, b.text).doc.length, insert: text },
       userEvent: 'input.replace',
@@ -179,7 +224,7 @@ export const editorActions = {
   /** Called by the document model after every change. Not for direct use. */
   setText(id: EntryId, text: string) {
     const b = get().buffers[id];
-    if (!b || b.text === text) return;
+    if (!b || b.status === 'loading' || b.status === 'load-error' || b.text === text) return;
     patchBuffer(id, { text, status: text === b.savedText ? 'saved' : 'unsaved' });
     scheduleSave(id);
   },
@@ -191,16 +236,20 @@ export const editorActions = {
     const pending = inflight.get(id);
     if (pending) await pending;
     const b = get().buffers[id];
-    if (!b || b.status === 'loading' || b.text === b.savedText) return;
+    if (!b || b.status === 'loading' || b.status === 'load-error' || b.text === b.savedText) return;
     const text = b.text;
     const run = (async () => {
       patchBuffer(id, { status: 'saving', error: undefined });
       try {
-        await ws().saveText(id, text);
+        await ws().saveText(id, text, b.recovering ? 'recovery' : 'edit');
         retries.delete(id);
         const cur = get().buffers[id];
         if (!cur) return;
-        patchBuffer(id, { savedText: text, status: cur.text === text ? 'saved' : 'unsaved' });
+        patchBuffer(id, {
+          savedText: text,
+          status: cur.text === text ? 'saved' : 'unsaved',
+          recovering: false,
+        });
         if (cur.text !== text) scheduleSave(id);
         writeRecoveryDrafts();
       } catch (err) {
@@ -213,7 +262,7 @@ export const editorActions = {
         });
         if (attempt === 1) {
           toastError(
-            'Unable to save this document. Your changes are still here and kept locally.',
+            'Unable to save this document. Keep it open or export a copy of your changes.',
             err,
             {
               label: 'Try again',
@@ -235,6 +284,26 @@ export const editorActions = {
 
   async flushAll() {
     await Promise.all(Object.keys(get().buffers).map((id) => editorActions.flush(id)));
+  },
+
+  /** Mutations and navigation must stop if a write failed; autosave itself stays nonthrowing. */
+  async saveBeforeAction(ids = Object.keys(get().buffers)): Promise<boolean> {
+    await Promise.all(ids.map((id) => editorActions.flush(id)));
+    if (
+      ids.some((id) => {
+        const b = get().buffers[id];
+        return b && b.text !== b.savedText;
+      })
+    ) {
+      toast({
+        message: 'Your latest changes could not be saved. This action was paused.',
+        detail: 'Keep this workspace open, retry saving, or export a copy to protect your work.',
+        tone: 'error',
+        duration: 8000,
+      });
+      return false;
+    }
+    return true;
   },
 
   /** Drops every tab and buffer without saving (after handing the data to another tab). */
@@ -335,19 +404,51 @@ export const editorActions = {
       {},
     );
     let recovered = 0;
+    const recoveryTabs: EntryId[] = [];
+    let recoveryFailed = false;
     for (const [id, draft] of Object.entries(drafts)) {
-      if (!tree.get(id) || typeof draft?.text !== 'string') continue;
-      const stored = await s.workspace.readText(id);
-      if (stored === draft.text) continue;
+      const entry = tree.get(id);
+      if (!entry || !s.workspace.isEditable(entry) || typeof draft?.text !== 'string') continue;
+      recoveryTabs.push(id);
       try {
-        await s.workspace.saveText(id, draft.text, 'recovery');
-        recovered++;
+        const stored = await s.workspace.readText(id);
+        if (stored === draft.text) continue;
+        try {
+          await s.workspace.saveText(id, draft.text, 'recovery');
+          recovered++;
+        } catch (err) {
+          // Keep the recovery text visible and exportable even when storage is still full.
+          set((state) => ({
+            buffers: {
+              ...state.buffers,
+              [id]: {
+                id,
+                text: draft.text,
+                savedText: stored,
+                status: 'error',
+                error: err instanceof Error ? err.message : 'Unable to recover changes.',
+                rev: 1,
+                recovering: true,
+              },
+            },
+          }));
+          scheduleSave(id, 2000);
+          throw err;
+        }
       } catch (err) {
+        recoveryFailed = true;
+        if (!get().buffers[id]) {
+          set((state) => ({
+            buffers: {
+              ...state.buffers,
+              [id]: { id, text: '', savedText: '', status: 'load-error', rev: 0 },
+            },
+          }));
+        }
         toastError('Some unsaved changes could not be recovered yet.', err);
-        return;
       }
     }
-    prefs.remove(recoveryKey(s.workspace.id));
+    if (!recoveryFailed) prefs.remove(recoveryKey(s.workspace.id));
     if (recovered) {
       toast({
         message: `Recovered unsaved changes in ${recovered} document${recovered > 1 ? 's' : ''}.`,
@@ -362,7 +463,9 @@ export const editorActions = {
         activeId: null,
       },
     );
-    const live = saved.tabs.filter((id) => tree.get(id)?.kind === 'file' && !tree.isTrashed(id));
+    const live = [...new Set([...recoveryTabs, ...saved.tabs])].filter(
+      (id) => tree.get(id)?.kind === 'file' && !tree.isTrashed(id),
+    );
     const pinned = (saved.pinned ?? []).filter((id) => live.includes(id));
     set({
       tabs: [...pinned, ...live.filter((id) => !pinned.includes(id))],

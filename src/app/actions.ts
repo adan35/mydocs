@@ -197,7 +197,7 @@ export async function openDailyNote() {
 export async function saveAsTemplate(id: EntryId) {
   const e = ws().get(id);
   if (!e) return;
-  await editorActions.flush(id);
+  if (!(await editorActions.saveBeforeAction([id]))) return;
   return guard('Unable to save the template.', async () => {
     const folder = templatesFolder() ?? (await ws().createFolder(null, TEMPLATES_FOLDER));
     const text = await ws().readText(id);
@@ -267,13 +267,13 @@ async function keepExtension(oldName: string, newName: string): Promise<string> 
 }
 
 export async function renameTo(id: EntryId, name: string) {
-  await editorActions.flushAll();
+  if (!(await editorActions.saveBeforeAction())) return;
   return guard('Unable to rename.', () => ws().rename(id, name));
 }
 
 /** Closes a tab. Leaves the document first so the view doesn't reopen it while closing. */
 export async function closeTab(id: EntryId) {
-  await editorActions.flush(id);
+  if (!(await editorActions.saveBeforeAction([id]))) return;
   const route = useRouter.getState().route;
   const b = useEditor.getState().buffers[id];
   const dirty = !!b && b.status !== 'loading' && b.text !== b.savedText;
@@ -294,7 +294,7 @@ export async function closeTabs(ids: EntryId[], keep?: EntryId) {
   const { pinned } = useEditor.getState();
   const closing = ids.filter((t) => !pinned.includes(t));
   if (!closing.length) return;
-  await editorActions.flushAll();
+  if (!(await editorActions.saveBeforeAction())) return;
   const route = useRouter.getState().route;
   if (route.name === 'doc' && closing.includes(route.id)) {
     const rest = useEditor.getState().tabs.filter((t) => !closing.includes(t));
@@ -339,7 +339,7 @@ export async function moveEntries(ids: EntryId[], targetId?: EntryId | null) {
     return;
   }
   const previous = new Map(ids.map((id) => [id, ws().get(id)?.parentId ?? null]));
-  await editorActions.flushAll();
+  if (!(await editorActions.saveBeforeAction())) return;
   const moved = await guard('Unable to move.', () => ws().move(ids, target));
   if (!moved?.length) return;
   if (target) appActions.setExpanded(target, true);
@@ -361,7 +361,10 @@ export async function moveEntries(ids: EntryId[], targetId?: EntryId | null) {
 }
 
 export async function duplicateEntry(id: EntryId) {
-  await editorActions.flush(id);
+  const affected = Object.keys(useEditor.getState().buffers).filter((doc) =>
+    ws().tree.isWithin(doc, id),
+  );
+  if (!(await editorActions.saveBeforeAction(affected))) return;
   const copy = await guard('Unable to duplicate.', () => ws().duplicate(id));
   if (copy) toast({ message: `Created "${copy.name}".`, tone: 'success' });
   return copy;
@@ -369,7 +372,10 @@ export async function duplicateEntry(id: EntryId) {
 
 export async function trashEntries(ids: EntryId[]) {
   if (!ids.length) return;
-  for (const id of ids) await editorActions.flush(id);
+  const affected = Object.keys(useEditor.getState().buffers).filter((id) =>
+    ids.some((root) => ws().tree.isWithin(id, root)),
+  );
+  if (!(await editorActions.saveBeforeAction(affected))) return;
   const trashed = await guard('Unable to move to Trash.', () => ws().trash(ids));
   if (!trashed?.length) return;
   const first = ws().get(trashed[0]!);
@@ -460,6 +466,7 @@ export async function toggleFavorite(id: EntryId) {
 
 export async function runImport(items: ImportItem[], targetId: EntryId | null = contextFolderId()) {
   if (!items.length) return;
+  if (!(await editorActions.saveBeforeAction())) return;
   const progressToast = toast({
     message: `Importing ${items.length} item${items.length > 1 ? 's' : ''}…`,
     duration: 60_000,
@@ -511,12 +518,18 @@ export async function exportEntry(
   format: 'file' | 'html' | 'zip' | 'pdf' | 'print' | 'txt',
 ) {
   await editorActions.flushAll();
+  const drafts = new Map(
+    Object.keys(useEditor.getState().buffers).flatMap((doc) => {
+      const text = editorActions.textOf(doc);
+      return text === undefined ? [] : [[doc, text] as const];
+    }),
+  );
   await guard('Unable to export.', async () => {
-    if (format === 'zip') return exportZip(ws(), id);
+    if (format === 'zip') return exportZip(ws(), id, drafts);
     if (!id) return;
-    if (format === 'file') return exportFile(ws(), id);
-    if (format === 'html') return exportHtml(ws(), id);
-    if (format === 'txt') return exportText(ws(), id);
+    if (format === 'file') return exportFile(ws(), id, drafts.get(id));
+    if (format === 'html') return exportHtml(ws(), id, drafts.get(id));
+    if (format === 'txt') return exportText(ws(), id, drafts.get(id));
     if (format === 'pdf') {
       // A real PDF file, made here; the print dialog isn't needed (or available on phones).
       const { runConversion, exportConversion } = await import('./convert');
@@ -544,7 +557,7 @@ export async function exportEntry(
 export async function linkMention(sourceId: EntryId, targetId: EntryId) {
   const target = ws().get(targetId);
   if (!target) return;
-  await editorActions.flush(sourceId);
+  if (!(await editorActions.saveBeforeAction([sourceId]))) return;
   await guard('Unable to add the link.', () => ws().linkMention(sourceId, baseName(target.name)));
 }
 
@@ -557,12 +570,12 @@ export async function addTagTo(id: EntryId) {
       isValidTag(normalizeTag(v)) ? null : 'Tags can use letters, numbers, -, _ and /.',
   });
   if (!tag) return;
-  await editorActions.flush(id);
+  if (!(await editorActions.saveBeforeAction([id]))) return;
   await guard('Unable to add the tag.', () => ws().addTag(id, tag));
 }
 
 export async function removeTagFrom(id: EntryId, tag: string) {
-  await editorActions.flush(id);
+  if (!(await editorActions.saveBeforeAction([id]))) return;
   await guard('Unable to remove the tag.', () => ws().removeTag(id, tag));
 }
 
@@ -576,7 +589,7 @@ export async function renameTagEverywhere(tag: string) {
       isValidTag(normalizeTag(v)) ? null : 'Tags can use letters, numbers, -, _ and /.',
   });
   if (!next || normalizeTag(next) === tag) return;
-  await editorActions.flushAll();
+  if (!(await editorActions.saveBeforeAction())) return;
   const ids = session().knowledge.docsWithTag(ws().tree, tag);
   const changed = await guard('Unable to rename the tag.', () =>
     ws().renameTag(ids, tag, normalizeTag(next)),
@@ -591,7 +604,7 @@ export async function renameTagEverywhere(tag: string) {
 }
 
 export async function restoreVersion(id: EntryId, versionId: string) {
-  await editorActions.flush(id);
+  if (!(await editorActions.saveBeforeAction([id]))) return;
   const restored = await guard('Unable to restore this version.', () =>
     ws().restoreVersion(id, versionId),
   );
@@ -616,7 +629,7 @@ export async function newWorkspace() {
     validate: nameValidator,
   });
   if (!name) return;
-  await editorActions.flushAll();
+  if (!(await editorActions.saveBeforeAction())) return;
   await guard('Unable to create the workspace.', async () => {
     await appActions.createWorkspace(name.trim());
     await editorActions.restoreSession();
@@ -625,7 +638,7 @@ export async function newWorkspace() {
 }
 
 export async function switchWorkspace(id: string) {
-  await editorActions.flushAll();
+  if (!(await editorActions.saveBeforeAction())) return;
   await guard('Unable to open the workspace.', async () => {
     await appActions.switchWorkspace(id);
     await editorActions.restoreSession();
@@ -655,12 +668,12 @@ export async function deleteWorkspace() {
   const ok = await dialogs.confirm({
     title: `Delete "${s.workspace.name}"?`,
     message:
-      "Every document, folder and version in this workspace will be deleted from this browser. Export it first if you want a copy. This can't be undone.",
+      "Every document, folder and version in this workspace will be deleted from this device. Export it first if you want a copy. This can't be undone.",
     confirmLabel: 'Delete workspace',
     danger: true,
   });
   if (!ok) return;
-  await editorActions.flushAll();
+  if (!(await editorActions.saveBeforeAction())) return;
   await guard('Unable to delete the workspace.', async () => {
     await appActions.deleteWorkspace(s.workspace.id);
     await editorActions.restoreSession();

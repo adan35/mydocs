@@ -81,7 +81,7 @@ function useLifecycle() {
   useEffect(
     () =>
       ownership.onTakeover(async () => {
-        await editorActions.flushAll();
+        if (!(await editorActions.saveBeforeAction())) throw new Error('Unsaved changes remain.');
         writeRecoveryDrafts();
         useUi.getState().setOverlay(null);
         editorActions.reset();
@@ -105,9 +105,9 @@ function useLifecycle() {
     addEventListener('pagehide', protect);
     addEventListener('beforeunload', onBeforeUnload);
     // Desktop windows can close without a reliable pagehide, so save explicitly first.
-    const offQuit = onBeforeQuit(() => {
+    const offQuit = onBeforeQuit(async () => {
       writeRecoveryDrafts();
-      return editorActions.flushAll();
+      if (!(await editorActions.saveBeforeAction())) throw new Error('Unsaved changes remain.');
     });
     return () => {
       offQuit();
@@ -178,8 +178,13 @@ export function App() {
           <h1 className="text-[18px] font-semibold text-ink">My Doc is open in another tab</h1>
           <p className="mt-2 text-[14px] text-slate">
             To keep your documents safe, My Doc works in one tab at a time. Your changes from the
-            other tab are saved.
+            other tab will be saved before it hands over.
           </p>
+          {error && (
+            <p className="mt-3 text-caption text-warning" role="alert">
+              {error}
+            </p>
+          )}
           <button
             type="button"
             autoFocus

@@ -51,7 +51,7 @@ function Row({
         </label>
         {hint && <p className="text-caption text-steel">{hint}</p>}
       </div>
-      <div className="shrink-0">{children}</div>
+      <div className="min-w-0 max-w-full sm:shrink-0">{children}</div>
     </div>
   );
 }
@@ -68,14 +68,40 @@ function Segmented<T extends string | number>({
   label: string;
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className="flex rounded-md bg-surface p-0.5">
+    <div
+      role="radiogroup"
+      aria-label={label}
+      className="flex max-w-full rounded-md bg-surface p-0.5"
+    >
       {options.map(([v, l]) => (
         <button
           key={String(v)}
           type="button"
           role="radio"
           aria-checked={value === v}
-          className={`tap h-7 rounded-[5px] px-3 text-caption font-medium ${value === v ? 'bg-canvas text-ink shadow-1' : 'text-steel hover:text-ink'}`}
+          tabIndex={value === v ? 0 : -1}
+          onKeyDown={(e) => {
+            const step =
+              e.key === 'ArrowRight' || e.key === 'ArrowDown'
+                ? 1
+                : e.key === 'ArrowLeft' || e.key === 'ArrowUp'
+                  ? -1
+                  : 0;
+            if (!step && e.key !== 'Home' && e.key !== 'End') return;
+            e.preventDefault();
+            const index = options.findIndex(([option]) => option === v);
+            const next =
+              e.key === 'Home'
+                ? 0
+                : e.key === 'End'
+                  ? options.length - 1
+                  : (index + step + options.length) % options.length;
+            onChange(options[next]![0]);
+            const radios =
+              e.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="radio"]');
+            radios?.[next]?.focus();
+          }}
+          className={`tap min-w-0 flex-1 h-7 rounded-[5px] px-2.5 text-caption font-medium ${value === v ? 'bg-canvas text-ink shadow-1' : 'text-steel hover:text-ink'}`}
           onClick={() => onChange(v)}
         >
           {l}
@@ -141,12 +167,17 @@ function Toggle({
       type="button"
       role="switch"
       aria-checked={checked}
-      className={`relative h-5 w-9 rounded-full transition-colors ${checked ? 'bg-primary' : 'bg-hairline-strong'}`}
+      className="relative h-11 w-11 rounded-md"
       onClick={() => onChange(!checked)}
     >
       <span
-        className={`absolute top-0.5 left-0.5 size-4 rounded-full bg-white shadow-1 transition-transform ${checked ? 'translate-x-4' : ''}`}
-      />
+        className={`absolute top-3 left-1 h-5 w-9 rounded-full transition-colors ${checked ? 'bg-primary' : 'bg-hairline-strong'}`}
+        aria-hidden
+      >
+        <span
+          className={`absolute top-0.5 left-0.5 size-4 rounded-full bg-white shadow-1 transition-transform ${checked ? 'translate-x-4' : ''}`}
+        />
+      </span>
     </button>
   );
 }
@@ -165,6 +196,70 @@ export function SettingsView() {
 
   return (
     <Page title="Settings" icon={<SettingsIcon />}>
+      <Section
+        title="Storage & backups"
+        description="Documents are stored on this device. Export a workspace backup to keep a separate copy."
+      >
+        <Row label="Provider">
+          <span className="text-[14px] text-charcoal">
+            {isNativeApp ? 'On-device storage (IndexedDB)' : provider.label}
+          </span>
+        </Row>
+        <Row
+          label="Workspace"
+          hint={
+            tree
+              ? `${tree.liveFiles().length} files · ${tree.liveEntries().filter((e) => e.kind === 'folder').length} folders`
+              : undefined
+          }
+        >
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => void A.renameWorkspace()}
+            >
+              Rename
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => void A.exportEntry(null, 'zip')}
+            >
+              <Download size={15} aria-hidden /> Export backup .zip
+            </button>
+          </div>
+        </Row>
+        <Row
+          label="Storage used"
+          hint={
+            isNativeApp
+              ? 'Stored in app data. Keep a separate backup before clearing app data or uninstalling.'
+              : persistent
+                ? 'Persistent storage is enabled. Clearing app or site data still removes documents; keep a separate backup.'
+                : 'The browser may clear this data under storage pressure. Export regularly to keep a backup.'
+          }
+        >
+          <span className="text-[14px] text-charcoal">
+            {usage?.usage !== undefined
+              ? `${formatBytes(usage.usage)}${usage.quota ? ` of ${formatBytes(usage.quota)}` : ''}`
+              : 'Unknown'}
+          </span>
+        </Row>
+        <Row
+          label="Delete workspace"
+          hint="Permanently removes this workspace from this device. Export a backup first."
+        >
+          <button
+            type="button"
+            className="btn btn-secondary text-danger"
+            onClick={() => void A.deleteWorkspace()}
+          >
+            Delete…
+          </button>
+        </Row>
+      </Section>
+
       <Section title="Appearance">
         <Row label="Theme">
           <Segmented
@@ -323,7 +418,7 @@ export function SettingsView() {
         </Row>
         <Row
           label="Autosave delay"
-          hint="How long after you stop typing before saving. Changes are always saved."
+          hint="How long after you stop typing before saving. Check the document status to confirm your changes are saved."
         >
           <Segmented
             label="Autosave delay"
@@ -346,7 +441,7 @@ export function SettingsView() {
         >
           <input
             id="daily-folder"
-            className="input h-8 w-56"
+            className="input h-8 w-full sm:w-56"
             value={s.dailyFolder}
             onChange={(e) => set({ dailyFolder: e.target.value })}
             onBlur={(e) => set({ dailyFolder: e.target.value.trim() || 'Daily notes' })}
@@ -362,63 +457,6 @@ export function SettingsView() {
             onClick={() => void dialogs.shortcuts()}
           >
             <Keyboard size={15} aria-hidden /> View shortcuts
-          </button>
-        </Row>
-      </Section>
-
-      <Section
-        title="Storage"
-        description="My Doc is local-first: everything is stored in this browser on this device."
-      >
-        <Row label="Provider">
-          <span className="text-[14px] text-charcoal">{provider.label}</span>
-        </Row>
-        <Row
-          label="Workspace"
-          hint={
-            tree
-              ? `${tree.liveFiles().length} files · ${tree.liveEntries().filter((e) => e.kind === 'folder').length} folders`
-              : undefined
-          }
-        >
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => void A.renameWorkspace()}
-            >
-              Rename
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => void A.exportEntry(null, 'zip')}
-            >
-              <Download size={15} aria-hidden /> Export .zip
-            </button>
-          </div>
-        </Row>
-        <Row
-          label="Storage used"
-          hint={
-            persistent
-              ? 'Protected: the browser will not clear it automatically.'
-              : 'The browser may clear this data under storage pressure. Export regularly to keep a backup.'
-          }
-        >
-          <span className="text-[14px] text-charcoal">
-            {usage?.usage !== undefined
-              ? `${formatBytes(usage.usage)}${usage.quota ? ` of ${formatBytes(usage.quota)}` : ''}`
-              : 'Unknown'}
-          </span>
-        </Row>
-        <Row label="Delete workspace" hint="Permanently removes this workspace from this browser.">
-          <button
-            type="button"
-            className="btn btn-secondary text-danger"
-            onClick={() => void A.deleteWorkspace()}
-          >
-            Delete…
           </button>
         </Row>
       </Section>
@@ -441,7 +479,7 @@ export function SettingsView() {
 
       <img src="/favicon.svg" alt="" width={32} height={32} className="mx-auto mb-2 rounded-lg" />
       <p className="text-center text-xs text-stone">
-        My Doc · Markdown at its core · Your documents never leave this device.
+        My Doc · Local storage, portable documents · Your backups are yours to keep.
       </p>
       <div className="mt-2 text-center">
         <button

@@ -9,9 +9,15 @@ import type { PendingUpdate } from './desktop';
 
 /** Writes the file to the app cache, then opens the share sheet for it. */
 export async function saveFile(blob: Blob, filename: string): Promise<boolean> {
+  const name = [...(filename.split(/[\\/]/).pop() ?? '')]
+    .filter((char) => char.charCodeAt(0) >= 32)
+    .join('')
+    .trim();
+  const safeName = name && name !== '.' && name !== '..' ? name : 'document';
   const isText = blob.type.startsWith('text/') || /\.(md|markdown|txt|html?)$/i.test(filename);
   const { uri } = await Filesystem.writeFile({
-    path: `exports/${filename}`,
+    // Sharing may still be reading a previous export. Never overwrite its cache file.
+    path: `exports/${crypto.randomUUID()}/${safeName}`,
     directory: Directory.Cache,
     recursive: true,
     ...(isText
@@ -23,7 +29,13 @@ export async function saveFile(blob: Blob, filename: string): Promise<boolean> {
     return true;
   } catch (err) {
     // Closing the share sheet without picking a target rejects with "Share canceled".
-    if (err instanceof Error && /cancel/i.test(err.message)) return false;
+    if (
+      typeof err === 'object' &&
+      err !== null &&
+      'message' in err &&
+      /cancel/i.test(String(err.message))
+    )
+      return false;
     throw err;
   }
 }
