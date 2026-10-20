@@ -7,6 +7,9 @@ import { useApp } from './app-store';
 import { editorActions, useEditor, writeRecoveryDrafts } from './editor-store';
 import { dialogs } from './dialog-store';
 import { prefs } from './prefs';
+import { externalSaves } from './external-saves';
+import { workbookToXlsx, xlsxToWorkbook } from '@/lib/convert/xlsx';
+import { diskLinks, useDiskLinks } from './disk-links';
 import * as actions from './actions';
 
 const saveFile = vi.hoisted(() => vi.fn().mockResolvedValue(true));
@@ -49,6 +52,51 @@ async function dirty(parent: string | null = null) {
   const entry = await workspace.createFile(parent, 'Notes.md', 'Original');
   await editorActions.open(entry.id);
   editorActions.replaceText(entry.id, 'Latest changes');
+  return entry;
+}
+
+const workbookBlob = (value: string) =>
+  new Blob(
+    [workbookToXlsx({ sheets: [{ name: 'Sheet1', rows: [[{ v: value }]] }] }).data as BlobPart],
+    { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+  );
+
+async function dirtyWorkbook(parent: string | null = null) {
+  const entry = await workspace.createFile(parent, 'Book.xlsx', workbookBlob('Original'));
+  const draft = workbookBlob('Latest edit');
+  let unsaved = true;
+  externalSaves.register(entry.id, {
+    flush: async () => {
+      if (!unsaved) return;
+      await workspace.saveBlob(entry.id, draft);
+      unsaved = false;
+    },
+    hasUnsaved: () => unsaved,
+    exportBlob: async () => draft,
+  });
+  await editorActions.open(entry.id);
+  return entry;
+}
+
+async function workbookValue(blob: Blob) {
+  return xlsxToWorkbook(new Uint8Array(await blob.arrayBuffer())).workbook.sheets[0]?.rows[0]?.[0]
+    ?.v;
+}
+
+async function changedWorkbookOnDisk() {
+  // IndexedDB's file-handle persistence uses real asynchronous request callbacks.
+  vi.useRealTimers();
+  await diskLinks.load(workspace.id, () => true);
+  const entry = await dirtyWorkbook();
+  let file = new File([workbookBlob('Original')], 'Book.xlsx', { lastModified: 1000 });
+  const handle = {
+    kind: 'file',
+    name: file.name,
+    getFile: async () => file,
+    queryPermission: async () => 'granted',
+  } as unknown as FileSystemFileHandle;
+  await diskLinks.link(entry.id, handle, { binary: true });
+  file = new File([workbookBlob('External edit')], 'Book.xlsx', { lastModified: 2000 });
   return entry;
 }
 
@@ -98,6 +146,91 @@ describe('save failures preserve work', () => {
     const copy = await actions.duplicateEntry(folder.id);
     const copied = workspace.tree.childrenOf(copy!.id)[0]!;
     expect(await workspace.readText(copied.id)).toBe('Latest changes');
+  });
+
+  it.each(['file', 'folder'])('duplicates the latest workbook bytes for a %s', async (kind) => {
+    const folder = kind === 'folder' ? await workspace.createFolder(null, 'Folder') : null;
+    const entry = await dirtyWorkbook(folder?.id);
+    const copy = await actions.duplicateEntry(folder?.id ?? entry.id);
+    const copied = folder ? workspace.tree.childrenOf(copy!.id)[0]! : copy!;
+    expect(await workbookValue((await workspace.readBlob(copied.id))!)).toBe('Latest edit');
+  });
+
+  it.each(['file', 'folder'])('blocks trashing a %s when workbook saving fails', async (kind) => {
+    const folder = kind === 'folder' ? await workspace.createFolder(null, 'Folder') : null;
+    const entry = await dirtyWorkbook(folder?.id);
+    store.failNextCommit = true;
+    await actions.trashEntries([folder?.id ?? entry.id]);
+    expect(workspace.tree.isTrashed(entry.id)).toBe(false);
+    if (folder) expect(workspace.tree.isTrashed(folder.id)).toBe(false);
+    expect(editorActions.hasUnsaved()).toBe(true);
+    expect(useEditor.getState().tabs).toContain(entry.id);
+  });
+
+  it('exports unsaved workbook bytes when local saving fails', async () => {
+    const entry = await dirtyWorkbook();
+    store.failNextCommit = true;
+    await actions.exportEntry(entry.id, 'file');
+    expect(await workbookValue(saveFile.mock.calls[0]![0] as Blob)).toBe('Latest edit');
+    expect(await workbookValue((await workspace.readBlob(entry.id))!)).toBe('Original');
+  });
+
+  it('includes unsaved workbook bytes in folder ZIP exports after a save failure', async () => {
+    const folder = await workspace.createFolder(null, 'Folder');
+    await dirtyWorkbook(folder.id);
+    store.failNextCommit = true;
+    await actions.exportEntry(folder.id, 'zip');
+    const files = unzipSync(
+      new Uint8Array(await (saveFile.mock.calls[0]![0] as Blob).arrayBuffer()),
+    );
+    expect(await workbookValue(new Blob([files['Book.xlsx']! as BlobPart]))).toBe('Latest edit');
+  });
+
+  it('exports a document even when an unrelated workbook draft cannot be serialized', async () => {
+    const entry = await dirty();
+    externalSaves.register('unrelated-workbook', {
+      flush: async () => {},
+      hasUnsaved: () => true,
+      exportBlob: async () => {
+        throw new Error('Unable to serialize workbook');
+      },
+    });
+    await actions.exportEntry(entry.id, 'file');
+    expect(await (saveFile.mock.calls[0]![0] as Blob).text()).toBe('Latest changes');
+  });
+
+  it('detects a disk conflict before pending workbook edits have reached storage', async () => {
+    const entry = await changedWorkbookOnDisk();
+    expect(await diskLinks.check(entry.id)).toBe(false);
+    expect(useDiskLinks.getState().links[entry.id]?.state).toBe('conflict');
+    expect(await workbookValue((await workspace.readBlob(entry.id))!)).toBe('Original');
+    expect(await workbookValue((await externalSaves.draftBlobs([entry.id])).get(entry.id)!)).toBe(
+      'Latest edit',
+    );
+  });
+
+  it('keeps a disk conflict unresolved if workbook edits cannot first be saved', async () => {
+    const entry = await changedWorkbookOnDisk();
+    await diskLinks.check(entry.id);
+    store.failNextCommit = true;
+    await diskLinks.resolve(entry.id, 'disk');
+    expect(useDiskLinks.getState().links[entry.id]?.state).toBe('conflict');
+    expect(externalSaves.hasUnsaved([entry.id])).toBe(true);
+    expect(await workbookValue((await workspace.readBlob(entry.id))!)).toBe('Original');
+  });
+
+  it('finishes pending workbook edits before taking the disk version', async () => {
+    const entry = await changedWorkbookOnDisk();
+    await diskLinks.check(entry.id);
+    await diskLinks.resolve(entry.id, 'disk');
+    expect(useDiskLinks.getState().links[entry.id]?.state).toBe('synced');
+    expect(externalSaves.hasUnsaved([entry.id])).toBe(false);
+    expect(await workbookValue((await workspace.readBlob(entry.id))!)).toBe('External edit');
+    const versions = await store.listVersions(entry.id);
+    const latest = await Promise.all(
+      versions.flatMap((v) => (v.blob ? [workbookValue(v.blob)] : [])),
+    );
+    expect(latest).toContain('Latest edit');
   });
 
   it('pauses a rename instead of rewriting links over unsaved edits', async () => {

@@ -203,9 +203,9 @@ export function Sidebar({ onClose, drawer }: { onClose?: () => void; drawer?: bo
         <button
           type="button"
           className="btn btn-ghost h-8 w-full justify-start gap-2 px-2 font-normal"
-          onClick={() => void A.newDocument()}
+          onClick={() => void A.newFile()}
         >
-          <FilePlus2 size={16} className="text-steel" aria-hidden /> New document
+          <FilePlus2 size={16} className="text-steel" aria-hidden /> New file…
         </button>
         <NavItem
           icon={<Settings size={16} />}

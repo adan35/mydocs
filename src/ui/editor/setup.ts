@@ -313,7 +313,7 @@ export function settingsExtensions(): Extension[] {
 function handleFiles(files: FileList | undefined, view: EditorView, event: Event): boolean {
   const id = docIdOf(view.state);
   const entry = ws().get(id);
-  if (!files?.length || !entry || !isMarkdownName(entry.name)) return false;
+  if (!files?.length || !entry || !isMarkdownName(entry.name) || view.state.readOnly) return false;
   event.preventDefault();
   event.stopPropagation();
   void (async () => {
@@ -389,7 +389,7 @@ export function documentExtensions(): Extension {
     EditorView.domEventHandlers({
       paste: (event, view) => handleFiles(event.clipboardData?.files, view, event),
       drop: (event, view) => {
-        if (!event.dataTransfer?.files.length) return false;
+        if (!event.altKey || !event.dataTransfer?.files.length) return false;
         const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
         if (pos !== null) view.dispatch({ selection: { anchor: pos } });
         return handleFiles(event.dataTransfer.files, view, event);

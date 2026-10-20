@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Plus } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Copy, Pencil, Plus, Trash2 } from 'lucide-react';
 import type { Entry } from '@/domain/types';
 import { baseName } from '@/domain/names';
 import { ws } from '@/app/app-store';
 import { toast, toastError } from '@/app/toast-store';
 import { dialogs } from '@/app/dialog-store';
+import { externalSaves } from '@/app/external-saves';
 import { convert } from '@/lib/convert/client';
 import type { ReportData } from '@/lib/convert/doc-ast';
 import { recalculate } from '@/lib/convert/formula';
@@ -17,10 +18,19 @@ import {
   insertRows,
   sortRows,
 } from '@/lib/convert/sheet-ops';
-import { parseInput, setCellRaw, type Workbook } from '@/lib/convert/workbook';
+import { setCellRaw, type Workbook } from '@/lib/convert/workbook';
 import { SheetGrid, type Selection } from './SheetGrid';
 import { SheetRibbon, type SheetCommand } from './SheetRibbon';
 import { publishOutline } from '@/app/outline-store';
+import { openMenu, openMenuAt, type MenuEntry } from '../components/Menu';
+import {
+  deleteSheet,
+  duplicateSheet,
+  formatCell,
+  NUMBER_FORMATS,
+  parseCellInput,
+  renameSheet,
+} from './workbook-controls';
 
 type SaveState = 'saved' | 'saving' | 'error';
 const SAVE_DELAY = 700;
@@ -31,6 +41,12 @@ const SAVE_DELAY = 700;
  * charts, merged cells); every save keeps the previous file as a version.
  */
 export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void }) {
+  return <WorkbookEditor key={entry.id} entry={entry} onConvert={onConvert} />;
+}
+
+function WorkbookEditor({ entry, onConvert }: { entry: Entry; onConvert(): void }) {
+  // Keep writes attached to the workspace that opened this workbook, including on leave.
+  const [workspace] = useState(ws);
   const [wb, setWb] = useState<Workbook | null>(null);
   const [report, setReport] = useState<ReportData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +60,10 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
   const pendingSave = useRef<Workbook | null>(null);
   const savedAt = useRef(0);
   const saving = useRef(false);
+  const saveTask = useRef<Promise<void> | null>(null);
+  const latestWb = useRef<Workbook | null>(null);
+  const [hasRecovery] = useState(() => !!externalSaves.snapshot<Workbook>(entry.id));
+  const recoveryChecked = useRef(false);
 
   // Load (and reload when the file changes from elsewhere, e.g. a version restore).
   useEffect(() => {
@@ -53,11 +73,29 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
     setError(null);
     void (async () => {
       try {
-        const blob = await ws().readBlob(entry.id);
+        if (hasRecovery && !recoveryChecked.current) {
+          // Finish any detached writer before a reopened view can issue new writes.
+          await externalSaves.flush([entry.id]);
+          if (cancelled) return;
+          recoveryChecked.current = true;
+          const draft = externalSaves.snapshot<Workbook>(entry.id);
+          if (draft) {
+            latestWb.current = draft;
+            pendingSave.current = draft;
+            setWb(draft);
+            setEditable(true);
+            setSave('error');
+            return;
+          }
+        }
+        const blob = await workspace.readBlob(entry.id);
         if (!blob) throw new Error('The file could not be read.');
         const out = await convert('readXlsx', { data: new Uint8Array(await blob.arrayBuffer()) });
         if (cancelled) return;
+        latestWb.current = out.workbook;
         setWb(out.workbook);
+        setSheetIndex(0);
+        setSelection({ r: 0, c: 0 });
         setReport(out.report);
         setEditable(!out.report.notes.some((n) => n.severity === 'warning'));
         undo.current = [];
@@ -69,36 +107,69 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
     return () => {
       cancelled = true;
     };
-  }, [entry.id, entry.updatedAt]);
+  }, [entry.id, entry.updatedAt, workspace, hasRecovery]);
 
-  const flush = useCallback(async () => {
-    clearTimeout(timer.current);
-    const book = pendingSave.current;
-    if (!book) return;
-    pendingSave.current = null;
-    setSave('saving');
-    saving.current = true;
-    try {
+  const serialize = useCallback(
+    async (book: Workbook): Promise<Blob> => {
       const out = await convert('writeXlsx', { workbook: book, title: baseName(entry.name) });
-      const saved = await ws().saveBlob(
-        entry.id,
-        new Blob([out.data as BlobPart], {
-          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        }),
-      );
-      savedAt.current = saved.updatedAt;
-      setSave(pendingSave.current ? 'saving' : 'saved');
-    } catch (e) {
-      setSave('error');
-      toastError('Unable to save the workbook.', e, { label: 'Retry', run: () => void retry() });
-      pendingSave.current ??= book;
-    } finally {
-      saving.current = false;
-    }
-    function retry() {
-      return flush();
-    }
-  }, [entry.id, entry.name]);
+      return new Blob([out.data as BlobPart], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+    },
+    [entry.name],
+  );
+
+  const flush = useCallback((): Promise<void> => {
+    clearTimeout(timer.current);
+    if (saveTask.current) return saveTask.current;
+    if (!pendingSave.current) return Promise.resolve();
+    const task = (async () => {
+      saving.current = true;
+      try {
+        // New edits made during conversion are saved next; older writes never overtake them.
+        while (pendingSave.current) {
+          const book = pendingSave.current;
+          pendingSave.current = null;
+          setSave('saving');
+          try {
+            const saved = await workspace.saveBlob(entry.id, await serialize(book));
+            savedAt.current = saved.updatedAt;
+          } catch (e) {
+            pendingSave.current ??= book;
+            setSave('error');
+            toastError('Unable to save the workbook.', e, {
+              label: 'Retry',
+              run: () => void flush(),
+            });
+            return;
+          }
+        }
+        setSave('saved');
+      } finally {
+        saving.current = false;
+      }
+    })();
+    saveTask.current = task;
+    void task.finally(() => {
+      if (saveTask.current === task) saveTask.current = null;
+    });
+    return task;
+  }, [entry.id, serialize, workspace]);
+
+  const loaded = wb !== null;
+  useEffect(() => {
+    if (!loaded) return;
+    return externalSaves.register(entry.id, {
+      flush,
+      hasUnsaved: () => !!pendingSave.current || saving.current,
+      snapshot: () => latestWb.current,
+      exportBlob: async () => {
+        const book = latestWb.current;
+        if (!book) throw new Error('The current workbook could not be read for export.');
+        return serialize(book);
+      },
+    });
+  }, [entry.id, flush, loaded, serialize]);
 
   // Save on leave.
   useEffect(() => () => void flush(), [flush]);
@@ -131,6 +202,7 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
     if (undo.current.length > 100) undo.current.shift();
     redo.current = [];
     recalculate(next);
+    latestWb.current = next;
     setWb(next);
     pendingSave.current = next;
     setSave('saving');
@@ -153,7 +225,9 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
       const prev = from.pop();
       if (!prev) return;
       to.push(wb);
+      latestWb.current = prev;
       setWb(prev);
+      setSheetIndex(Math.min(sheetIndex, prev.sheets.length - 1));
       pendingSave.current = prev;
       setSave('saving');
       clearTimeout(timer.current);
@@ -194,6 +268,69 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
     });
   };
 
+  const rename = async (index: number) => {
+    if (!wb || !editable) return;
+    const current = wb.sheets[index]!;
+    const name = await dialogs.prompt({
+      title: 'Rename sheet',
+      label: 'Sheet name',
+      initial: current.name,
+      validate: (v) => {
+        if (!v.trim()) return 'Enter a sheet name.';
+        if (v.trim().length > 31) return 'Use 31 characters or fewer.';
+        if (/[\\/?*[\]:]/.test(v)) return 'Sheet names cannot contain \\ / ? * [ ] or :.';
+        if (
+          wb.sheets.some((s, i) => i !== index && s.name.toLowerCase() === v.trim().toLowerCase())
+        )
+          return 'A sheet with this name already exists.';
+        return null;
+      },
+    });
+    if (name && name.trim() !== current.name)
+      edit((book) => void renameSheet(book, index, name.trim()));
+  };
+
+  const sheetMenu = (index: number): MenuEntry[] => [
+    { label: 'Rename sheet…', icon: <Pencil />, onSelect: () => void rename(index) },
+    {
+      label: 'Duplicate sheet',
+      icon: <Copy />,
+      onSelect: () =>
+        edit((book) => {
+          setSheetIndex(duplicateSheet(book, index));
+          setSelection({ r: 0, c: 0 });
+        }),
+    },
+    'separator',
+    {
+      label: 'Delete sheet…',
+      icon: <Trash2 />,
+      danger: true,
+      disabled: !wb || wb.sheets.length <= 1,
+      onSelect: async () => {
+        if (!wb || wb.sheets.length <= 1) return;
+        const ok = await dialogs.confirm({
+          title: 'Delete sheet?',
+          message: `Delete “${wb.sheets[index]!.name}” and its contents? Formulas referring to this sheet will show #REF!. You can undo this change.`,
+          confirmLabel: 'Delete sheet',
+          cancelLabel: 'Keep sheet',
+          danger: true,
+        });
+        if (!ok) return;
+        edit((book) => {
+          deleteSheet(book, index);
+          setSheetIndex(
+            Math.max(
+              0,
+              Math.min(index < sheetIndex ? sheetIndex - 1 : sheetIndex, book.sheets.length - 1),
+            ),
+          );
+          setSelection({ r: 0, c: 0 });
+        });
+      },
+    },
+  ];
+
   if (error)
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
@@ -208,6 +345,7 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
   const sheet = wb.sheets[Math.min(sheetIndex, wb.sheets.length - 1)]!;
   const warnings = report?.notes.filter((n) => n.severity === 'warning') ?? [];
   const stale = report?.notes.find((n) => /can't calculate/.test(n.message));
+  const activeFormat = sheet.rows[selection.r]?.[selection.c]?.fmt ?? '';
 
   return (
     <div
@@ -258,6 +396,35 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
         readOnly={!editable}
         disabled={{ undo: !undo.current.length, redo: !redo.current.length }}
       >
+        {editable && (
+          <select
+            aria-label="Number format for selected cell"
+            title="Number format for selected cell"
+            className="input h-8 w-32 shrink-0 py-0 text-caption"
+            value={activeFormat}
+            onChange={(e) => {
+              const code = e.target.value;
+              edit((book) => {
+                const s = book.sheets[sheetIndex]!;
+                setCellRaw(
+                  s,
+                  selection.r,
+                  selection.c,
+                  formatCell(s.rows[selection.r]?.[selection.c], code),
+                );
+              });
+            }}
+          >
+            {NUMBER_FORMATS.map((f) => (
+              <option key={f.code} value={f.code}>
+                {f.label}
+              </option>
+            ))}
+            {!NUMBER_FORMATS.some((f) => f.code === activeFormat) && (
+              <option value={activeFormat}>Custom format</option>
+            )}
+          </select>
+        )}
         <span
           className="shrink-0 px-2 text-caption text-steel"
           aria-live="polite"
@@ -271,6 +438,15 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
                 ? 'Saved'
                 : 'Read only'}
         </span>
+        {save === 'error' && (
+          <button
+            type="button"
+            className="btn btn-secondary h-8 shrink-0"
+            onClick={() => void flush()}
+          >
+            Retry save
+          </button>
+        )}
         {stale && (
           <span
             className="flex shrink-0 items-center gap-1 px-1 text-caption text-warning"
@@ -282,6 +458,7 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
       </SheetRibbon>
       <div className="min-h-0 flex-1">
         <SheetGrid
+          key={sheetIndex}
           sheet={sheet}
           label={`${sheet.name} cells`}
           readOnly={!editable}
@@ -293,7 +470,7 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
                 book.sheets[sheetIndex]!,
                 r,
                 c,
-                parseInput(input, book.sheets[sheetIndex]!.rows[r]?.[c]),
+                parseCellInput(input, book.sheets[sheetIndex]!.rows[r]?.[c]),
               ),
             )
           }
@@ -304,12 +481,33 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
             });
             if (a.select !== undefined) setSelection({ r: a.select, c: selection.c });
           }}
-          onClear={(r, c) => edit((book) => setCellRaw(book.sheets[sheetIndex]!, r, c, undefined))}
+          onClear={(r, c) =>
+            edit((book) => {
+              const s = book.sheets[sheetIndex]!;
+              setCellRaw(s, r, c, parseCellInput('', s.rows[r]?.[c]));
+            })
+          }
+          onClearRange={(from, to) =>
+            edit((book) => {
+              const s = book.sheets[sheetIndex]!;
+              for (let r = from.r; r <= Math.min(to.r, s.rows.length - 1); r++)
+                for (let c = from.c; c <= Math.min(to.c, (s.rows[r]?.length ?? 0) - 1); c++)
+                  setCellRaw(s, r, c, parseCellInput('', s.rows[r]?.[c]));
+            })
+          }
+          onResizeColumn={(c, width) =>
+            edit((book) => {
+              const s = book.sheets[sheetIndex]!;
+              (s.widths ??= [])[c] = width / 7.5;
+            })
+          }
           onPaste={(r, c, block) =>
             edit((book) => {
               const s = book.sheets[sheetIndex]!;
               block.forEach((line, i) =>
-                line.forEach((v, j) => setCellRaw(s, r + i, c + j, parseInput(v))),
+                line.forEach((v, j) =>
+                  setCellRaw(s, r + i, c + j, parseCellInput(v, s.rows[r + i]?.[c + j])),
+                ),
               );
             })
           }
@@ -321,44 +519,61 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
         aria-label="Sheets"
       >
         {wb.sheets.map((s, i) => (
-          <button
-            key={i}
-            type="button"
-            role="tab"
-            aria-selected={i === sheetIndex}
-            className="shrink-0 rounded-md border border-transparent px-3 py-1 text-caption text-steel hover:bg-hover"
-            onClick={() => {
-              setSheetIndex(i);
-              setSelection({ r: 0, c: 0 });
-            }}
-            onDoubleClick={async () => {
-              if (!editable) return;
-              const name = await dialogs.prompt({
-                title: 'Rename sheet',
-                label: 'Sheet name',
-                initial: s.name,
-              });
-              if (!name || name === s.name) return;
-              edit((book) => {
-                const taken = new Set(
-                  book.sheets.filter((_, k) => k !== i).map((x) => x.name.toLowerCase()),
-                );
-                const clean = cleanSheetName(name, taken);
-                const old = book.sheets[i]!.name;
-                book.sheets[i]!.name = clean;
-                // Formulas that name the sheet follow the rename.
-                const quote = (n: string) =>
-                  /^[A-Za-z_][\w.]*$/.test(n) ? n : `'${n.replace(/'/g, "''")}'`;
-                for (const sh of book.sheets)
-                  for (const row of sh.rows)
-                    for (const cell of row ?? [])
-                      if (cell?.f) cell.f = cell.f.split(`${quote(old)}!`).join(`${quote(clean)}!`);
-              });
-            }}
-            title={editable ? 'Double-click to rename' : undefined}
-          >
-            {s.name}
-          </button>
+          <div key={i} role="presentation" className="flex shrink-0 items-center">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={i === sheetIndex}
+              tabIndex={i === sheetIndex ? 0 : -1}
+              className="shrink-0 rounded-l-md border border-transparent px-3 py-1.5 text-caption text-steel hover:bg-hover"
+              onClick={() => {
+                setSheetIndex(i);
+                setSelection({ r: 0, c: 0 });
+              }}
+              onKeyDown={(e) => {
+                const keys = ['ArrowLeft', 'ArrowRight', 'Home', 'End'];
+                if (!keys.includes(e.key)) return;
+                e.preventDefault();
+                const next =
+                  e.key === 'Home'
+                    ? 0
+                    : e.key === 'End'
+                      ? wb.sheets.length - 1
+                      : (i + (e.key === 'ArrowRight' ? 1 : -1) + wb.sheets.length) %
+                        wb.sheets.length;
+                setSheetIndex(next);
+                setSelection({ r: 0, c: 0 });
+                const tabs = e.currentTarget
+                  .closest('[role="tablist"]')
+                  ?.querySelectorAll<HTMLButtonElement>('[role="tab"]');
+                tabs?.[next]?.focus();
+              }}
+              onDoubleClick={() => void rename(i)}
+              onContextMenu={(e) => {
+                if (!editable) return;
+                e.preventDefault();
+                openMenu({
+                  items: sheetMenu(i),
+                  at: { x: e.clientX, y: e.clientY },
+                  label: s.name,
+                  returnFocus: e.currentTarget,
+                });
+              }}
+            >
+              {s.name}
+            </button>
+            {editable && (
+              <button
+                type="button"
+                className="icon-btn size-8 rounded-l-none"
+                aria-label={`Sheet options for ${s.name}`}
+                aria-haspopup="menu"
+                onClick={(e) => openMenuAt(e.currentTarget, sheetMenu(i), s.name)}
+              >
+                <ChevronDown size={13} aria-hidden />
+              </button>
+            )}
+          </div>
         ))}
         {editable && (
           <button
@@ -374,6 +589,7 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
                   rows: [],
                 });
                 setSheetIndex(book.sheets.length - 1);
+                setSelection({ r: 0, c: 0 });
               })
             }
           >

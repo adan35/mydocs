@@ -6,7 +6,6 @@ import { appActions, useApp } from '@/app/app-store';
 import { useEditor } from '@/app/editor-store';
 import { useSettings } from '@/app/settings-store';
 import * as A from '@/app/actions';
-import { itemsFromDataTransfer } from '@/app/importer';
 import { FileIcon } from '../components/FileIcon';
 import { openMenu, openMenuAt } from '../components/Menu';
 import { entryMenu } from '../entry-menu';
@@ -150,25 +149,21 @@ export function FileTree() {
   };
 
   const onDrop = async (e: React.DragEvent, targetId: EntryId | null) => {
+    const moving = e.dataTransfer.getData(TREE_DRAG_TYPE);
+    if (!moving) return;
     e.preventDefault();
     e.stopPropagation();
     setDropTarget(null);
-    const moving = e.dataTransfer.getData(TREE_DRAG_TYPE);
-    if (moving) {
-      if (tree.get(moving)?.parentId !== targetId) await A.moveEntries([moving], targetId);
-      return;
-    }
-    if (e.dataTransfer.files.length)
-      await A.runImport(await itemsFromDataTransfer(e.dataTransfer), targetId);
+    if (tree.get(moving)?.parentId !== targetId) await A.moveEntries([moving], targetId);
   };
 
   const dropProps = (targetId: EntryId | null) => ({
     onDragOver: (e: React.DragEvent) => {
       const types = e.dataTransfer.types;
-      if (!types.includes(TREE_DRAG_TYPE) && !types.includes('Files')) return;
+      if (!types.includes(TREE_DRAG_TYPE)) return;
       e.preventDefault();
       e.stopPropagation();
-      e.dataTransfer.dropEffect = types.includes('Files') ? 'copy' : 'move';
+      e.dataTransfer.dropEffect = 'move';
       setDropTarget(targetId ?? 'root');
     },
     onDragLeave: (e: React.DragEvent) => {
@@ -179,7 +174,11 @@ export function FileTree() {
 
   if (!rows.length) {
     return (
-      <div className="flex-1 px-4 py-3 text-caption text-steel" {...dropProps(null)}>
+      <div
+        className="flex-1 px-4 py-3 text-caption text-steel"
+        data-file-drop-folder=""
+        {...dropProps(null)}
+      >
         No files yet. Create a document or drop files here to import them.
       </div>
     );
@@ -188,6 +187,7 @@ export function FileTree() {
   return (
     <div
       ref={scrollRef}
+      data-file-drop-folder=""
       className={`scroll-area relative min-h-0 flex-1 px-1.5 pb-6 ${dropTarget === 'root' ? 'bg-[color-mix(in_srgb,var(--primary)_6%,transparent)]' : ''}`}
       {...dropProps(null)}
     >
@@ -250,6 +250,7 @@ const TreeRow = memo(function TreeRow({
       aria-setsize={row.setsize}
       aria-label={entry.name}
       data-id={entry.id}
+      data-file-drop-folder={isFolder ? entry.id : (entry.parentId ?? '')}
       tabIndex={tabbable ? 0 : -1}
       draggable
       title={entry.name}

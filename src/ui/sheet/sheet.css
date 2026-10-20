@@ -3,6 +3,44 @@
   background: var(--canvas);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
+  overscroll-behavior: contain;
+}
+.sheet-formula,
+.sheet-status {
+  background: var(--canvas);
+}
+.sheet-address {
+  color: var(--ink);
+  background: var(--surface-soft);
+  border: 1px solid var(--hairline);
+}
+.sheet-formula-input {
+  color: var(--ink);
+  background: var(--canvas);
+  border: 0;
+  border-left: 1px solid var(--hairline);
+  border-radius: 0;
+  outline: none;
+}
+.sheet-formula-input:focus-visible,
+.sheet-address:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.sheet-resize {
+  position: absolute;
+  right: -4px;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 2;
+  touch-action: none;
+}
+.sheet-resize:hover,
+.sheet-resize:focus-visible {
+  background: var(--primary);
+  outline: none;
 }
 .sheet-head,
 .sheet-corner,
@@ -43,6 +81,21 @@
   overflow: hidden;
   cursor: cell;
   position: relative;
+  background: var(--canvas);
+  user-select: none;
+}
+.sheet-cell.sheet-table-header {
+  background: var(--surface-soft);
+  border-bottom-color: var(--hairline);
+}
+.sheet-cell.is-selected {
+  background: color-mix(in srgb, var(--primary) 9%, var(--canvas));
+}
+.sheet-cell.is-active {
+  background: var(--canvas);
+}
+.sheet-cell.text-center {
+  justify-content: center;
 }
 .sheet-cell.is-wrapped {
   align-items: flex-start;
@@ -91,6 +144,19 @@
   background: var(--canvas);
   color: var(--ink);
   font: inherit;
+  user-select: text;
+}
+@media (pointer: coarse) {
+  .sheet-formula-input,
+  .sheet-address,
+  .sheet-editor {
+    font-size: 16px;
+    min-height: 36px;
+  }
+  .sheet-resize {
+    width: 14px;
+    right: -7px;
+  }
 }
 .sheet-tabs button[aria-selected='true'] {
   background: var(--canvas);

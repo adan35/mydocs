@@ -441,18 +441,35 @@ export class Workspace {
     });
   }
 
-  /** Overwrites a file's content (used by import "replace"), keeping a version of the old text. */
+  /** Overwrites a file's content, keeping a version of its previous text or bytes. */
   replaceContent(id: EntryId, content: FileContent): Promise<Entry> {
     return this.serial(async () => {
       const entry = this.entries.get(id);
       if (!entry || entry.kind !== 'file') throw new WorkspaceError('This file no longer exists.');
       const text = typeof content === 'string' ? content : null;
       const changes: ChangeSet = {};
-      if (text !== null && this.isTextEntry(entry)) {
+      if (this.isTextEntry(entry)) {
         Object.assign(
           changes,
           await this.maybeSnapshot(entry, await this.readText(id), 'import', true),
         );
+      } else {
+        const previous = await this.readBlob(id);
+        if (previous?.size) {
+          const versions = await this.store.listVersions(id);
+          const version: Version = {
+            id: createId(),
+            entryId: id,
+            createdAt: entry.updatedAt,
+            text: '',
+            blob: previous,
+            reason: 'import',
+          };
+          const sorted = [...versions].sort((a, b) => a.createdAt - b.createdAt);
+          const excess = sorted.length + 1 - MAX_VERSIONS_PER_DOC;
+          changes.putVersions = [version];
+          changes.deleteVersions = excess > 0 ? sorted.slice(0, excess).map((v) => v.id) : [];
+        }
       }
       const next: Entry = {
         ...entry,

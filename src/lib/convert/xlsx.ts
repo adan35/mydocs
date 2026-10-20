@@ -240,11 +240,11 @@ export function xlsxToWorkbook(data: Uint8Array): XlsxReadResult {
         default:
           value = raw === undefined || raw === '' ? null : Number(raw);
       }
-      if (value === null && f === undefined) return fmt ? undefined : undefined;
+      if (value === null && f === undefined && !fmt) return undefined;
       const cell: Cell = { v: value };
       // Kept exactly (including _xlfn. prefixes) so Excel reads it back the same way.
       if (f !== undefined) cell.f = f;
-      if (fmt && (typeof value === 'number' || f !== undefined)) cell.fmt = fmt;
+      if (fmt) cell.fmt = fmt;
       return cell;
     }
   }
@@ -262,7 +262,10 @@ export function cleanSheetName(name: string, taken: Set<string>): string {
       .trim()
       .slice(0, 31) || 'Sheet';
   const base = n;
-  for (let k = 2; taken.has(n.toLowerCase()); k++) n = `${base.slice(0, 28)} (${k})`;
+  for (let k = 2; taken.has(n.toLowerCase()); k++) {
+    const suffix = ` (${k})`;
+    n = `${base.slice(0, 31 - suffix.length)}${suffix}`;
+  }
   taken.add(n.toLowerCase());
   return n;
 }

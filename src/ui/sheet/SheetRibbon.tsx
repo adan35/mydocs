@@ -11,7 +11,9 @@ import {
   Undo2,
   Columns3,
   Rows3,
+  WrapText,
 } from 'lucide-react';
+import { useSettings } from '@/app/settings-store';
 import { formatShortcut } from '../hooks';
 import { RowHeightButton } from '../row-height';
 
@@ -113,6 +115,7 @@ export function SheetRibbon({
   /** Extra controls at the start (table picker, sheet info). */
   children?: ReactNode;
 }) {
+  const rowHeight = useSettings((s) => s.tableRowHeight);
   const groups: SheetCommand[][] = readOnly
     ? []
     : [
@@ -140,7 +143,12 @@ export function SheetRibbon({
     >
       {children}
       {groups.map((g, gi) => (
-        <div key={gi} role="group" className="flex shrink-0 items-center gap-0.5">
+        <div
+          key={gi}
+          role="group"
+          aria-label={['History', 'Rows', 'Columns', 'Sort'][gi]}
+          className="flex shrink-0 items-center gap-0.5"
+        >
           {(gi > 0 || children) && <span className="mx-1 h-5 w-px bg-hairline" aria-hidden />}
           {g.map((cmd) => {
             const m = META[cmd];
@@ -164,6 +172,21 @@ export function SheetRibbon({
       ))}
       <span className="flex-1" />
       <span className="mx-1 h-5 w-px bg-hairline" aria-hidden />
+      <button
+        type="button"
+        className="icon-btn size-8 shrink-0"
+        aria-label="Wrap text"
+        aria-pressed={rowHeight !== 'default'}
+        title="Wrap text in cells"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() =>
+          useSettings
+            .getState()
+            .update({ tableRowHeight: rowHeight === 'default' ? 'normal' : 'default' })
+        }
+      >
+        <WrapText size={16} aria-hidden />
+      </button>
       <RowHeightButton />
     </div>
   );

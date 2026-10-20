@@ -83,6 +83,7 @@ export function MobileNav() {
           openMenuAt(
             e.currentTarget,
             [
+              { label: 'New file…', icon: <FilePlus2 />, onSelect: () => void A.newFile() },
               { label: 'New document', icon: <FilePlus2 />, onSelect: () => void A.newDocument() },
               { label: 'New folder', icon: <FolderPlus />, onSelect: () => void A.newFolder() },
               { label: 'Import', icon: <Upload />, submenu: importSubmenu(null) },

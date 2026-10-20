@@ -83,6 +83,15 @@ export function getCommands(): Command[] {
   const settings = useSettings.getState();
   const cmds: Command[] = [
     {
+      id: 'new-file',
+      title: 'New file…',
+      group: 'Create',
+      icon: <FilePlus2 />,
+      keywords:
+        'create any type custom extension text txt markdown csv tsv excel xlsx json html code',
+      run: () => void A.newFile(),
+    },
+    {
       id: 'new-doc',
       title: 'New document',
       group: 'Create',

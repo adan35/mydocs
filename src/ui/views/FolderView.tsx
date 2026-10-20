@@ -20,7 +20,6 @@ import { fileTypeOf } from '@/domain/names';
 import { navigate } from '@/app/router';
 import { useSettings, type ExplorerView } from '@/app/settings-store';
 import * as A from '@/app/actions';
-import { itemsFromDataTransfer } from '@/app/importer';
 import { Page, EmptyState } from '../components/Page';
 import { EntryList } from '../components/EntryList';
 import { openMenuAt, type MenuEntry } from '../components/Menu';
@@ -134,24 +133,20 @@ export function FolderView({ id }: { id: EntryId | null }) {
   return (
     <div
       className={`h-full ${dropping ? 'bg-[color-mix(in_srgb,var(--primary)_5%,transparent)]' : ''}`}
+      data-file-drop-folder={id ?? ''}
       onDragOver={(e) => {
-        if (
-          !e.dataTransfer.types.includes('Files') &&
-          !e.dataTransfer.types.includes(TREE_DRAG_TYPE)
-        )
-          return;
+        if (!e.dataTransfer.types.includes(TREE_DRAG_TYPE)) return;
         e.preventDefault();
         setDropping(true);
       }}
       onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setDropping(false)}
       onDrop={async (e) => {
+        const moving = e.dataTransfer.getData(TREE_DRAG_TYPE);
+        if (!moving) return;
         e.preventDefault();
         e.stopPropagation();
         setDropping(false);
-        const moving = e.dataTransfer.getData(TREE_DRAG_TYPE);
-        if (moving) return void A.moveEntries([moving], id);
-        if (e.dataTransfer.files.length)
-          await A.runImport(await itemsFromDataTransfer(e.dataTransfer), id);
+        await A.moveEntries([moving], id);
       }}
     >
       <Page
@@ -189,12 +184,8 @@ export function FolderView({ id }: { id: EntryId | null }) {
         }
         actions={
           <>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => void A.newDocument(id)}
-            >
-              <FilePlus2 size={15} aria-hidden /> <span className="hidden sm:inline">New</span>
+            <button type="button" className="btn btn-primary" onClick={() => void A.newFile(id)}>
+              <FilePlus2 size={15} aria-hidden /> <span>New file</span>
             </button>
             <button
               type="button"
@@ -353,9 +344,9 @@ export function FolderView({ id }: { id: EntryId | null }) {
                 <button
                   type="button"
                   className="btn btn-primary"
-                  onClick={() => void A.newDocument(id)}
+                  onClick={() => void A.newFile(id)}
                 >
-                  New document
+                  New file
                 </button>
                 <button
                   type="button"

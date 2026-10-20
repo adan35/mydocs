@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import type { EntryId } from '@/domain/types';
 import { useApp } from './app-store';
 import { editorActions, useEditor } from './editor-store';
+import { externalSaves } from './external-saves';
 import { textFromBytes } from './importer';
 import { useRouter } from './router';
 
@@ -314,7 +315,9 @@ async function check(id: EntryId): Promise<boolean> {
         return false;
       }
       // Changed in My Doc since the last sync too (a spreadsheet edited here)?
-      const editedHere = known?.syncedAt !== undefined && entry.updatedAt > known.syncedAt;
+      const editedHere =
+        externalSaves.hasUnsaved([id]) ||
+        (known?.syncedAt !== undefined && entry.updatedAt > known.syncedAt);
       if (editedHere) {
         conflicts.set(id, { blob, stamp: stampOf(file) });
         patch(id, { state: 'conflict' });
@@ -552,6 +555,9 @@ export const diskLinks = {
   /** Ends a "Changed on disk" conflict: take the disk version, or keep My Doc's. */
   async resolve(id: EntryId, keep: 'disk' | 'mine'): Promise<void> {
     const c = conflicts.get(id);
+    // Finish (and version) pending workbook edits before replacing them. If saving
+    // fails, keep the conflict and draft rather than racing a later autosave.
+    if (c?.blob && keep === 'disk' && !(await editorActions.saveBeforeAction([id]))) return;
     conflicts.delete(id);
     if (!c) {
       patch(id, { state: 'synced' });

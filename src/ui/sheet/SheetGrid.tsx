@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ArrowDownToLine, ArrowUpToLine, Rows3, Trash2 } from 'lucide-react';
 import { dialogs } from '@/app/dialog-store';
 import { openMenu, type MenuEntry } from '../components/Menu';
@@ -6,6 +6,7 @@ import { ROW_LINES, useSettings } from '@/app/settings-store';
 import {
   addr,
   colName,
+  parseAddr,
   displayValue,
   editValue as cellEditValue,
   textValue,
@@ -13,6 +14,8 @@ import {
   type Cell,
   type Sheet,
 } from '@/lib/convert/workbook';
+import { parseDelimited, serializeDelimited } from '@/lib/convert/delimited';
+import { rangeBounds, selectionSummary } from './selection';
 
 const ROW_H = 28;
 /** Wrapped rows: line height and vertical padding of a cell. */
@@ -21,7 +24,7 @@ const PAD_Y = 10;
 /** Average width of a character at the grid's 13px, a little generous so text fits. */
 const CHAR_W = 7;
 const NUM_W = 48;
-const DEFAULT_COL_W = 112;
+const DEFAULT_COL_W = 128;
 const OVERSCAN = 8;
 
 export interface Selection {
@@ -49,6 +52,9 @@ export interface SheetGridProps {
   /** Pasted block of text (tab/newline separated) starting at a cell. */
   onPaste?(r: number, c: number, rows: string[][]): void;
   onClear?(r: number, c: number): void;
+  onClearRange?(from: Selection, to: Selection): void;
+  /** Persist widths when the file format supports them; otherwise widths last for this view. */
+  onResizeColumn?(c: number, widthPx: number): void;
   selection: Selection;
   onSelect(sel: Selection): void;
   /** Extra empty rows and columns to show past the data, so there is room to type. */
@@ -66,6 +72,8 @@ export interface SheetGridProps {
   fixedHeader?: boolean;
   /** Column alignment, as a Markdown table declares it. */
   align?: readonly ('left' | 'center' | 'right' | null)[];
+  /** Friendly display for text formats; editing and copying retain the original value. */
+  displayText?(value: string): string;
 }
 
 /**
@@ -80,31 +88,82 @@ export function SheetGrid({
   onEdit,
   onPaste,
   onClear,
+  onClearRange,
+  onResizeColumn,
   selection,
   onSelect,
-  pad = { rows: 20, cols: 4 },
+  pad = { rows: 30, cols: 8 },
   label,
   textOnly,
   align,
   onRows,
   fixedHeader,
+  displayText,
 }: SheetGridProps) {
   const editValue = textOnly ? textValue : cellEditValue;
+  const gridId = useId();
+  const shownValue = (cell: Cell | undefined) =>
+    displayText ? displayText(displayValue(cell)) : displayValue(cell);
   const scroller = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+  const resizeCleanup = useRef<(() => void) | null>(null);
+  const [rangeState, setRangeState] = useState<{ anchor: Selection; end: Selection } | null>(null);
+  const rangeEnd =
+    rangeState?.anchor.r === selection.r && rangeState.anchor.c === selection.c
+      ? rangeState.end
+      : selection;
+  const range = rangeBounds(selection, rangeEnd);
+  const [extent, setExtent] = useState({ rows: 100, cols: 26 });
+  const [columnWidths, setColumnWidths] = useState<Record<number, number>>({});
   const [editing, setEditing] = useState<{ value: string; from: 'cell' | 'bar' } | null>(null);
   const [view, setView] = useState({ top: 0, height: 600 });
   const dataRows = sheet.rows.length;
   const dataCols = useMemo(() => Math.max(1, ...sheet.rows.map((r) => r?.length ?? 0)), [sheet]);
   // Spare rows and columns to type into, unless the shape is fixed (a Markdown table).
   const grow = !readOnly && (pad.rows > 0 || pad.cols > 0);
-  const rows = Math.max(dataRows + (readOnly ? 0 : pad.rows), grow ? 30 : 1);
-  const cols = Math.min(Math.max(dataCols + (readOnly ? 0 : pad.cols), grow ? 8 : 1), 702);
+  const rows = Math.max(dataRows + (readOnly ? 0 : pad.rows), grow ? extent.rows : 1);
+  const cols = Math.min(
+    Math.max(dataCols + (readOnly ? 0 : pad.cols), grow ? extent.cols : 1),
+    702,
+  );
+  const fittedWidths = useMemo(
+    () =>
+      Array.from({ length: dataCols }, (_, c) =>
+        Math.max(
+          DEFAULT_COL_W,
+          Math.min(
+            300,
+            Math.max(
+              0,
+              ...sheet.rows
+                .slice(0, 100)
+                .map((row) =>
+                  Math.min(
+                    40,
+                    (displayText ? displayText(displayValue(row?.[c])) : displayValue(row?.[c]))
+                      .length,
+                  ),
+                ),
+            ) *
+              CHAR_W +
+              24,
+          ),
+        ),
+      ),
+    [sheet, dataCols, displayText],
+  );
   const widths = useMemo(
     () =>
-      Array.from({ length: cols }, (_, c) =>
-        Math.max(64, Math.min(360, (sheet.widths?.[c] ?? 0) * 7.5 || DEFAULT_COL_W)),
+      Array.from(
+        { length: cols },
+        (_, c) =>
+          columnWidths[c] ??
+          Math.max(
+            64,
+            Math.min(600, (sheet.widths?.[c] ?? 0) * 7.5 || fittedWidths[c] || DEFAULT_COL_W),
+          ),
       ),
-    [cols, sheet.widths],
+    [cols, sheet.widths, columnWidths, fittedWidths],
   );
   const lefts = useMemo(() => {
     const out = [NUM_W];
@@ -114,6 +173,27 @@ export function SheetGrid({
 
   const cell = (r: number, c: number): Cell | undefined => sheet.rows[r]?.[c];
   const active = cell(selection.r, selection.c);
+  const summary = useMemo(
+    () => selectionSummary(sheet, selection, rangeEnd),
+    [sheet, selection, rangeEnd],
+  );
+  const selectedAddress = addr(selection.r, selection.c);
+  const [addressInput, setAddressInput] = useState<string | null>(null);
+
+  useEffect(() => {
+    const stop = () => {
+      dragging.current = false;
+    };
+    window.addEventListener('pointerup', stop);
+    window.addEventListener('pointercancel', stop);
+    window.addEventListener('blur', stop);
+    return () => {
+      resizeCleanup.current?.();
+      window.removeEventListener('pointerup', stop);
+      window.removeEventListener('pointercancel', stop);
+      window.removeEventListener('blur', stop);
+    };
+  }, []);
 
   // Row height: one line like a spreadsheet, or rows that grow with their text up to 3 or
   // 6 lines (or all of it). Heights are estimated from the text and column widths.
@@ -134,7 +214,7 @@ export function SheetGrid({
         for (let c = 0; c < row.length && c < cols && lines < maxLines; c++) {
           const v = row[c];
           if (!v) continue;
-          const text = displayValue(v);
+          const text = displayText ? displayText(displayValue(v)) : displayValue(v);
           if (!text) continue;
           const n = wrappedLines(text, widths[c]! - 16, measure);
           lines = Math.max(lines, n);
@@ -144,7 +224,7 @@ export function SheetGrid({
     }
     out[rows] = y;
     return out;
-  }, [sheet, rows, cols, widths, wrap, maxLines, measure]);
+  }, [sheet, rows, cols, widths, wrap, maxLines, measure, displayText]);
   const rowTop = (r: number) => tops[Math.min(r, rows)]!;
   const rowH = (r: number) => rowTop(r + 1) - rowTop(r);
   /** The row at a vertical position (binary search over the row tops). */
@@ -163,16 +243,16 @@ export function SheetGrid({
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!el) return;
-    const top = rowTop(selection.r);
-    const bottom = rowTop(selection.r + 1);
+    const top = rowTop(rangeEnd.r);
+    const bottom = rowTop(rangeEnd.r + 1);
     if (top < el.scrollTop + ROW_H) el.scrollTop = top - ROW_H;
     else if (bottom > el.scrollTop + el.clientHeight) el.scrollTop = bottom - el.clientHeight;
-    const left = lefts[selection.c]!;
-    const right = lefts[selection.c + 1]!;
+    const left = lefts[rangeEnd.c]!;
+    const right = lefts[rangeEnd.c + 1]!;
     if (left < el.scrollLeft + NUM_W) el.scrollLeft = left - NUM_W;
     else if (right > el.scrollLeft + el.clientWidth) el.scrollLeft = right - el.clientWidth;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selection, lefts, tops]);
+  }, [selection, rangeEnd, lefts, tops]);
 
   useEffect(() => {
     const el = scroller.current;
@@ -191,22 +271,43 @@ export function SheetGrid({
   const first = Math.max(0, rowAt(view.top) - OVERSCAN);
   const last = Math.min(rows, rowAt(view.top + view.height) + 1 + OVERSCAN);
 
-  const move = useCallback(
-    (dr: number, dc: number) => {
-      onSelect({
-        r: Math.max(0, Math.min(rows - 1, selection.r + dr)),
-        c: Math.max(0, Math.min(cols - 1, selection.c + dc)),
-      });
-    },
-    [onSelect, rows, cols, selection],
-  );
+  const select = (next: Selection, extend = false) => {
+    if (extend) setRangeState({ anchor: selection, end: next });
+    else {
+      setRangeState(null);
+      onSelect(next);
+    }
+  };
+  const move = (dr: number, dc: number, extend = false) => {
+    const origin = extend ? rangeEnd : selection;
+    select(
+      {
+        r: Math.max(0, Math.min(rows - 1, origin.r + dr)),
+        c: Math.max(0, Math.min(cols - 1, origin.c + dc)),
+      },
+      extend,
+    );
+  };
+  const clearSelection = () => {
+    if (readOnly) return;
+    if (onClearRange) onClearRange(range.from, range.to);
+    else if (onPaste && (rangeEnd.r !== selection.r || rangeEnd.c !== selection.c))
+      onPaste(
+        range.from.r,
+        range.from.c,
+        Array.from({ length: range.to.r - range.from.r + 1 }, () =>
+          Array.from({ length: range.to.c - range.from.c + 1 }, () => ''),
+        ),
+      );
+    else onClear?.(selection.r, selection.c);
+  };
 
   const barDone = useRef(false);
-  const commit = (value: string, then?: [number, number]) => {
+  const commit = (value: string, then?: [number, number], focus = true) => {
     if (onEdit && value !== editValue(active)) onEdit(selection.r, selection.c, value);
     setEditing(null);
     if (then) move(then[0], then[1]);
-    scroller.current?.focus({ preventScroll: true });
+    if (focus) scroller.current?.focus({ preventScroll: true });
   };
 
   const onGridKey = (e: React.KeyboardEvent) => {
@@ -222,11 +323,23 @@ export function SheetGrid({
       e.preventDefault();
       const [dr, dc] = map[e.key]!;
       if (mod)
-        onSelect({
-          r: dr < 0 ? 0 : dr > 0 ? Math.max(0, dataRows - 1) : selection.r,
-          c: dc < 0 ? 0 : dc > 0 ? Math.max(0, dataCols - 1) : selection.c,
-        });
-      else move(dr, dc);
+        select(
+          {
+            r: dr < 0 ? 0 : dr > 0 ? Math.max(0, dataRows - 1) : selection.r,
+            c: dc < 0 ? 0 : dc > 0 ? Math.max(0, dataCols - 1) : selection.c,
+          },
+          e.shiftKey,
+        );
+      else move(dr, dc, e.shiftKey);
+      return;
+    }
+    if (mod && e.key.toLowerCase() === 'a') {
+      e.preventDefault();
+      onSelect({ r: 0, c: 0 });
+      setRangeState({
+        anchor: { r: 0, c: 0 },
+        end: { r: Math.max(0, dataRows - 1), c: Math.max(0, dataCols - 1) },
+      });
       return;
     }
     if (e.key === 'Tab') {
@@ -236,7 +349,19 @@ export function SheetGrid({
     }
     if (e.key === 'Home') {
       e.preventDefault();
-      onSelect({ r: mod ? 0 : selection.r, c: 0 });
+      select({ r: mod ? 0 : selection.r, c: 0 }, e.shiftKey);
+      return;
+    }
+    if (e.key === 'End') {
+      e.preventDefault();
+      select(
+        { r: mod ? Math.max(0, dataRows - 1) : selection.r, c: Math.max(0, dataCols - 1) },
+        e.shiftKey,
+      );
+      return;
+    }
+    if (e.key === 'Escape') {
+      setRangeState(null);
       return;
     }
     if (e.key === 'PageDown' || e.key === 'PageUp') {
@@ -253,7 +378,7 @@ export function SheetGrid({
     }
     if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
-      if (active) onClear?.(selection.r, selection.c);
+      clearSelection();
       return;
     }
     if (e.key.length === 1 && !mod && !e.altKey) {
@@ -265,18 +390,52 @@ export function SheetGrid({
   const onCopy = (e: React.ClipboardEvent) => {
     if (editing) return;
     e.preventDefault();
-    e.clipboardData.setData('text/plain', displayValue(active));
+    const block = Array.from({ length: range.to.r - range.from.r + 1 }, (_, i) =>
+      Array.from({ length: range.to.c - range.from.c + 1 }, (_, j) =>
+        displayValue(cell(range.from.r + i, range.from.c + j)),
+      ),
+    );
+    e.clipboardData.setData(
+      'text/plain',
+      serializeDelimited(block, { delimiter: '\t', eol: '\n', quoteAll: false, bom: false }).slice(
+        0,
+        -1,
+      ),
+    );
   };
 
   const onPasteEvent = (e: React.ClipboardEvent) => {
     if (editing || readOnly || !onPaste) return;
     e.preventDefault();
-    const text = e.clipboardData.getData('text/plain').replace(/\r\n?/g, '\n').replace(/\n$/, '');
-    onPaste(
-      selection.r,
-      selection.c,
-      text.split('\n').map((l) => l.split('\t')),
+    const text = e.clipboardData.getData('text/plain');
+    const block = parseDelimited(text, '\t').rows;
+    onPaste(range.from.r, range.from.c, block.length ? block : [['']]);
+    setRangeState(null);
+  };
+
+  const resizeColumn = (c: number, width: number) => {
+    const next = Math.round(Math.max(64, Math.min(600, width)));
+    setColumnWidths((prev) => ({ ...prev, [c]: next }));
+    return next;
+  };
+  const persistWidth = (c: number, width: number) => {
+    onResizeColumn?.(c, width);
+    if (onResizeColumn)
+      setColumnWidths((prev) => {
+        const next = { ...prev };
+        delete next[c];
+        return next;
+      });
+  };
+  const fitColumn = (c: number) => {
+    const measureText = textMeasurer(false) ?? ((s: string) => s.length * CHAR_W);
+    const width = Math.max(
+      DEFAULT_COL_W,
+      ...sheet.rows
+        .slice(0, 500)
+        .map((row) => Math.max(...shownValue(row?.[c]).split('\n').map(measureText)) + 24),
     );
+    persistWidth(c, resizeColumn(c, width));
   };
 
   const askCount = async (r: number, where: 'above' | 'below') => {
@@ -352,19 +511,59 @@ export function SheetGrid({
         : undefined;
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center gap-2 border-b border-hairline-soft px-2 py-1">
-        <span
-          className="w-14 shrink-0 text-center font-mono text-caption text-steel"
-          aria-label="Selected cell"
-        >
-          {addr(selection.r, selection.c)}
-        </span>
+    <div className="sheet-workspace flex h-full min-h-0 flex-col">
+      <div className="sheet-formula flex shrink-0 items-center gap-2 border-b border-hairline px-2 py-1">
+        <input
+          className="sheet-address w-20 shrink-0 rounded px-1 py-1 text-center font-mono text-caption"
+          aria-label="Go to cell"
+          title="Type a cell address, like C12, and press Enter"
+          value={addressInput ?? selectedAddress}
+          onFocus={(e) => {
+            setAddressInput(selectedAddress);
+            e.currentTarget.select();
+          }}
+          onChange={(e) => {
+            e.currentTarget.setCustomValidity('');
+            setAddressInput(e.target.value);
+          }}
+          onBlur={() => setAddressInput(null)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setAddressInput(null);
+              scroller.current?.focus();
+            }
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            const pos = parseAddr(e.currentTarget.value.trim());
+            if (
+              !pos ||
+              pos.r < 0 ||
+              pos.r >= 1048576 ||
+              pos.c >= 702 ||
+              (!grow && (pos.r >= rows || pos.c >= cols))
+            ) {
+              e.currentTarget.setCustomValidity(
+                grow
+                  ? 'Enter an address from A1 to ZZ1048576.'
+                  : 'Enter an address within this sheet.',
+              );
+              e.currentTarget.reportValidity();
+              return;
+            }
+            setExtent((prev) => ({
+              rows: Math.max(prev.rows, pos.r + 30),
+              cols: Math.min(702, Math.max(prev.cols, pos.c + 4)),
+            }));
+            select(pos);
+            setAddressInput(null);
+            scroller.current?.focus();
+          }}
+        />
         <span className="font-mono text-caption text-stone" aria-hidden>
           fx
         </span>
         <input
-          className="input h-8 min-w-0 flex-1 py-0 font-mono text-[13px]"
+          className="sheet-formula-input h-8 min-w-0 flex-1 px-2 py-0 font-mono text-[13px]"
           aria-label="Cell contents"
           data-testid="formula-bar"
           readOnly={readOnly}
@@ -389,7 +588,7 @@ export function SheetGrid({
           onBlur={(e) => {
             if (editing?.from !== 'bar' || barDone.current) return;
             barDone.current = true;
-            commit(e.currentTarget.value);
+            commit(e.currentTarget.value, undefined, false);
           }}
         />
         {active?.stale && (
@@ -403,6 +602,8 @@ export function SheetGrid({
         className="sheet-grid relative min-h-0 flex-1 overflow-auto outline-none focus-visible:ring-2 focus-visible:ring-focus"
         tabIndex={0}
         role="grid"
+        aria-multiselectable="true"
+        aria-activedescendant={`${gridId}-${selectedAddress}`}
         aria-label={label}
         aria-rowcount={rows}
         aria-colcount={cols}
@@ -410,6 +611,12 @@ export function SheetGrid({
         data-testid="sheet-grid"
         onKeyDown={onGridKey}
         onCopy={onCopy}
+        onCut={(e) => {
+          if (!editing) {
+            onCopy(e);
+            clearSelection();
+          }
+        }}
         onPaste={onPasteEvent}
       >
         <div style={{ height: tops[rows], width: totalW, position: 'relative' }}>
@@ -424,26 +631,84 @@ export function SheetGrid({
               <div
                 key={c}
                 role="columnheader"
-                className={`sheet-head ${c === selection.c ? 'is-active' : ''}`}
+                className={`sheet-head relative ${c >= range.from.c && c <= range.to.c ? 'is-active' : ''}`}
                 style={{ width: w }}
               >
                 {colName(c)}
+                <span
+                  role="separator"
+                  aria-label={`Resize column ${colName(c)}`}
+                  aria-orientation="vertical"
+                  aria-valuenow={Math.round(w)}
+                  aria-valuemin={64}
+                  aria-valuemax={600}
+                  tabIndex={0}
+                  className="sheet-resize"
+                  title="Drag to resize. Double-click to fit contents."
+                  onKeyDown={(e) => {
+                    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      persistWidth(c, resizeColumn(c, w + (e.key === 'ArrowLeft' ? -16 : 16)));
+                    } else if (e.key === 'Enter') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      fitColumn(c);
+                    }
+                  }}
+                  onDoubleClick={() => fitColumn(c)}
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    resizeCleanup.current?.();
+                    const start = e.clientX;
+                    let width = w;
+                    const moveResize = (event: PointerEvent) => {
+                      width = resizeColumn(c, w + event.clientX - start);
+                    };
+                    const endResize = () => {
+                      resizeCleanup.current?.();
+                      persistWidth(c, width);
+                    };
+                    resizeCleanup.current = () => {
+                      window.removeEventListener('pointermove', moveResize);
+                      window.removeEventListener('pointerup', endResize);
+                      window.removeEventListener('pointercancel', endResize);
+                      resizeCleanup.current = null;
+                    };
+                    window.addEventListener('pointermove', moveResize);
+                    window.addEventListener('pointerup', endResize);
+                    window.addEventListener('pointercancel', endResize);
+                  }}
+                />
               </div>
             ))}
           </div>
-          {Array.from({ length: Math.max(0, last - first) }, (_, k) => {
-            const r = first + k;
+          {(headerRow
+            ? [
+                0,
+                ...Array.from(
+                  { length: Math.max(0, last - Math.max(1, first)) },
+                  (_, k) => Math.max(1, first) + k,
+                ),
+              ]
+            : Array.from({ length: Math.max(0, last - first) }, (_, k) => first + k)
+          ).map((r) => {
             return (
               <div
                 key={r}
-                className="absolute left-0 flex"
-                style={{ top: rowTop(r), height: rowH(r), width: totalW }}
+                className={`${headerRow && r === 0 ? 'sticky z-10' : 'absolute'} left-0 flex`}
+                style={{
+                  top: headerRow && r === 0 ? ROW_H : rowTop(r),
+                  height: rowH(r),
+                  width: totalW,
+                }}
                 role="row"
                 aria-rowindex={r + 1}
               >
                 <div
                   role="rowheader"
-                  className={`sheet-rownum sticky left-0 z-10 ${r === selection.r ? 'is-active' : ''} ${onRows && !readOnly ? 'is-actionable' : ''}`}
+                  className={`sheet-rownum sticky left-0 z-10 ${r >= range.from.r && r <= range.to.r ? 'is-active' : ''} ${onRows && !readOnly ? 'is-actionable' : ''}`}
                   style={{ width: NUM_W, height: rowH(r) }}
                   title={onRows && !readOnly ? 'Click for row options' : undefined}
                   aria-haspopup={onRows && !readOnly ? 'menu' : undefined}
@@ -464,24 +729,33 @@ export function SheetGrid({
                 {widths.map((w, c) => {
                   const v = cell(r, c);
                   const isActive = r === selection.r && c === selection.c;
-                  const shown = displayValue(v);
+                  const inRange =
+                    r >= range.from.r && r <= range.to.r && c >= range.from.c && c <= range.to.c;
+                  const shown = shownValue(v);
                   const numeric = typeof v?.v === 'number';
                   return (
                     <div
                       key={c}
                       role="gridcell"
-                      aria-selected={isActive}
+                      id={`${gridId}-${addr(r, c)}`}
+                      aria-selected={inRange}
                       aria-colindex={c + 1}
                       data-cell={addr(r, c)}
                       title={cellTitle(v) ?? (!wrap && shown.length > 20 ? shown : undefined)}
-                      className={`sheet-cell ${wrap ? 'is-wrapped' : ''} ${isActive ? 'is-active' : ''} ${numeric || align?.[c] === 'right' ? 'text-right' : align?.[c] === 'center' ? 'text-center' : ''} ${v && isError(v.v) ? 'text-danger' : ''} ${headerRow && r === 0 ? 'font-semibold' : ''} ${v?.stale ? 'is-stale' : ''}`}
+                      className={`sheet-cell ${wrap ? 'is-wrapped' : ''} ${inRange ? 'is-selected' : ''} ${isActive ? 'is-active' : ''} ${numeric || align?.[c] === 'right' ? 'text-right' : align?.[c] === 'center' ? 'text-center' : ''} ${v && isError(v.v) ? 'text-danger' : ''} ${headerRow && r === 0 ? 'sheet-table-header font-semibold' : ''} ${v?.stale ? 'is-stale' : ''}`}
                       style={{ width: w, height: rowH(r) }}
-                      onMouseDown={(e) => {
+                      onPointerDown={(e) => {
+                        if (e.button !== 0) return;
                         if (editing && isActive) return;
-                        e.preventDefault();
+                        if (e.pointerType !== 'touch') e.preventDefault();
                         if (editing) commit(editing.value);
-                        onSelect({ r, c });
+                        select({ r, c }, e.shiftKey);
+                        dragging.current = e.pointerType !== 'touch';
                         scroller.current?.focus({ preventScroll: true });
+                      }}
+                      onPointerEnter={(e) => {
+                        if (dragging.current && e.buttons === 1)
+                          setRangeState({ anchor: selection, end: { r, c } });
                       }}
                       onDoubleClick={() =>
                         !readOnly && setEditing({ value: editValue(v), from: 'cell' })
@@ -491,7 +765,7 @@ export function SheetGrid({
                         <CellEditor
                           value={editing.value}
                           onChange={(value) => setEditing({ value, from: 'cell' })}
-                          onCommit={(value, then) => commit(value, then)}
+                          onCommit={(value, then, focus) => commit(value, then, focus)}
                           onCancel={() => {
                             setEditing(null);
                             scroller.current?.focus();
@@ -516,6 +790,23 @@ export function SheetGrid({
             );
           })}
         </div>
+      </div>
+      <div
+        className="sheet-status flex min-h-8 shrink-0 items-center justify-between gap-3 border-t border-hairline px-3 py-1 text-xs text-steel"
+        role="status"
+        aria-label="Selection summary"
+      >
+        <span className="shrink-0 font-mono">
+          {addr(range.from.r, range.from.c)}
+          {range.from.r !== range.to.r || range.from.c !== range.to.c
+            ? `:${addr(range.to.r, range.to.c)}`
+            : ''}
+        </span>
+        <span className="min-w-0 truncate text-right" data-testid="sheet-selection-summary">
+          Count: {summary.count.toLocaleString()}
+          {summary.numbers > 0 &&
+            ` · Sum: ${Number(summary.sum.toPrecision(12)).toLocaleString()} · Average: ${Number(summary.average.toPrecision(12)).toLocaleString()}`}
+        </span>
       </div>
     </div>
   );
@@ -576,16 +867,16 @@ function CellEditor({
 }: {
   value: string;
   onChange(v: string): void;
-  onCommit(v: string, then?: [number, number]): void;
+  onCommit(v: string, then?: [number, number], focus?: boolean): void;
   onCancel(): void;
 }) {
   const ref = useRef<HTMLInputElement>(null);
   // Enter, Tab and Escape finish the edit; the blur that follows must not commit again.
   const done = useRef(false);
-  const finish = (v: string, then?: [number, number]) => {
+  const finish = (v: string, then?: [number, number], focus = true) => {
     if (done.current) return;
     done.current = true;
-    onCommit(v, then);
+    onCommit(v, then, focus);
   };
   useLayoutEffect(() => {
     const el = ref.current;
@@ -615,7 +906,7 @@ function CellEditor({
           onCancel();
         }
       }}
-      onBlur={(e) => finish(e.currentTarget.value)}
+      onBlur={(e) => finish(e.currentTarget.value, undefined, false)}
     />
   );
 }

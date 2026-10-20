@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { EntryId } from '@/domain/types';
 import type { Table } from '@/domain/table';
 import type { FormatId } from '@/lib/convert/capabilities';
+import type { NewFileDraft } from '@/domain/new-file';
 
 export interface PromptOptions {
   title: string;
@@ -49,6 +50,7 @@ export type DialogRequest =
       resolve: (v: EntryId | null | undefined) => void;
     }
   | { kind: 'template'; resolve: (v: string | null) => void }
+  | { kind: 'new-file'; resolve: (v: NewFileDraft | null) => void }
   | { kind: 'history'; entryId: EntryId; resolve: (v: void) => void }
   | { kind: 'shortcuts'; resolve: (v: void) => void }
   | { kind: 'table'; table: Table; isNew: boolean; resolve: (v: Table | null) => void }
@@ -92,6 +94,7 @@ export const dialogs = {
   pickFolder: (options: PickFolderOptions) =>
     request<EntryId | null | undefined>((resolve) => ({ kind: 'pick-folder', options, resolve })),
   template: () => request<string | null>((resolve) => ({ kind: 'template', resolve })),
+  newFile: () => request<NewFileDraft | null>((resolve) => ({ kind: 'new-file', resolve })),
   history: (entryId: EntryId) =>
     request<void>((resolve) => ({ kind: 'history', entryId, resolve })),
   shortcuts: () => request<void>((resolve) => ({ kind: 'shortcuts', resolve })),

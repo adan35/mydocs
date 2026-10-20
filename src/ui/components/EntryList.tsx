@@ -57,6 +57,7 @@ export function EntryList({
               onClick={(ev) => onClick(e, ev)}
               onContextMenu={ctx(e)}
               title={tree.pathOf(e.id)}
+              data-file-drop-folder={e.kind === 'folder' ? e.id : undefined}
               {...dragProps?.(e)}
             >
               <span className="flex size-9 items-center justify-center rounded-lg bg-surface text-steel">
@@ -103,6 +104,7 @@ export function EntryList({
           key={e.id}
           className={`group flex items-center gap-1 pr-1.5 ${selected?.has(e.id) ? 'bg-primary-soft' : 'hover:bg-surface-soft'}`}
           onContextMenu={ctx(e)}
+          data-file-drop-folder={e.kind === 'folder' ? e.id : undefined}
           {...dragProps?.(e)}
         >
           <button
