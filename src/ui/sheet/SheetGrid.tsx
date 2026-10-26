@@ -13,6 +13,8 @@ import {
   type Cell,
   type Sheet,
 } from '@/lib/convert/workbook';
+import { shiftFormula } from '@/lib/convert/formula';
+import { parseEmphasis, rangeStats } from '@/lib/convert/table-sheet';
 
 const ROW_H = 28;
 /** Wrapped rows: line height and vertical padding of a cell. */
@@ -24,10 +26,21 @@ const NUM_W = 48;
 const DEFAULT_COL_W = 112;
 const OVERSCAN = 8;
 
+/** The active cell, and the opposite corner when a range is selected. */
 export interface Selection {
   r: number;
   c: number;
+  to?: { r: number; c: number };
 }
+
+/** The selected range as [firstRow, firstCol, lastRow, lastCol]. */
+export function selectionRange(s: Selection): [number, number, number, number] {
+  const t = s.to ?? s;
+  return [Math.min(s.r, t.r), Math.min(s.c, t.c), Math.max(s.r, t.r), Math.max(s.c, t.c)];
+}
+
+/** What the last copy put on the clipboard, so a paste inside the app keeps formulas. */
+let lastCopy: { text: string; r: number; c: number; rows: string[][] } | null = null;
 
 /** A change to whole rows, asked for from a row number. */
 export interface RowAction {
@@ -49,6 +62,16 @@ export interface SheetGridProps {
   /** Pasted block of text (tab/newline separated) starting at a cell. */
   onPaste?(r: number, c: number, rows: string[][]): void;
   onClear?(r: number, c: number): void;
+  /** Clears a whole range at once (one change instead of one per cell). */
+  onClearRange?(range: [number, number, number, number]): void;
+  /** Ctrl+D / Ctrl+R: fill the selection from its first row or column. */
+  onFill?(dir: 'down' | 'right'): void;
+  /** Leading rows and columns that stay in view while scrolling. */
+  freeze?: { rows: number; cols: number };
+  /** Numbers to show in the row headers when rows are hidden by a filter. */
+  rowLabels?: readonly number[];
+  /** Cell text uses Markdown emphasis (`**bold**`, `*italic*`, `~~strike~~`). */
+  markdownText?: boolean;
   selection: Selection;
   onSelect(sel: Selection): void;
   /** Extra empty rows and columns to show past the data, so there is room to type. */
@@ -88,8 +111,27 @@ export function SheetGrid({
   align,
   onRows,
   fixedHeader,
+  onClearRange,
+  onFill,
+  freeze,
+  rowLabels,
+  markdownText,
 }: SheetGridProps) {
-  const editValue = textOnly ? textValue : cellEditValue;
+  // Text sheets edit exactly what is written, except formulas, which show as typed.
+  const editValue = textOnly
+    ? (c: Cell | undefined) => (c?.f !== undefined ? `=${c.f}` : textValue(c))
+    : cellEditValue;
+  const [sr1, sc1, sr2, sc2] = selectionRange(selection);
+  const hasRange = sr1 !== sr2 || sc1 !== sc2;
+  const frozenRows = Math.min(freeze?.rows ?? 0, 50);
+  const frozenCols = Math.min(freeze?.cols ?? 0, 10);
+  const [colW, setColW] = useState<Record<number, number>>({});
+  const dragFrom = useRef<{ r: number; c: number } | null>(null);
+  useEffect(() => {
+    const up = () => (dragFrom.current = null);
+    window.addEventListener('mouseup', up);
+    return () => window.removeEventListener('mouseup', up);
+  }, []);
   const scroller = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState<{ value: string; from: 'cell' | 'bar' } | null>(null);
   const [view, setView] = useState({ top: 0, height: 600 });
@@ -101,10 +143,12 @@ export function SheetGrid({
   const cols = Math.min(Math.max(dataCols + (readOnly ? 0 : pad.cols), grow ? 8 : 1), 702);
   const widths = useMemo(
     () =>
-      Array.from({ length: cols }, (_, c) =>
-        Math.max(64, Math.min(360, (sheet.widths?.[c] ?? 0) * 7.5 || DEFAULT_COL_W)),
+      Array.from(
+        { length: cols },
+        (_, c) =>
+          colW[c] ?? Math.max(64, Math.min(360, (sheet.widths?.[c] ?? 0) * 7.5 || DEFAULT_COL_W)),
       ),
-    [cols, sheet.widths],
+    [cols, sheet.widths, colW],
   );
   const lefts = useMemo(() => {
     const out = [NUM_W];
@@ -163,16 +207,20 @@ export function SheetGrid({
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!el) return;
-    const top = rowTop(selection.r);
-    const bottom = rowTop(selection.r + 1);
-    if (top < el.scrollTop + ROW_H) el.scrollTop = top - ROW_H;
+    const at = selection.to ?? selection;
+    const top = rowTop(at.r);
+    const bottom = rowTop(at.r + 1);
+    // Frozen rows and columns cover the top and left edge; a cell behind them is not in view.
+    const topInset = at.r >= frozenRows ? rowTop(frozenRows) : ROW_H;
+    if (top < el.scrollTop + topInset) el.scrollTop = top - topInset;
     else if (bottom > el.scrollTop + el.clientHeight) el.scrollTop = bottom - el.clientHeight;
-    const left = lefts[selection.c]!;
-    const right = lefts[selection.c + 1]!;
-    if (left < el.scrollLeft + NUM_W) el.scrollLeft = left - NUM_W;
+    const left = lefts[at.c]!;
+    const right = lefts[at.c + 1]!;
+    const leftInset = at.c >= frozenCols ? lefts[frozenCols]! : NUM_W;
+    if (left < el.scrollLeft + leftInset) el.scrollLeft = left - leftInset;
     else if (right > el.scrollLeft + el.clientWidth) el.scrollLeft = right - el.clientWidth;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selection, lefts, tops]);
+  }, [selection.r, selection.c, selection.to?.r, selection.to?.c, lefts, tops]);
 
   useEffect(() => {
     const el = scroller.current;
@@ -188,7 +236,7 @@ export function SheetGrid({
     };
   }, []);
 
-  const first = Math.max(0, rowAt(view.top) - OVERSCAN);
+  const first = Math.max(frozenRows, rowAt(view.top) - OVERSCAN);
   const last = Math.min(rows, rowAt(view.top + view.height) + 1 + OVERSCAN);
 
   const move = useCallback(
@@ -221,7 +269,29 @@ export function SheetGrid({
     if (map[e.key]) {
       e.preventDefault();
       const [dr, dc] = map[e.key]!;
-      if (mod)
+      if (e.shiftKey) {
+        // Shift extends the selection from the active cell.
+        const t = selection.to ?? selection;
+        onSelect({
+          ...selection,
+          to: {
+            r: mod
+              ? dr < 0
+                ? 0
+                : dr > 0
+                  ? Math.max(0, dataRows - 1)
+                  : t.r
+              : Math.max(0, Math.min(rows - 1, t.r + dr)),
+            c: mod
+              ? dc < 0
+                ? 0
+                : dc > 0
+                  ? Math.max(0, dataCols - 1)
+                  : t.c
+              : Math.max(0, Math.min(cols - 1, t.c + dc)),
+          },
+        });
+      } else if (mod)
         onSelect({
           r: dr < 0 ? 0 : dr > 0 ? Math.max(0, dataRows - 1) : selection.r,
           c: dc < 0 ? 0 : dc > 0 ? Math.max(0, dataCols - 1) : selection.c,
@@ -232,6 +302,16 @@ export function SheetGrid({
     if (e.key === 'Tab') {
       e.preventDefault();
       move(0, e.shiftKey ? -1 : 1);
+      return;
+    }
+    if (mod && e.key.toLowerCase() === 'a') {
+      e.preventDefault();
+      selectAll();
+      return;
+    }
+    if (mod && !readOnly && onFill && ['d', 'r'].includes(e.key.toLowerCase())) {
+      e.preventDefault();
+      onFill(e.key.toLowerCase() === 'd' ? 'down' : 'right');
       return;
     }
     if (e.key === 'Home') {
@@ -253,7 +333,7 @@ export function SheetGrid({
     }
     if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
-      if (active) onClear?.(selection.r, selection.c);
+      clearSelection();
       return;
     }
     if (e.key.length === 1 && !mod && !e.altKey) {
@@ -262,21 +342,74 @@ export function SheetGrid({
     }
   };
 
+  const selectAll = () =>
+    onSelect({ r: 0, c: 0, to: { r: Math.max(0, dataRows - 1), c: Math.max(0, dataCols - 1) } });
+
+  const clearSelection = () => {
+    if (!hasRange) {
+      if (active) onClear?.(selection.r, selection.c);
+    } else if (onClearRange) onClearRange([sr1, sc1, sr2, sc2]);
+    else
+      for (let r = sr1; r <= sr2; r++)
+        for (let c = sc1; c <= sc2; c++) if (cell(r, c)) onClear?.(r, c);
+  };
+
+  // Copy as tab-separated text of what the cells show. The formulas are remembered too,
+  // so pasting inside MyDocs moves their references like a spreadsheet does.
+  const copyRange = (e: React.ClipboardEvent) => {
+    const shownRows: string[][] = [];
+    const editRows: string[][] = [];
+    for (let r = sr1; r <= sr2; r++) {
+      shownRows.push(
+        Array.from({ length: sc2 - sc1 + 1 }, (_, k) => displayValue(cell(r, sc1 + k))),
+      );
+      editRows.push(Array.from({ length: sc2 - sc1 + 1 }, (_, k) => editValue(cell(r, sc1 + k))));
+    }
+    const text = shownRows.map((row) => row.join('\t')).join('\n');
+    e.clipboardData.setData('text/plain', text);
+    lastCopy = { text, r: sr1, c: sc1, rows: editRows };
+  };
+
   const onCopy = (e: React.ClipboardEvent) => {
     if (editing) return;
     e.preventDefault();
-    e.clipboardData.setData('text/plain', displayValue(active));
+    copyRange(e);
+  };
+
+  const onCut = (e: React.ClipboardEvent) => {
+    if (editing) return;
+    e.preventDefault();
+    copyRange(e);
+    if (!readOnly) clearSelection();
   };
 
   const onPasteEvent = (e: React.ClipboardEvent) => {
     if (editing || readOnly || !onPaste) return;
     e.preventDefault();
     const text = e.clipboardData.getData('text/plain').replace(/\r\n?/g, '\n').replace(/\n$/, '');
-    onPaste(
-      selection.r,
-      selection.c,
-      text.split('\n').map((l) => l.split('\t')),
-    );
+    let block: string[][];
+    if (lastCopy && lastCopy.text === text) {
+      const { r: fr, c: fc, rows: copied } = lastCopy;
+      block = copied.map((line, i) =>
+        line.map((t, j) =>
+          t.startsWith('=') && t.length > 1
+            ? `=${shiftFormula(t.slice(1), sr1 + i - fr, sc1 + j - fc)}`
+            : t,
+        ),
+      );
+    } else block = text.split('\n').map((l) => l.split('\t'));
+    // One value pasted over a selected range fills the range, as in a spreadsheet.
+    if (hasRange && block.length === 1 && block[0]!.length === 1) {
+      const one = block[0]![0]!;
+      block = Array.from({ length: sr2 - sr1 + 1 }, (_, i) =>
+        Array.from({ length: sc2 - sc1 + 1 }, (_, j) =>
+          one.startsWith('=') && one.length > 1 && lastCopy && lastCopy.text === text
+            ? `=${shiftFormula(one.slice(1), i, j)}`
+            : one,
+        ),
+      );
+    }
+    onPaste(sr1, sc1, block);
   };
 
   const askCount = async (r: number, where: 'above' | 'below') => {
@@ -351,14 +484,144 @@ export function SheetGrid({
         ? `=${c.f}`
         : undefined;
 
+  const stats = useMemo(
+    () => (hasRange ? rangeStats(sheet, [sr1, sc1, sr2, sc2], !!textOnly) : null),
+    [hasRange, sheet, sr1, sc1, sr2, sc2, textOnly],
+  );
+
+  const startResize = (c: number, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const x0 = e.clientX;
+    const w0 = widths[c]!;
+    const move = (ev: MouseEvent) =>
+      setColW((prev) => ({ ...prev, [c]: Math.max(40, Math.min(800, w0 + ev.clientX - x0)) }));
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  };
+  // Double-click the edge of a column header to fit the column to its longest text.
+  const autofit = (c: number) => {
+    let longest = 0;
+    for (let r = 0; r < Math.min(dataRows, 2000); r++)
+      for (const line of displayValue(cell(r, c)).split('\n'))
+        longest = Math.max(longest, line.length);
+    setColW((prev) => ({ ...prev, [c]: Math.max(64, Math.min(600, longest * CHAR_W + 24)) }));
+  };
+
+  const renderRow = (r: number, top: number) => (
+    <div
+      key={r}
+      className="absolute left-0 flex"
+      style={{ top, height: rowH(r), width: totalW }}
+      role="row"
+      aria-rowindex={r + 1}
+    >
+      <div
+        role="rowheader"
+        className={`sheet-rownum sticky left-0 z-10 ${r >= sr1 && r <= sr2 ? 'is-active' : ''} ${onRows && !readOnly ? 'is-actionable' : ''}`}
+        style={{ width: NUM_W, height: rowH(r) }}
+        title={onRows && !readOnly ? 'Click for row options' : undefined}
+        aria-haspopup={onRows && !readOnly ? 'menu' : undefined}
+        onMouseDown={(e) => {
+          if (!onRows || readOnly) return;
+          e.preventDefault();
+          if (editing) commit(editing.value);
+          openRowMenu(r, e.currentTarget.getBoundingClientRect());
+        }}
+        onContextMenu={(e) => {
+          if (!onRows || readOnly) return;
+          e.preventDefault();
+          openRowMenu(r, { x: e.clientX, y: e.clientY });
+        }}
+      >
+        {rowLabels?.[r] ?? r + 1}
+      </div>
+      {widths.map((w, c) => {
+        const v = cell(r, c);
+        const isActive = r === selection.r && c === selection.c;
+        const inRange = hasRange && !isActive && r >= sr1 && r <= sr2 && c >= sc1 && c <= sc2;
+        const shown = displayValue(v);
+        const em =
+          markdownText && typeof v?.v === 'string' && v.f === undefined
+            ? parseEmphasis(shown)
+            : null;
+        const numeric = typeof v?.v === 'number';
+        return (
+          <div
+            key={c}
+            role="gridcell"
+            aria-selected={isActive || inRange}
+            aria-colindex={c + 1}
+            data-cell={addr(r, c)}
+            title={cellTitle(v) ?? (!wrap && shown.length > 20 ? shown : undefined)}
+            className={`sheet-cell ${wrap ? 'is-wrapped' : ''} ${isActive ? 'is-active' : ''} ${inRange ? 'is-in-range' : ''} ${c < frozenCols ? 'is-frozen' : ''} ${c === frozenCols - 1 ? 'is-frozen-edge' : ''} ${r === frozenRows - 1 ? 'is-frozen-bottom' : ''} ${numeric || align?.[c] === 'right' ? 'text-right' : align?.[c] === 'center' ? 'text-center' : ''} ${v && isError(v.v) ? 'text-danger' : ''} ${v?.stale ? 'is-stale' : ''}`}
+            style={{
+              width: w,
+              height: rowH(r),
+              ...(c < frozenCols ? { position: 'sticky', left: lefts[c]!, zIndex: 5 } : null),
+            }}
+            onMouseDown={(e) => {
+              if (editing && isActive) return;
+              e.preventDefault();
+              if (editing) commit(editing.value);
+              if (e.shiftKey) onSelect({ r: selection.r, c: selection.c, to: { r, c } });
+              else {
+                dragFrom.current = { r, c };
+                onSelect({ r, c });
+              }
+              scroller.current?.focus({ preventScroll: true });
+            }}
+            onMouseEnter={(e) => {
+              const from = dragFrom.current;
+              if (!from || e.buttons !== 1 || editing) return;
+              onSelect({
+                r: from.r,
+                c: from.c,
+                to: from.r === r && from.c === c ? undefined : { r, c },
+              });
+            }}
+            onDoubleClick={() => !readOnly && setEditing({ value: editValue(v), from: 'cell' })}
+          >
+            {isActive && editing?.from === 'cell' ? (
+              <CellEditor
+                value={editing.value}
+                onChange={(value) => setEditing({ value, from: 'cell' })}
+                onCommit={(value, then) => commit(value, then)}
+                onCancel={() => {
+                  setEditing(null);
+                  scroller.current?.focus();
+                }}
+              />
+            ) : (
+              <span
+                className={`${wrap ? 'cell-lines' : 'truncate'} ${headerRow && r === 0 ? 'font-semibold' : ''} ${em?.bold ? 'font-bold' : ''} ${em?.italic ? 'italic' : ''} ${em?.strike ? 'line-through' : ''}`}
+                style={
+                  wrap && maxLines !== Infinity
+                    ? { WebkitLineClamp: maxLines, lineClamp: maxLines }
+                    : undefined
+                }
+              >
+                {em ? em.text : shown}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-hairline-soft px-2 py-1">
         <span
-          className="w-14 shrink-0 text-center font-mono text-caption text-steel"
+          className="min-w-14 shrink-0 text-center font-mono text-caption text-steel"
           aria-label="Selected cell"
         >
-          {addr(selection.r, selection.c)}
+          {hasRange ? `${addr(sr1, sc1)}:${addr(sr2, sc2)}` : addr(selection.r, selection.c)}
         </span>
         <span className="font-mono text-caption text-stone" aria-hidden>
           fx
@@ -407,9 +670,11 @@ export function SheetGrid({
         aria-rowcount={rows}
         aria-colcount={cols}
         aria-readonly={readOnly}
+        aria-multiselectable={hasRange || undefined}
         data-testid="sheet-grid"
         onKeyDown={onGridKey}
         onCopy={onCopy}
+        onCut={onCut}
         onPaste={onPasteEvent}
       >
         <div style={{ height: tops[rows], width: totalW, position: 'relative' }}>
@@ -419,104 +684,83 @@ export function SheetGrid({
             style={{ height: ROW_H, width: totalW }}
             role="row"
           >
-            <div className="sheet-corner sticky left-0 z-30" style={{ width: NUM_W }} />
+            <div
+              className="sheet-corner sticky left-0 z-30 cursor-pointer"
+              style={{ width: NUM_W }}
+              title="Select all"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                if (editing) commit(editing.value);
+                selectAll();
+                scroller.current?.focus({ preventScroll: true });
+              }}
+            />
             {widths.map((w, c) => (
               <div
                 key={c}
                 role="columnheader"
-                className={`sheet-head ${c === selection.c ? 'is-active' : ''}`}
-                style={{ width: w }}
+                className={`sheet-head relative cursor-pointer ${c >= sc1 && c <= sc2 ? 'is-active' : ''} ${c < frozenCols ? 'is-frozen' : ''}`}
+                style={{
+                  width: w,
+                  ...(c < frozenCols ? { position: 'sticky', left: lefts[c]!, zIndex: 6 } : null),
+                }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  if (editing) commit(editing.value);
+                  const bottom = Math.max(0, dataRows - 1);
+                  onSelect(
+                    e.shiftKey
+                      ? { r: 0, c: selection.c, to: { r: bottom, c } }
+                      : { r: 0, c, to: bottom > 0 ? { r: bottom, c } : undefined },
+                  );
+                  scroller.current?.focus({ preventScroll: true });
+                }}
               >
                 {colName(c)}
+                <span
+                  className="sheet-resizer"
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label={`Resize column ${colName(c)}`}
+                  onMouseDown={(e) => startResize(c, e)}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    autofit(c);
+                  }}
+                />
               </div>
             ))}
           </div>
-          {Array.from({ length: Math.max(0, last - first) }, (_, k) => {
-            const r = first + k;
-            return (
-              <div
-                key={r}
-                className="absolute left-0 flex"
-                style={{ top: rowTop(r), height: rowH(r), width: totalW }}
-                role="row"
-                aria-rowindex={r + 1}
-              >
-                <div
-                  role="rowheader"
-                  className={`sheet-rownum sticky left-0 z-10 ${r === selection.r ? 'is-active' : ''} ${onRows && !readOnly ? 'is-actionable' : ''}`}
-                  style={{ width: NUM_W, height: rowH(r) }}
-                  title={onRows && !readOnly ? 'Click for row options' : undefined}
-                  aria-haspopup={onRows && !readOnly ? 'menu' : undefined}
-                  onMouseDown={(e) => {
-                    if (!onRows || readOnly) return;
-                    e.preventDefault();
-                    if (editing) commit(editing.value);
-                    openRowMenu(r, e.currentTarget.getBoundingClientRect());
-                  }}
-                  onContextMenu={(e) => {
-                    if (!onRows || readOnly) return;
-                    e.preventDefault();
-                    openRowMenu(r, { x: e.clientX, y: e.clientY });
-                  }}
-                >
-                  {r + 1}
-                </div>
-                {widths.map((w, c) => {
-                  const v = cell(r, c);
-                  const isActive = r === selection.r && c === selection.c;
-                  const shown = displayValue(v);
-                  const numeric = typeof v?.v === 'number';
-                  return (
-                    <div
-                      key={c}
-                      role="gridcell"
-                      aria-selected={isActive}
-                      aria-colindex={c + 1}
-                      data-cell={addr(r, c)}
-                      title={cellTitle(v) ?? (!wrap && shown.length > 20 ? shown : undefined)}
-                      className={`sheet-cell ${wrap ? 'is-wrapped' : ''} ${isActive ? 'is-active' : ''} ${numeric || align?.[c] === 'right' ? 'text-right' : align?.[c] === 'center' ? 'text-center' : ''} ${v && isError(v.v) ? 'text-danger' : ''} ${headerRow && r === 0 ? 'font-semibold' : ''} ${v?.stale ? 'is-stale' : ''}`}
-                      style={{ width: w, height: rowH(r) }}
-                      onMouseDown={(e) => {
-                        if (editing && isActive) return;
-                        e.preventDefault();
-                        if (editing) commit(editing.value);
-                        onSelect({ r, c });
-                        scroller.current?.focus({ preventScroll: true });
-                      }}
-                      onDoubleClick={() =>
-                        !readOnly && setEditing({ value: editValue(v), from: 'cell' })
-                      }
-                    >
-                      {isActive && editing?.from === 'cell' ? (
-                        <CellEditor
-                          value={editing.value}
-                          onChange={(value) => setEditing({ value, from: 'cell' })}
-                          onCommit={(value, then) => commit(value, then)}
-                          onCancel={() => {
-                            setEditing(null);
-                            scroller.current?.focus();
-                          }}
-                        />
-                      ) : (
-                        <span
-                          className={wrap ? 'cell-lines' : 'truncate'}
-                          style={
-                            wrap && maxLines !== Infinity
-                              ? { WebkitLineClamp: maxLines, lineClamp: maxLines }
-                              : undefined
-                          }
-                        >
-                          {shown}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })}
+          {frozenRows > 0 && (
+            <div
+              className="sheet-frozen-rows sticky z-[19]"
+              style={{ top: ROW_H, height: rowTop(frozenRows) - ROW_H, width: totalW }}
+            >
+              {Array.from({ length: frozenRows }, (_, r) => renderRow(r, rowTop(r) - ROW_H))}
+            </div>
+          )}
+          {Array.from({ length: Math.max(0, last - first) }, (_, k) =>
+            renderRow(first + k, rowTop(first + k)),
+          )}
         </div>
       </div>
+      {stats && stats.count > 0 && (
+        <div
+          className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-0.5 border-t border-hairline-soft bg-surface-soft px-3 py-1 text-caption text-steel"
+          data-testid="sheet-stats"
+          aria-live="polite"
+        >
+          <span>Count: {stats.count.toLocaleString()}</span>
+          {stats.numbers > 0 && (
+            <>
+              <span>Sum: {displayValue({ v: stats.sum })}</span>
+              <span>Average: {displayValue({ v: stats.sum / stats.numbers })}</span>
+              <span>Min: {displayValue({ v: stats.min })}</span>
+              <span>Max: {displayValue({ v: stats.max })}</span>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
