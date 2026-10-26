@@ -84,3 +84,24 @@ test('dropping files anywhere shows an overlay and imports them', async ({ page 
   await expect(page).toHaveURL(/#\/doc\//);
   await expect(page.locator('.cm-content')).toContainText('Hello from a drop.');
 });
+
+test('dragging an opened image never re-imports it', async ({ page }) => {
+  await freshApp(page);
+  await page.getByRole('button', { name: 'Import' }).first().click();
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByRole('menuitem', { name: 'Files…' }).click();
+  // 1x1 transparent PNG.
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  await (await chooser).setFiles({ name: 'photo.png', mimeType: 'image/png', buffer: png });
+  const img = page.getByRole('img', { name: 'photo.png' });
+  await expect(img).toBeVisible();
+  const prevented = await img.evaluate((el) => {
+    const ev = new DragEvent('dragstart', { bubbles: true, cancelable: true });
+    el.dispatchEvent(ev);
+    return ev.defaultPrevented;
+  });
+  expect(prevented).toBe(true);
+});
