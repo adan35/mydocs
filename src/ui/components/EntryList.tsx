@@ -7,6 +7,7 @@ import { FileIcon } from './FileIcon';
 import { openMenu, openMenuAt, type MenuEntry } from './Menu';
 import { entryMenu } from '../entry-menu';
 import { relativeTime, useTree } from '../hooks';
+import { entryDragProps } from '../layout/FileTree';
 
 interface Props {
   entries: Entry[];
@@ -36,6 +37,8 @@ export function EntryList({
 }: Props) {
   const tree = useTree()!;
   const open = onOpen ?? ((e: Entry) => void openEntry(e.id));
+  // Entries can be dragged onto folders, Trash or Favorites from any list; trashed ones can't.
+  const drag = dragProps ?? ((e: Entry) => (tree.isTrashed(e.id) ? {} : entryDragProps(e)));
   const onClick = (e: Entry, ev: React.MouseEvent) => {
     if (onSelect && (ev.metaKey || ev.ctrlKey)) return onSelect(e, 'toggle');
     if (onSelect && ev.shiftKey) return onSelect(e, 'range');
@@ -57,7 +60,7 @@ export function EntryList({
               onClick={(ev) => onClick(e, ev)}
               onContextMenu={ctx(e)}
               title={tree.pathOf(e.id)}
-              {...dragProps?.(e)}
+              {...drag(e)}
             >
               <span className="flex size-9 items-center justify-center rounded-lg bg-surface text-steel">
                 <FileIcon entry={e} size={18} />
@@ -103,7 +106,7 @@ export function EntryList({
           key={e.id}
           className={`group flex items-center gap-1 pr-1.5 ${selected?.has(e.id) ? 'bg-primary-soft' : 'hover:bg-surface-soft'}`}
           onContextMenu={ctx(e)}
-          {...dragProps?.(e)}
+          {...drag(e)}
         >
           <button
             type="button"

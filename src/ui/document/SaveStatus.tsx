@@ -31,40 +31,44 @@ export function SaveStatus({ id }: { id: EntryId }) {
         : status === 'unsaved'
           ? 'Unsaved'
           : 'Saved';
+  const tone =
+    status === 'error'
+      ? 'danger'
+      : status === 'unsaved'
+        ? 'warning'
+        : status === 'saved'
+          ? 'success'
+          : undefined;
+  const title =
+    status === 'error'
+      ? `${error ?? 'Unable to save.'} Keep this document open, retry, or export your changes.`
+      : status === 'saved'
+        ? `${online ? '' : 'Offline: '}Saved on this device. Export a backup for another copy.`
+        : status === 'saving'
+          ? 'Saving your changes on this device…'
+          : 'Your latest changes have not been saved yet.';
   return (
-    <span
-      className="flex items-center gap-1.5 text-caption whitespace-nowrap text-steel"
-      role="status"
-      aria-live="polite"
-      title={
-        status === 'error'
-          ? `${error ?? 'Unable to save.'} Keep this document open, retry, or export your changes.`
-          : status === 'saved'
-            ? `${online ? '' : 'Offline: '}Saved on this device. Export a backup for another copy.`
-            : status === 'saving'
-              ? 'Saving your changes on this device…'
-              : 'Your latest changes have not been saved yet.'
-      }
-    >
+    <span role="status" aria-live="polite" className="flex shrink-0" title={title}>
       {status === 'error' ? (
         <button
           type="button"
-          className="flex items-center gap-1 text-danger hover:underline"
+          className="status-pill"
+          data-tone={tone}
           onClick={() => void editorActions.flush(id)}
         >
-          <AlertCircle size={14} aria-hidden /> {label} · Retry
+          <AlertCircle size={13} aria-hidden /> {label} · Retry
         </button>
       ) : (
-        <>
+        <span className="status-pill" data-tone={tone}>
           {status === 'saving' ? (
             <Loader2 size={13} className="animate-spin" aria-hidden />
           ) : status === 'saved' ? (
-            <Check size={13} aria-hidden />
+            <Check size={13} strokeWidth={2.5} aria-hidden />
           ) : (
-            <span className="size-1.5 rounded-full bg-warning" aria-hidden />
+            <span className="status-dot" aria-hidden />
           )}
           <span>{label}</span>
-        </>
+        </span>
       )}
     </span>
   );
@@ -96,7 +100,8 @@ export function DiskStatus({ id }: { id: EntryId }) {
     return (
       <button
         type="button"
-        className="btn btn-secondary h-7 gap-1.5 px-2 text-caption whitespace-nowrap text-warning"
+        className="status-pill"
+        data-tone="warning"
         title={`"${link.fileName}" changed on your computer while this document had edits that aren't in the file. Choose which version to keep.`}
         aria-haspopup="menu"
         data-testid="disk-conflict"
@@ -128,7 +133,8 @@ export function DiskStatus({ id }: { id: EntryId }) {
     return (
       <button
         type="button"
-        className={`btn h-7 gap-1.5 px-2 text-caption whitespace-nowrap ${permissionNeeded ? 'btn-secondary' : 'btn-ghost text-danger'}`}
+        className="status-pill"
+        data-tone={permissionNeeded ? 'warning' : 'danger'}
         title={
           permissionNeeded
             ? link.binary
@@ -155,7 +161,8 @@ export function DiskStatus({ id }: { id: EntryId }) {
   }
   return (
     <span
-      className={`flex items-center gap-1 text-caption whitespace-nowrap ${fresh ? 'text-primary' : 'text-steel'}`}
+      className="status-pill shrink-0"
+      data-tone="primary"
       title={
         link.binary
           ? `Linked to "${link.fileName}" on your computer. Changes made there show here.`

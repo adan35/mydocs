@@ -62,7 +62,7 @@ export const DEFAULT_SETTINGS: Settings = {
   typewriter: false,
   dailyFolder: 'Daily notes',
   syncScroll: true,
-  tableRowHeight: 'default',
+  tableRowHeight: 'full',
 };
 
 /** Most lines a cell shows at each row height. */
@@ -86,6 +86,9 @@ function load(): Partial<Settings> {
   // Version 2 made the full-width text column the default; earlier saves stored the old
   // default ("normal") whether or not it was picked, so they move to the new one.
   if ((saved.v ?? 1) < 2 && saved.readingWidth === 'normal') saved.readingWidth = 'full';
+  // Version 3 shows whole table rows by default; earlier saves stored the old one-line
+  // default ("default") whether or not it was picked.
+  if ((saved.v ?? 1) < 3 && saved.tableRowHeight === 'default') saved.tableRowHeight = 'full';
   delete saved.v;
   if (saved.palette !== undefined && !isPaletteId(saved.palette)) delete saved.palette;
   if (saved.tableRowHeight !== undefined && !(saved.tableRowHeight in ROW_LINES))
@@ -99,10 +102,10 @@ export const useSettings = create<SettingsState>((set) => ({
   update(patch) {
     set(patch);
     const { update: _u, reset: _r, ...rest } = useSettings.getState();
-    prefs.set(KEY, { ...rest, v: 2 });
+    prefs.set(KEY, { ...rest, v: 3 });
   },
   reset() {
     set(DEFAULT_SETTINGS);
-    prefs.set(KEY, { ...DEFAULT_SETTINGS, v: 2 });
+    prefs.set(KEY, { ...DEFAULT_SETTINGS, v: 3 });
   },
 }));

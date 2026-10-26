@@ -9,6 +9,7 @@ import { FileIcon } from '../components/FileIcon';
 import { openMenu } from '../components/Menu';
 import { useTree } from '../hooks';
 import { reopenClosedTab } from '../doc-commands';
+import { TREE_DRAG_TYPE } from './FileTree';
 
 /** Open documents: open, close, pin, reorder, close others/right/all, reopen. */
 export function TabBar() {
@@ -147,6 +148,7 @@ export function TabBar() {
               setDragIndex(i);
               ev.dataTransfer.effectAllowed = 'move';
               ev.dataTransfer.setData('application/x-mydoc-tab', String(i));
+              ev.dataTransfer.setData(TREE_DRAG_TYPE, id);
             }}
             onDragEnd={() => setDragIndex(null)}
             onDragOver={(ev) => {

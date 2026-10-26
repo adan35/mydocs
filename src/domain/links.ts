@@ -83,3 +83,31 @@ export function rewriteLinks(src: string, replace: (link: RawLink) => string | n
   }
   return last === 0 ? src : out + src.slice(last);
 }
+
+export interface ExternalLink {
+  href: string;
+  /** The link text, or the address for autolinks. */
+  label: string;
+}
+
+const AUTOLINK_RE = /<((?:https?|mailto):[^>\s]+)>/gi;
+
+/** Web and mail links in Markdown (`[text](https://…)` and `<https://…>`), skipping code. */
+export function extractExternalLinks(src: string): ExternalLink[] {
+  const seen = new Map<string, ExternalLink>();
+  for (const line of proseLines(src)) {
+    const text = blankInlineCode(line.text);
+    for (const m of text.matchAll(MD_LINK_RE)) {
+      if (m[1]) continue;
+      const href = m[2]!.replace(/^<|>$/g, '');
+      // Only web and mail addresses: the panel opens these, so no javascript: or data:.
+      if (!/^(?:https?:|mailto:)/i.test(href) || seen.has(href)) continue;
+      const label = m[0].slice(1, m[0].indexOf('](')).replace(/\\(.)/g, '$1').trim();
+      seen.set(href, { href, label: label || href });
+    }
+    for (const m of text.matchAll(AUTOLINK_RE)) {
+      if (!seen.has(m[1]!)) seen.set(m[1]!, { href: m[1]!, label: m[1]! });
+    }
+  }
+  return [...seen.values()];
+}

@@ -24,6 +24,45 @@ interface Row {
 const OVERSCAN = 12;
 export const TREE_DRAG_TYPE = 'application/x-mydoc-entry';
 
+/** Drag props that carry an entry, so it can be dropped on folders, Trash or Favorites. */
+export const entryDragProps = (e: Entry) => ({
+  draggable: true,
+  onDragStart: (ev: React.DragEvent) => {
+    ev.dataTransfer.setData(TREE_DRAG_TYPE, e.id);
+    ev.dataTransfer.setData('text/plain', e.name);
+    ev.dataTransfer.effectAllowed = 'move';
+  },
+});
+
+/**
+ * A drop target for entries dragged from the tree, lists or tabs (Trash, Favorites).
+ * `over` is true while an entry is held over it.
+ */
+export function useEntryDrop(onDrop: (id: EntryId) => void) {
+  const [over, setOver] = useState(false);
+  const props = {
+    onDragOver: (e: React.DragEvent) => {
+      if (!e.dataTransfer.types.includes(TREE_DRAG_TYPE)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = 'move';
+      setOver(true);
+    },
+    onDragLeave: (e: React.DragEvent) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver(false);
+    },
+    onDrop: (e: React.DragEvent) => {
+      setOver(false);
+      const id = e.dataTransfer.getData(TREE_DRAG_TYPE);
+      if (!id) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onDrop(id as EntryId);
+    },
+  };
+  return { over, props };
+}
+
 /**
  * The workspace tree. Virtualized (only visible rows render) so workspaces with
  * thousands of entries stay smooth. Implements the WAI-ARIA tree pattern.

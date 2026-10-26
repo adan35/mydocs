@@ -8,7 +8,7 @@ import {
   Clock,
   Search,
 } from 'lucide-react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { Entry } from '@/domain/types';
 import { useApp } from '@/app/app-store';
 import { useUi } from '@/app/ui-store';
@@ -22,6 +22,8 @@ import { WorkspaceSafety } from '../components/WorkspaceSafety';
 import './workspace-views.css';
 import { openMenuAt } from '../components/Menu';
 import { importSubmenu } from '../entry-menu';
+import { pickImport } from '../import-pickers';
+import { useEntryDrop } from '../layout/FileTree';
 import { formatShortcut, relativeTime, useLayout, useTree } from '../hooks';
 
 function greeting() {
@@ -70,6 +72,9 @@ export function HomeView() {
     return out.slice(0, 6);
   }, [recentDocs, modified, tree]);
   const continueDoc = recentDocs[0] ?? modified[0];
+  const favDrop = useEntryDrop((id) => {
+    if (!tree.get(id)?.favorite) void A.toggleFavorite(id);
+  });
   const total = tree.liveFiles().length;
 
   return (
@@ -105,10 +110,12 @@ export function HomeView() {
         <QuickAction
           icon={<Upload />}
           label="Import"
-          hint="or drag in"
+          hint="Files, folders, zip"
           onClick={(el) => openMenuAt(el, importSubmenu(null), 'Import')}
         />
       </section>
+
+      {!phone && <DropZone />}
 
       {continueDoc && (
         <section className="mb-8">
@@ -163,7 +170,10 @@ export function HomeView() {
           )}
         </section>
         <aside className="space-y-8">
-          <section>
+          <section
+            className={`-mx-2 rounded-lg px-2 ${favDrop.over ? 'drop-target' : ''}`}
+            {...favDrop.props}
+          >
             <h2 className="section-label mb-2 flex items-center gap-1.5">
               <Star size={12} aria-hidden /> Favorites
             </h2>
@@ -175,7 +185,7 @@ export function HomeView() {
               </ul>
             ) : (
               <p className="text-caption text-steel">
-                Star documents and folders to keep them one click away.
+                Star documents and folders, or drag them here, to keep them one click away.
               </p>
             )}
           </section>
@@ -192,6 +202,47 @@ export function HomeView() {
         </aside>
       </div>
     </Page>
+  );
+}
+
+/** Tells people they can drag files and folders in; the drop itself is handled app-wide. */
+function DropZone() {
+  const [over, setOver] = useState(false);
+  return (
+    <section
+      aria-label="Drag and drop"
+      className="drop-zone mb-8"
+      data-over={over || undefined}
+      data-testid="home-drop-zone"
+      onDragEnter={(e) => e.dataTransfer.types.includes('Files') && setOver(true)}
+      onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setOver(false)}
+      onDrop={() => setOver(false)}
+    >
+      <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary-soft-ink">
+        <Upload size={20} aria-hidden />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[15px] font-medium text-ink">
+          Drag and drop files or folders here
+        </span>
+        <span className="block text-caption text-steel">
+          Markdown, Word, Excel, PDF, images and more. Drop anywhere in My Doc, or onto a folder in
+          the sidebar to put them there.
+        </span>
+      </span>
+      <span className="flex shrink-0 gap-2">
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() => pickImport('files', null)}
+        >
+          Choose files
+        </button>
+        <button type="button" className="btn btn-ghost" onClick={() => pickImport('folder', null)}>
+          Choose folder
+        </button>
+      </span>
+    </section>
   );
 }
 
