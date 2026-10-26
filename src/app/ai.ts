@@ -41,6 +41,62 @@ export const useAiSettings = create<AiSettings & { update(p: Partial<AiSettings>
 
 export class AiError extends Error {}
 
+export interface AiOptions {
+  signal?: AbortSignal;
+  /** Gets the text as it arrives. The shared key returns the whole text at once. */
+  onText?(chunk: string): void;
+}
+
+/** Reads a provider's server-sent events and passes each piece of text on. */
+async function readStream(
+  res: Response,
+  provider: AiProvider,
+  onText: (chunk: string) => void,
+): Promise<string> {
+  const reader = res.body?.getReader();
+  if (!reader) return '';
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let all = '';
+  const handle = (line: string) => {
+    if (!line.startsWith('data:')) return;
+    const data = line.slice(5).trim();
+    if (!data || data === '[DONE]') return;
+    let ev: {
+      type?: string;
+      delta?: { text?: string };
+      choices?: { delta?: { content?: string } }[];
+      error?: { message?: string };
+    };
+    try {
+      ev = JSON.parse(data);
+    } catch {
+      return;
+    }
+    if (ev.error) throw new AiError(ev.error.message ?? 'The AI provider returned an error.');
+    const chunk =
+      provider === 'anthropic'
+        ? ev.type === 'content_block_delta'
+          ? (ev.delta?.text ?? '')
+          : ''
+        : (ev.choices?.[0]?.delta?.content ?? '');
+    if (chunk) {
+      all += chunk;
+      onText(chunk);
+    }
+  };
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+    lines.forEach(handle);
+  }
+  handle(buffer);
+  return all;
+}
+
 /** Where a request would be paid for, for showing the user. */
 export function aiSource(): 'own-key' | 'default-key' | 'sign-in' | 'none' {
   if (useAiSettings.getState().key.trim()) return 'own-key';
@@ -56,15 +112,18 @@ export function aiSource(): 'own-key' | 'default-key' | 'sign-in' | 'none' {
  */
 export async function complete(
   req: AiRequest,
+  opts: AiOptions = {},
 ): Promise<{ text: string; via: 'own-key' | 'default-key' }> {
   const { provider, model, key } = useAiSettings.getState();
   const maxTokens = Math.min(4096, Math.max(1, req.maxTokens ?? 1024));
   if (key.trim()) {
     const m = model.trim() || AI_PROVIDERS[provider].model;
+    const stream = !!opts.onText;
     const call = () =>
       provider === 'anthropic'
         ? fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
+            signal: opts.signal,
             headers: {
               'x-api-key': key.trim(),
               'anthropic-version': '2023-06-01',
@@ -75,16 +134,19 @@ export async function complete(
             body: JSON.stringify({
               model: m,
               max_tokens: maxTokens,
+              ...(stream ? { stream } : {}),
               ...(req.system ? { system: req.system } : {}),
               messages: req.messages,
             }),
           })
         : fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
+            signal: opts.signal,
             headers: { authorization: `Bearer ${key.trim()}`, 'content-type': 'application/json' },
             body: JSON.stringify({
               model: m,
               max_completion_tokens: maxTokens,
+              ...(stream ? { stream } : {}),
               messages: [
                 ...(req.system ? [{ role: 'system', content: req.system }] : []),
                 ...req.messages,
@@ -94,9 +156,12 @@ export async function complete(
     let res: Response;
     try {
       res = await call();
-    } catch {
+    } catch (e) {
+      if (opts.signal?.aborted) throw e;
       throw new AiError('Could not reach the AI provider. Check your connection.');
     }
+    if (stream && res.ok)
+      return { text: await readStream(res, provider, opts.onText!), via: 'own-key' };
     const data = (await res.json().catch(() => null)) as {
       error?: { message?: string };
       content?: { text?: string }[];
@@ -120,7 +185,11 @@ export async function complete(
     );
   }
   try {
-    const r = await api<{ text: string }>('/api/ai', { body: { ...req, maxTokens } });
+    const r = await api<{ text: string }>('/api/ai', {
+      body: { ...req, maxTokens },
+      signal: opts.signal,
+    });
+    opts.onText?.(r.text);
     return { text: r.text, via: 'default-key' };
   } finally {
     void refreshAccount();

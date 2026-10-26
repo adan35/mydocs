@@ -4,6 +4,7 @@ import { useEditor } from '@/app/editor-store';
 import { useUi } from '@/app/ui-store';
 import { openMenuAt } from '../components/Menu';
 import * as A from '@/app/actions';
+import { toggleAon } from '@/app/aon/chat';
 import {
   Clock,
   Star,
@@ -16,6 +17,7 @@ import {
   Moon,
   Sun,
   Command,
+  Sparkles,
   CalendarDays,
   Palette,
   StickyNote,
@@ -87,6 +89,7 @@ export function MobileNav() {
               { label: 'New document', icon: <FilePlus2 />, onSelect: () => void A.newDocument() },
               { label: 'New folder', icon: <FolderPlus />, onSelect: () => void A.newFolder() },
               { label: 'Import', icon: <Upload />, submenu: importSubmenu(null) },
+              { label: 'Ask AON', icon: <Sparkles />, onSelect: toggleAon },
               {
                 label: "Today's note",
                 icon: <CalendarDays />,

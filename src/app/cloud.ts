@@ -50,7 +50,7 @@ export class ApiError extends Error {
 /** Calls the sharing API as the signed-in user. A rejected session signs the user out. */
 export async function api<T>(
   path: string,
-  init: { method?: string; body?: unknown; key?: string } = {},
+  init: { method?: string; body?: unknown; key?: string; signal?: AbortSignal } = {},
 ): Promise<T> {
   if (!cloudAvailable) throw new ApiError('Sharing is not set up on this site.', 0);
   const { token } = useAccount.getState();
@@ -64,8 +64,10 @@ export async function api<T>(
         ...(token ? { authorization: `Bearer ${token}` } : {}),
       },
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
+      signal: init.signal,
     });
-  } catch {
+  } catch (e) {
+    if (init.signal?.aborted) throw e;
     throw new ApiError('Could not reach the sharing service. Check your connection.', 0);
   }
   const data = (await res.json().catch(() => null)) as (T & { error?: string }) | null;

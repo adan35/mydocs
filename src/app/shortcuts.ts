@@ -25,6 +25,7 @@ export const SHORTCUTS = {
   dailyNote: 'Mod+Shift+D',
   quickNote: 'Alt+K',
   quickList: 'Alt+Shift+K',
+  aon: 'Mod+J',
 } as const;
 
 export const SHORTCUT_GROUPS: { title: string; items: [string, string][] }[] = [
@@ -41,6 +42,7 @@ export const SHORTCUT_GROUPS: { title: string; items: [string, string][] }[] = [
       ['Quick checklist', SHORTCUTS.quickList],
       ['Toggle sidebar', SHORTCUTS.toggleSidebar],
       ['Toggle side panel', SHORTCUTS.togglePanel],
+      ['Ask AON', SHORTCUTS.aon],
       ['Close overlays', 'Esc'],
     ],
   },

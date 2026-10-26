@@ -5,6 +5,7 @@ import { useRouter, navigate } from '@/app/router';
 import { editorActions, useEditor } from '@/app/editor-store';
 import * as A from '@/app/actions';
 import { quickNote, useNotesUi } from '@/app/notes';
+import { toggleAon } from '@/app/aon/chat';
 import { isMac } from '../hooks';
 import { reopenClosedTab, sendDocCommand, toggleSidePanel } from '../doc-commands';
 
@@ -57,6 +58,7 @@ export function useGlobalShortcuts() {
             : ui.setSidebar(!ui.sidebarOpen),
         );
       if (m(SHORTCUTS.togglePanel)) return run(toggleSidePanel);
+      if (m(SHORTCUTS.aon)) return run(toggleAon);
       if (m(SHORTCUTS.reopenTab)) return run(() => void reopenClosedTab());
       if (m(SHORTCUTS.save)) {
         const id = useEditor.getState().activeId;
