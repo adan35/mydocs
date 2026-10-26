@@ -11,6 +11,7 @@ import { Sidebar } from './Sidebar';
 import { TabBar } from './TabBar';
 import { MobileNav } from './MobileNav';
 import { CommandPalette, QuickOpen } from './Palette';
+import { ShareLanding, SharedWithMe } from '../share/ShareViews';
 import { HomeView } from '../views/HomeView';
 import { FolderView } from '../views/FolderView';
 import { SearchView } from '../views/SearchView';
@@ -120,6 +121,10 @@ function RouteView() {
       return <SettingsView />;
     case 'download':
       return <DownloadView />;
+    case 'share':
+      return <ShareLanding key={route.id} id={route.id} secret={route.key} />;
+    case 'shared':
+      return <SharedWithMe />;
     case 'graph':
       return (
         <Suspense fallback={<DocumentFallback />}>

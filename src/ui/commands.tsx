@@ -40,6 +40,7 @@ import {
   Type,
   Palette,
   Printer,
+  Users,
 } from 'lucide-react';
 import * as A from '@/app/actions';
 import { ws } from '@/app/app-store';
@@ -54,6 +55,7 @@ import { SHORTCUTS } from '@/app/shortcuts';
 import { isMarkdownName } from '@/domain/names';
 import { conversionsFrom, formatOf } from '@/lib/convert/capabilities';
 import { canPrint } from '@/platform';
+import { cloudAvailable } from '@/app/cloud';
 
 const convertible = (name: string) => {
   const f = formatOf(name)?.id;
@@ -548,6 +550,18 @@ export function getCommands(): Command[] {
           keywords: 'outline backlinks',
           run: toggleSidePanel,
         },
+        ...(cloudAvailable
+          ? [
+              {
+                id: 'share',
+                title: 'Share…',
+                group: 'Document' as const,
+                icon: <Users />,
+                keywords: 'collaborate invite link google live edit',
+                run: () => void dialogs.share(doc.id),
+              },
+            ]
+          : []),
         {
           id: 'history',
           title: 'Version history',

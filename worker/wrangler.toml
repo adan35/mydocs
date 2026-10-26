@@ -1,0 +1,31 @@
+# Cloudflare Worker for accounts, sharing, live editing and the metered AI proxy.
+# Setup steps: docs/SHARING.md. Secrets (never put these in this file):
+#   wrangler secret put SESSION_SECRET   (any long random string)
+#   wrangler secret put AI_API_KEY       (optional: the default key for signed-in users)
+name = "mydoc-api"
+main = "src/index.ts"
+compatibility_date = "2026-06-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# From Google Cloud Console > Credentials > OAuth client ID (type: Web application).
+GOOGLE_CLIENT_ID = "REPLACE_WITH_YOUR_CLIENT_ID.apps.googleusercontent.com"
+# Comma-separated origins allowed to call this API (the deployed app).
+APP_ORIGINS = "https://mydocs.doerwise.com"
+# Default AI key settings. Provider is "anthropic" or "openai"; an empty model uses the provider default.
+AI_PROVIDER = "anthropic"
+AI_MODEL = ""
+# Tokens (input + output) each signed-in user may use per calendar month on the default key.
+AI_MONTHLY_TOKENS = "100000"
+
+[[durable_objects.bindings]]
+name = "ROOM"
+class_name = "Room"
+
+[[durable_objects.bindings]]
+name = "USER"
+class_name = "UserState"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room", "UserState"]

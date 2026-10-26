@@ -16,6 +16,7 @@ import {
   FileCode,
   Printer,
   FileText,
+  Users,
 } from 'lucide-react';
 import type { Entry } from '@/domain/types';
 import { isMarkdownName } from '@/domain/names';
@@ -24,6 +25,8 @@ import { dialogs } from '@/app/dialog-store';
 import { SHORTCUTS } from '@/app/shortcuts';
 import type { MenuEntry } from './components/Menu';
 import { pickImport } from './import-pickers';
+import { cloudAvailable } from '@/app/cloud';
+import { ws } from '@/app/app-store';
 
 /** The context menu for any file or folder, shared by the tree, lists and headers. */
 export function entryMenu(e: Entry): MenuEntry[] {
@@ -66,6 +69,9 @@ export function entryMenu(e: Entry): MenuEntry[] {
         onSelect: () => void A.saveAsTemplate(e.id),
       },
     );
+  }
+  if (cloudAvailable && e.kind === 'file' && ws().isEditable(e)) {
+    items.push({ label: 'Share…', icon: <Users />, onSelect: () => void dialogs.share(e.id) });
   }
   items.push({ label: 'Export', icon: <Download />, submenu: exportSubmenu(e) }, 'separator', {
     label: 'Move to Trash',

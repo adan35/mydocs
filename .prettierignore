@@ -9,3 +9,4 @@ android
 ios
 docs/FORMATS.md
 fixtures/
+worker/.wrangler

@@ -1,0 +1,8 @@
+# Copy to worker/.dev.vars for `npm run worker:dev` (never committed).
+SESSION_SECRET=any-long-random-string
+APP_ORIGINS=http://localhost:5173,http://localhost:4174
+# Lets tests sign in without Google. Never set this on a deployed Worker.
+DEV_AUTH=1
+# For `npm run worker:smoke`: a fake key and a small monthly allowance.
+AI_API_KEY=fake-key
+AI_MONTHLY_TOKENS=1000

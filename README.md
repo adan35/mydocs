@@ -74,7 +74,7 @@ Your documents stay plain Markdown and text. Everything My Doc adds, like tags a
 
 ## Where your data lives
 
-Everything is stored in your browser's IndexedDB on this device. Nothing is uploaded, and there are no accounts or sync. My Doc asks the browser for persistent storage so data isn't evicted under storage pressure. To back up or move a workspace, export it as a zip from Settings.
+Everything is stored in your browser's IndexedDB on this device. Nothing is uploaded unless you choose to share a document (an optional Google sign-in, see [docs/SHARING.md](docs/SHARING.md)); there is no automatic sync. My Doc asks the browser for persistent storage so data isn't evicted under storage pressure. To back up or move a workspace, export it as a zip from Settings.
 
 ## Getting started
 
@@ -102,4 +102,4 @@ See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for tests and tooling, and [docs/
 
 ## Not yet built
 
-These are planned and are not in the app today: opening a folder on disk as a live workspace (new files and changes made outside My Doc, through the File System Access API or a folder-backed store in the desktop app), cloud storage and sync, accounts, sharing, comments and collaboration, a Typora-style live preview editing mode, two different documents side by side, configurable shortcuts, and AI features.
+These are planned and are not in the app today: opening a folder on disk as a live workspace (new files and changes made outside My Doc, through the File System Access API or a folder-backed store in the desktop app), cloud storage and automatic sync, comments, sharing of non-text files, a Typora-style live preview editing mode, two different documents side by side, configurable shortcuts, and the AI features themselves (the key settings and a metered default key are in; see [docs/SHARING.md](docs/SHARING.md)).

@@ -12,6 +12,10 @@ export type Route =
   | { name: 'trash' }
   | { name: 'settings' }
   | { name: 'download' }
+  /** A link someone sent: opens a live-shared document. */
+  | { name: 'share'; id: string; key?: string }
+  /** Documents other people shared with this user. */
+  | { name: 'shared' }
   /** `id` shows the local graph around one document. */
   | { name: 'graph'; id?: string };
 
@@ -46,6 +50,12 @@ export function parseHash(hash: string): Route {
       return { name: 'settings' };
     case 'download':
       return { name: 'download' };
+    case 's':
+      return rest[0]
+        ? { name: 'share', id: rest[0], key: params.get('k') ?? undefined }
+        : { name: 'home' };
+    case 'shared':
+      return { name: 'shared' };
     case 'graph':
       return rest[0] ? { name: 'graph', id: rest[0] } : { name: 'graph' };
     default:
@@ -63,6 +73,8 @@ export function routeToHash(r: Route): string {
       return `#/search?q=${encodeURIComponent(r.q)}`;
     case 'tags':
       return r.tag ? `#/tags/${r.tag.split('/').map(encodeURIComponent).join('/')}` : '#/tags';
+    case 'share':
+      return `#/s/${encodeURIComponent(r.id)}${r.key ? `?k=${encodeURIComponent(r.key)}` : ''}`;
     case 'home':
       return '#/';
     case 'graph':

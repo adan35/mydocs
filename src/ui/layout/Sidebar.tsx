@@ -12,6 +12,7 @@ import {
   Settings,
   Star,
   Trash2,
+  Users,
   LayoutTemplate,
   Command,
   Network,
@@ -24,6 +25,7 @@ import type { ReactNode } from 'react';
 import type { EntryId } from '@/domain/types';
 import { useApp } from '@/app/app-store';
 import { useRouter, navigate, type Route } from '@/app/router';
+import { cloudAvailable } from '@/app/cloud';
 import { useUi } from '@/app/ui-store';
 import { SHORTCUTS } from '@/app/shortcuts';
 import { dialogs } from '@/app/dialog-store';
@@ -129,6 +131,14 @@ export function Sidebar({ onClose, drawer }: { onClose?: () => void; drawer?: bo
           route={{ name: 'graph' }}
           current={route.name === 'graph'}
         />
+        {cloudAvailable && (
+          <NavItem
+            icon={<Users size={16} />}
+            label="Shared with me"
+            route={{ name: 'shared' }}
+            current={route.name === 'shared'}
+          />
+        )}
         <button
           type="button"
           className="nav-item flex h-[30px] w-full items-center gap-2 rounded-md px-2 text-left text-[14px] hover:bg-hover"
