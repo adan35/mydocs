@@ -466,7 +466,8 @@ export function TextSheetView({
             rowLabels={rowMap ? rowMap.map((i) => i + 1) : undefined}
             markdownText={markdown}
             fixedHeader={markdown}
-            pad={markdown || rowMap ? { rows: 0, cols: 0 } : undefined}
+            // Empty cells all around, like a spreadsheet; typing in one adds it to the table.
+            pad={{ rows: rowMap ? 0 : 100, cols: 24 }}
             textOnly
             align={markdown ? table?.table.align : undefined}
           />

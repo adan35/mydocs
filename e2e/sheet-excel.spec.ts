@@ -89,3 +89,23 @@ test('the meeting minutes template creates a ready-to-fill document with editabl
   await mode(page, 'Sheet');
   await expect(page.getByRole('combobox', { name: 'Table' }).locator('option')).toHaveCount(3);
 });
+
+test('the table sheet shows a full grid of empty cells and typing in one grows the table', async ({
+  page,
+}) => {
+  await freshApp(page);
+  await newDocInRoot(page, 'Grow');
+  await setDoc(page, '| A | B |\n| --- | --- |\n| 1 | 2 |\n');
+  await waitSaved(page);
+  await mode(page, 'Sheet');
+  const grid = page.getByTestId('sheet-grid');
+  await expect(grid.locator('[data-cell="Z3"]')).toBeAttached();
+  await expect(grid.locator('[data-cell="D20"]')).toBeAttached();
+  await grid.locator('[data-cell="C2"]').click();
+  await page.keyboard.type('=A2+B2');
+  await page.keyboard.press('Enter');
+  await expect(grid.locator('[data-cell="C2"]')).toHaveText('3');
+  await waitSaved(page);
+  await mode(page, 'Source');
+  expect(await sourceText(page)).toMatch(/\| 1 +\| 2 +\| =A2\+B2 +\|/);
+});
