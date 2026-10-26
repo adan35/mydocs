@@ -1,9 +1,10 @@
 import { create } from 'zustand';
+import { toast } from '../toast-store';
 import type { EntryId } from '@/domain/types';
 import { complete, AiError } from '../ai';
 import * as A from '../actions';
 import { session, ws } from '../app-store';
-import { useEditor } from '../editor-store';
+import { editorActions, useEditor } from '../editor-store';
 import { AON_FILE, STARTER, instructionsFor } from './memory';
 import { chatSystem, mightBeToolCall, parseToolCall } from './protocol';
 import { aonCanSee, runTool } from './tools';
@@ -159,6 +160,8 @@ function describe(tool: string, args: Record<string, unknown>): string {
     recent: 'Looked at recent documents',
     tags: 'Looked at tags',
     reminders: 'Checked reminders',
+    tasks: 'Looked at open tasks',
+    orphans: 'Looked for unlinked documents',
     create_note: 'Created note',
   };
   return `${verb[tool] ?? tool}${arg ? ` “${arg}”` : ''}`;
@@ -182,4 +185,23 @@ export async function openAonFile() {
     .find((e) => e.kind === 'file' && e.name.toLocaleLowerCase() === AON_FILE.toLocaleLowerCase());
   const id = existing?.id ?? (await ws().createFile(null, AON_FILE, STARTER)).id;
   await A.openEntry(id);
+}
+
+/** After minutes are accepted: offer to turn the dated action items into reminder notes. */
+export function offerReminders(docId: EntryId) {
+  toast({
+    message: 'Minutes added.',
+    action: {
+      label: 'Add reminders for action items',
+      run: () =>
+        void (async () => {
+          await editorActions.flush(docId);
+          const path = ws().tree.pathOf(docId);
+          useAon.getState().setOpen(true);
+          void askAon(
+            `Read "${path}" and create a reminder note for each action item that has a due date. Then list the action items that have no date, so I can decide.`,
+          );
+        })(),
+    },
+  });
 }

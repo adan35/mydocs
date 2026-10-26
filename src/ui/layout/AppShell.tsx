@@ -22,6 +22,7 @@ import { NotesView } from '../notes/NotesView';
 import { NoteHost } from '../notes/NoteHost';
 import { useNoteReminders } from '@/app/notes';
 import { useAon } from '@/app/aon/chat';
+import { useAonDialog } from '@/app/aon/dialog';
 import { useLayout } from '../hooks';
 import { TREE_DRAG_TYPE } from './FileTree';
 import { useGlobalShortcuts } from './shortcuts';
@@ -33,6 +34,8 @@ const DocumentView = lazy(() =>
 );
 
 const AonPanel = lazy(() => import('../aon/AonPanel').then((m) => ({ default: m.AonPanel })));
+
+const AonDialogs = lazy(() => import('../aon/AonDialogs').then((m) => ({ default: m.AonDialogs })));
 
 // The graph is optional, so its code loads only when it's opened.
 const GraphView = lazy(() => import('../views/GraphView').then((m) => ({ default: m.GraphView })));
@@ -153,6 +156,7 @@ export function AppShell() {
   const readingMode = useUi((s) => s.readingMode);
   const route = useRouter((s) => s.route);
   const aonOpen = useAon((s) => s.open);
+  const aonDialog = useAonDialog((s) => s.kind !== null);
   const hasTabs = useEditor((s) => s.tabs.length > 0);
   const density = useSettings((s) => s.density);
   const [width, setWidth] = useState(() => Number(localStorage.getItem(SIDEBAR_KEY)) || 264);
@@ -347,6 +351,11 @@ export function AppShell() {
       {overlay === 'palette' && <CommandPalette />}
       {overlay === 'quickopen' && <QuickOpen />}
       <NoteHost />
+      {aonDialog && (
+        <Suspense fallback={null}>
+          <AonDialogs />
+        </Suspense>
+      )}
       {fileDrag && <DropOverlay hint={fileDrag} />}
     </div>
   );

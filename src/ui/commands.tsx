@@ -47,6 +47,7 @@ import {
 } from 'lucide-react';
 import * as A from '@/app/actions';
 import { openAonFile, toggleAon, useAon } from '@/app/aon/chat';
+import { openCapture, openTidy } from '@/app/aon/dialog';
 import { ws } from '@/app/app-store';
 import { editorActions, useEditor } from '@/app/editor-store';
 import { navigate, useRouter } from '@/app/router';
@@ -98,6 +99,22 @@ export function getCommands(): Command[] {
       shortcut: SHORTCUTS.aon,
       keywords: 'ai assistant chatbot chat help find remind',
       run: toggleAon,
+    },
+    {
+      id: 'aon-capture',
+      title: 'Capture with AON',
+      group: 'Create',
+      icon: <Sparkles />,
+      keywords: 'ai paste email meeting notes organize file inbox',
+      run: () => openCapture(),
+    },
+    {
+      id: 'aon-tidy',
+      title: 'Tidy up with AON',
+      group: 'Workspace',
+      icon: <Sparkles />,
+      keywords: 'ai organize rename move tag folders clean',
+      run: openTidy,
     },
     {
       id: 'aon-file',

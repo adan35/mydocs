@@ -4,7 +4,7 @@ import { session, ws } from '../app-store';
 import { createNote, readNotes, toLabel } from '../notes';
 import { resolveWikiLink } from '../workspace';
 import { isPrivate } from './memory';
-import type { ToolCall } from './protocol';
+import { openTasks, type ToolCall } from './protocol';
 
 export interface ToolOutcome {
   /** What the model gets back. */
@@ -97,6 +97,31 @@ export async function runTool(call: ToolCall): Promise<ToolOutcome> {
             .join('\n') || 'No reminders are set.',
       };
     }
+    case 'tasks': {
+      const lines: string[] = [];
+      for (const e of tree
+        .liveFiles()
+        .filter((e) => aonCanSee(e.id))
+        .sort((a, b) => b.updatedAt - a.updatedAt))
+        for (const t of openTasks(texts.get(e.id) ?? ''))
+          if (lines.length < 40) lines.push(`- ${clip(t, 120)} (${tree.pathOf(e.id)})`);
+      return { result: lines.join('\n') || 'No open tasks.' };
+    }
+    case 'orphans': {
+      const { knowledge } = session();
+      const lone = tree
+        .liveFiles()
+        .filter((e) => /\.(md|markdown)$/i.test(e.name) && aonCanSee(e.id))
+        .filter(
+          (e) =>
+            !knowledge.backlinks(tree, e.id).length &&
+            !knowledge.outgoing(tree, e.id).some((o) => o.targetId),
+        )
+        .slice(0, 30);
+      return {
+        result: lone.map((e) => `- ${tree.pathOf(e.id)}`).join('\n') || 'Every document is linked.',
+      };
+    }
     case 'create_note': {
       const title = str(args.title);
       const items = Array.isArray(args.items)
@@ -133,7 +158,7 @@ export async function runTool(call: ToolCall): Promise<ToolOutcome> {
     }
     default:
       return {
-        result: `Unknown tool "${call.tool}". Use search, read, recent, tags, reminders or create_note.`,
+        result: `Unknown tool "${call.tool}". Use search, read, recent, tags, reminders, tasks, orphans or create_note.`,
       };
   }
 }

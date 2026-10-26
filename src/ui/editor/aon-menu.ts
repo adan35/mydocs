@@ -1,7 +1,7 @@
 import type { ToolContext } from './tools';
 import { dialogs } from '@/app/dialog-store';
 import { startInline } from '@/app/aon/inline';
-import { TRANSFORMS } from '@/app/aon/protocol';
+import { MINUTES_PROMPT, TRANSFORMS } from '@/app/aon/protocol';
 import { openMenu, openMenuAt, type MenuEntry } from '../components/Menu';
 
 /** The ribbon's AON menu: rewrite the selection, or write at the cursor. */
@@ -31,6 +31,20 @@ export function openAonMenu(ctx: ToolContext) {
           request: 'Continue writing from where the document leaves off, in the same style.',
           kind: 'request',
         }),
+    },
+    {
+      label: 'Meeting minutes from these notes',
+      onSelect: () => {
+        const notes = view.state.sliceDoc(from, to);
+        const at = empty ? view.state.doc.length : to;
+        startInline(view, {
+          from: at,
+          to: at,
+          request: notes ? `${MINUTES_PROMPT}\n\nThe notes:\n${notes}` : MINUTES_PROMPT,
+          kind: 'request',
+          followUp: 'reminders',
+        });
+      },
     },
     'separator',
     ...TRANSFORMS.map((t) => ({
