@@ -44,6 +44,7 @@ import { editorActions } from '@/app/editor-store';
 import { resolveWikiLink } from '@/app/workspace';
 import { markdownHighlight } from './highlight';
 import { slashCompletion } from './slash';
+import { aonCompletion, aonExtension } from '@/app/aon/inline';
 import { insertCodeBlock, insertLink, insertText, toggleLinePrefix, toggleWrap } from './commands';
 
 /**
@@ -361,6 +362,7 @@ export function documentExtensions(): Extension {
     settingsComp.of(settingsExtensions()),
     langComp.of([]),
     readOnlyComp.of(EditorState.readOnly.of(false)),
+    aonExtension(),
     keymap.of([
       {
         key: 'Mod-s',
@@ -409,7 +411,10 @@ export function configureLanguage(view: EditorView, fileName: string) {
       effects: langComp.reconfigure([
         label,
         markdown({ base: markdownLanguage, codeLanguages: languages, addKeymap: true }),
-        autocompletion({ override: [wikiAndTagCompletion, slashCompletion], icons: false }),
+        autocompletion({
+          override: [wikiAndTagCompletion, slashCompletion, aonCompletion],
+          icons: false,
+        }),
         dedupeListMarker,
         placeholder('Start writing…'),
       ]),

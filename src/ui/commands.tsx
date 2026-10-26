@@ -43,8 +43,10 @@ import {
   Users,
   StickyNote,
   ListChecks,
+  Sparkles,
 } from 'lucide-react';
 import * as A from '@/app/actions';
+import { openAonFile, toggleAon, useAon } from '@/app/aon/chat';
 import { ws } from '@/app/app-store';
 import { editorActions, useEditor } from '@/app/editor-store';
 import { navigate, useRouter } from '@/app/router';
@@ -88,6 +90,23 @@ export function getCommands(): Command[] {
   const ui = useUi.getState();
   const settings = useSettings.getState();
   const cmds: Command[] = [
+    {
+      id: 'ask-aon',
+      title: useAon.getState().open ? 'Close AON' : 'Ask AON',
+      group: 'Navigate',
+      icon: <Sparkles />,
+      shortcut: SHORTCUTS.aon,
+      keywords: 'ai assistant chatbot chat help find remind',
+      run: toggleAon,
+    },
+    {
+      id: 'aon-file',
+      title: 'Edit what AON remembers (AON.md)',
+      group: 'Workspace',
+      icon: <Sparkles />,
+      keywords: 'ai assistant memory instructions private',
+      run: () => void openAonFile(),
+    },
     {
       id: 'new-doc',
       title: 'New document',

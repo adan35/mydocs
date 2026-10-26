@@ -36,6 +36,7 @@ import {
   Eraser,
   ListOrdered as GoTo,
   Sheet,
+  Sparkles,
 } from 'lucide-react';
 import type { EntryId } from '@/domain/types';
 import { blockTypeOf, setBlockType, afterBlock, type BlockType } from '@/domain/source-edit';
@@ -44,6 +45,7 @@ import { editorActions } from '@/app/editor-store';
 import { useSettings } from '@/app/settings-store';
 import { dialogs } from '@/app/dialog-store';
 import { SHORTCUTS } from '@/app/shortcuts';
+import { openAonMenu } from './aon-menu';
 import type { RichApi, RichFocus } from '../document/rich-editing';
 import {
   insertCodeBlock,
@@ -534,6 +536,14 @@ export const TOOLS: Tool[] = [
     group: 'text',
     when: (c) => textSource(c) && c.kind === 'text',
     run: (c) => trimTrailing(c.view!),
+  },
+  {
+    id: 'aon',
+    label: 'Write or rewrite with AON',
+    icon: <Sparkles />,
+    group: 'text',
+    when: mdSource,
+    run: openAonMenu,
   },
 ];
 

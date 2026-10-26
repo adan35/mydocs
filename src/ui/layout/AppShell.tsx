@@ -21,6 +21,7 @@ import { DownloadView } from '../views/DownloadView';
 import { NotesView } from '../notes/NotesView';
 import { NoteHost } from '../notes/NoteHost';
 import { useNoteReminders } from '@/app/notes';
+import { useAon } from '@/app/aon/chat';
 import { useLayout } from '../hooks';
 import { TREE_DRAG_TYPE } from './FileTree';
 import { useGlobalShortcuts } from './shortcuts';
@@ -30,6 +31,8 @@ import { closeMenu } from '../components/Menu';
 const DocumentView = lazy(() =>
   import('../document/DocumentView').then((m) => ({ default: m.DocumentView })),
 );
+
+const AonPanel = lazy(() => import('../aon/AonPanel').then((m) => ({ default: m.AonPanel })));
 
 // The graph is optional, so its code loads only when it's opened.
 const GraphView = lazy(() => import('../views/GraphView').then((m) => ({ default: m.GraphView })));
@@ -149,6 +152,7 @@ export function AppShell() {
   const focusMode = useUi((s) => s.focusMode);
   const readingMode = useUi((s) => s.readingMode);
   const route = useRouter((s) => s.route);
+  const aonOpen = useAon((s) => s.open);
   const hasTabs = useEditor((s) => s.tabs.length > 0);
   const density = useSettings((s) => s.density);
   const [width, setWidth] = useState(() => Number(localStorage.getItem(SIDEBAR_KEY)) || 264);
@@ -335,6 +339,11 @@ export function AppShell() {
         </main>
         {phone && !immersive && <MobileNav />}
       </div>
+      {aonOpen && (
+        <Suspense fallback={null}>
+          <AonPanel />
+        </Suspense>
+      )}
       {overlay === 'palette' && <CommandPalette />}
       {overlay === 'quickopen' && <QuickOpen />}
       <NoteHost />

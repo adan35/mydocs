@@ -41,6 +41,7 @@ import { ws } from '@/app/app-store';
 import { editorActions, useEditor } from '@/app/editor-store';
 import { useSettings, type ViewMode } from '@/app/settings-store';
 import { useUi } from '@/app/ui-store';
+import { useAon } from '@/app/aon/chat';
 import { navigate } from '@/app/router';
 import { SHORTCUTS } from '@/app/shortcuts';
 import { dialogs } from '@/app/dialog-store';
@@ -94,7 +95,9 @@ export function DocumentView({ id, anchor }: { id: EntryId; anchor?: string }) {
 /** Word, Excel, PDF, images and other files that aren't edited as text. */
 function FileDocument({ entry }: { entry: Entry }) {
   const { wide } = useLayout();
-  const panelOpen = useUi((s) => s.rightPanelOpen);
+  // The docked details panel steps aside while AON's panel is open, so the document keeps its width.
+  const aonOpen = useAon((s) => s.open);
+  const panelOpen = useUi((s) => s.rightPanelOpen) && !aonOpen;
   const panelWidth = useUi((s) => s.rightPanelWidth);
   const focusMode = useUi((s) => s.focusMode);
   const readingMode = useUi((s) => s.readingMode);
@@ -217,7 +220,9 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
   const storedMode = useUi((s) => s.viewModes[id]);
   const focusMode = useUi((s) => s.focusMode);
   const readingMode = useUi((s) => s.readingMode);
-  const panelOpen = useUi((s) => s.rightPanelOpen);
+  // The docked details panel steps aside while AON's panel is open, so the document keeps its width.
+  const aonOpen = useAon((s) => s.open);
+  const panelOpen = useUi((s) => s.rightPanelOpen) && !aonOpen;
   const syncScroll = useSettings((s) => s.syncScroll);
   const splitRatio = useUi((s) => s.splitRatio);
   const panelWidth = useUi((s) => s.rightPanelWidth);
@@ -762,7 +767,9 @@ function DocHeader({
   const { phone, wide } = useLayout();
   const focusMode = useUi((s) => s.focusMode);
   const readingMode = useUi((s) => s.readingMode);
-  const panelOpen = useUi((s) => s.rightPanelOpen);
+  // The docked details panel steps aside while AON's panel is open, so the document keeps its width.
+  const aonOpen = useAon((s) => s.open);
+  const panelOpen = useUi((s) => s.rightPanelOpen) && !aonOpen;
   const isMd = isMarkdownName(entry.name);
   const textual = ws().isEditable(entry);
   const ancestors = tree.ancestors(entry.id);
