@@ -109,6 +109,30 @@ describe('block operations', () => {
     expect(apply(doc, moveBlock(doc, blocks, 0, 1)!)).toBe('B\n\nA\n\nC\n');
     expect(apply(doc, moveBlock(doc, blocks, 2, -1)!)).toBe('A\n\nC\n\nB\n');
   });
+  it('reports how far the moved block travelled', () => {
+    const doc = 'A\n\nB1\nB2\n\nC\n';
+    const blocks = [
+      { line: 0, end: 2 },
+      { line: 2, end: 5 },
+      { line: 5, end: 6 },
+    ];
+    expect(moveBlock(doc, blocks, 0, 1)!.shift).toBe(3); // A now starts on line 3
+    expect(moveBlock(doc, blocks, 1, -1)!.shift).toBe(-2); // B now starts on line 0
+  });
+  it('moves list items but keeps the numbering', () => {
+    const doc = '1. one\n2. two\n   - child\n3. three\n';
+    const blocks = [
+      { line: 0, end: 1 },
+      { line: 1, end: 3 },
+      { line: 3, end: 4 },
+    ];
+    expect(apply(doc, moveBlock(doc, blocks, 1, -1, true)!)).toBe(
+      '1. two\n   - child\n2. one\n3. three\n',
+    );
+    expect(apply(doc, moveBlock(doc, blocks, 1, 1, true)!)).toBe(
+      '1. one\n2. three\n3. two\n   - child\n',
+    );
+  });
   it('deletes a block with one following blank line', () => {
     expect(apply('A\n\nB\n\nC', deleteBlock('A\n\nB\n\nC', 2, 3))).toBe('A\n\nC');
   });

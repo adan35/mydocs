@@ -327,15 +327,18 @@ export function setBlockType(
 }
 
 /**
- * Moves the top-level block spanning lines [line, end) above the previous block or
- * below the next one. Blank lines between blocks stay where they are.
+ * Swaps the block at `index` with its neighbour in direction `dir`. Blank lines between
+ * blocks stay where they are. `shift` is how many lines the moved block travelled
+ * (negative when it moved up). With `keepNumbers`, numbered list items trade places
+ * but keep their numbers, so "1. b / 2. a" never appears.
  */
 export function moveBlock(
   doc: string,
   blocks: { line: number; end: number }[],
   index: number,
   dir: -1 | 1,
-): { from: number; to: number; insert: string } | null {
+  keepNumbers = false,
+): { from: number; to: number; insert: string; shift: number } | null {
   const other = index + dir;
   if (other < 0 || other >= blocks.length) return null;
   const starts = lineStarts(doc);
@@ -348,10 +351,21 @@ export function moveBlock(
   };
   const ra = trim(a);
   const rb = trim(b);
-  const textA = doc.slice(ra.from, ra.to);
-  const textB = doc.slice(rb.from, rb.to);
+  let textA = doc.slice(ra.from, ra.to);
+  let textB = doc.slice(rb.from, rb.to);
   const between = doc.slice(ra.to, rb.from);
-  return { from: ra.from, to: rb.to, insert: textB + between + textA };
+  const lines = (t: string) => t.split('\n').length - 1; // newlines, i.e. lines travelled
+  if (keepNumbers) {
+    const marker = /^(\s*)(\d+)(?=[.)])/;
+    const na = marker.exec(textA)?.[2];
+    const nb = marker.exec(textB)?.[2];
+    if (na && nb) {
+      textA = textA.replace(marker, `$1${nb}`);
+      textB = textB.replace(marker, `$1${na}`);
+    }
+  }
+  const shift = dir > 0 ? lines(textB + between) : -lines(textA + between);
+  return { from: ra.from, to: rb.to, insert: textB + between + textA, shift };
 }
 
 /** Removes the block spanning lines [line, end), with one adjacent blank line. */

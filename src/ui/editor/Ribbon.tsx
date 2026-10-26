@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { Captions, CaptionsOff } from 'lucide-react';
+import { useSettings } from '@/app/settings-store';
 import type { BlockType } from '@/domain/source-edit';
 import { formatShortcut, useLayout } from '../hooks';
 import {
@@ -39,6 +41,7 @@ export function Ribbon({ ctx, tick }: { ctx: ToolContext; tick: number }) {
   const ref = useRef<HTMLDivElement>(null);
   const { phone } = useLayout();
   const keyboardInset = useKeyboardInset(phone);
+  const labels = useSettings((s) => s.toolbarLabels);
   void tick; // re-render on selection changes
   const tools = TOOLS.filter((t) => t.when(ctx));
   const groups = GROUP_ORDER.map((g) => tools.filter((t) => t.group === g)).filter((g) => g.length);
@@ -113,14 +116,18 @@ export function Ribbon({ ctx, tick }: { ctx: ToolContext; tick: number }) {
           {group.map((tool) => {
             const pressed = tool.pressed?.(ctx);
             const disabled = tool.disabled?.(ctx) ?? false;
-            const title = tool.shortcut
-              ? `${tool.label} (${formatShortcut(tool.shortcut)})`
-              : tool.label;
+            const hint = typeof tool.hint === 'function' ? tool.hint(ctx) : tool.hint;
+            const title = [
+              tool.shortcut ? `${tool.label} (${formatShortcut(tool.shortcut)})` : tool.label,
+              hint,
+            ]
+              .filter(Boolean)
+              .join('. ');
             return (
               <button
                 key={tool.id}
                 type="button"
-                className={`icon-btn size-8 shrink-0 [&>svg]:size-4 ${pressed ? 'bg-primary-soft text-primary-soft-ink' : ''}`}
+                className={`icon-btn h-8 shrink-0 [&>svg]:size-4 ${labels ? 'w-auto gap-1.5 px-2' : 'w-8'} ${pressed ? 'bg-primary-soft text-primary-soft-ink' : ''}`}
                 aria-label={tool.label}
                 aria-pressed={tool.pressed ? !!pressed : undefined}
                 title={title}
@@ -131,11 +138,25 @@ export function Ribbon({ ctx, tick }: { ctx: ToolContext; tick: number }) {
                 onClick={() => tool.run(ctx)}
               >
                 {tool.icon}
+                {labels && <span className="whitespace-nowrap text-caption">{tool.label}</span>}
               </button>
             );
           })}
         </div>
       ))}
+      <button
+        type="button"
+        className="icon-btn ml-auto h-8 w-8 shrink-0 [&>svg]:size-4"
+        aria-label={labels ? 'Hide button labels' : 'Show button labels'}
+        aria-pressed={labels}
+        title={labels ? 'Hide button labels' : 'Show button labels'}
+        data-tool="toggle-labels"
+        tabIndex={tabIndex()}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => useSettings.getState().update({ toolbarLabels: !labels })}
+      >
+        {labels ? <CaptionsOff /> : <Captions />}
+      </button>
     </div>
   );
 }

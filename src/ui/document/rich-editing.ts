@@ -767,19 +767,38 @@ export function useRichEditing({
     editorActions.edit(docId, { changes: deleteBlock(doc, line, end), userEvent: 'delete.rich' });
   }
 
+  /** The unit the move and delete tools act on: the focused list item, else its top-level block. */
   function focusedBlock(): {
     line: number;
     end: number;
     index: number;
     blocks: { line: number; end: number }[];
+    item: boolean;
   } | null {
     const el = root.current;
     const f = lastFocus.current;
     if (!el || !f) return null;
-    const blocks = topBlocks(el).map(({ line, end }) => ({ line, end }));
+    const range = (n: HTMLElement) => ({
+      line: Number(n.dataset.line),
+      end: Number(n.dataset.lineEnd),
+    });
+    let item = false;
+    let blocks = topBlocks(el).map(({ line, end }) => ({ line, end }));
+    if (f.kind === 'item') {
+      const li = [...el.querySelectorAll<HTMLElement>('li[data-line]')]
+        .filter((n) => Number(n.dataset.line) === f.line)
+        .pop();
+      const siblings = [...(li?.parentElement?.children ?? [])].filter(
+        (n): n is HTMLElement => n instanceof HTMLElement && n.matches('li[data-line]'),
+      );
+      if (siblings.length) {
+        blocks = siblings.map(range);
+        item = true;
+      }
+    }
     const index = blocks.findIndex((b) => f.line >= b.line && f.line < b.end);
     if (index < 0) return null;
-    return { ...blocks[index]!, index, blocks };
+    return { ...blocks[index]!, index, blocks, item };
   }
 
   const api: RichApi = {
@@ -792,12 +811,29 @@ export function useRichEditing({
       else if (cmd === 'strike') document.execCommand('strikeThrough');
       else if (cmd === 'code') {
         const sel = getSelection();
-        if (!sel?.rangeCount || sel.isCollapsed) return;
+        if (!sel?.rangeCount) return;
+        const inside = (
+          sel.anchorNode instanceof Element ? sel.anchorNode : sel.anchorNode?.parentElement
+        )?.closest('code');
+        // Already code: turn it back into plain text.
+        if (inside && s.host.contains(inside)) {
+          const text = document.createTextNode(inside.textContent ?? '');
+          inside.replaceWith(text);
+          sel.selectAllChildren(text.parentNode!);
+          sel.collapseToEnd();
+          return;
+        }
+        // No selection: use the word at the caret, or a placeholder.
+        if (sel.isCollapsed) {
+          sel.modify('move', 'backward', 'word');
+          sel.modify('extend', 'forward', 'word');
+        }
         const range = sel.getRangeAt(0);
         const code = document.createElement('code');
-        code.textContent = range.toString();
+        code.textContent = range.toString().trim() || 'code';
         range.deleteContents();
         range.insertNode(code);
+        sel.selectAllChildren(code);
       } else if (cmd === 'link') {
         const sel = getSelection();
         const range = sel?.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
@@ -857,9 +893,21 @@ export function useRichEditing({
         commit(s);
       }
       const b = focusedBlock();
-      if (!b) return;
-      const change = moveBlock(currentText(), b.blocks, b.index, dir);
+      const f = lastFocus.current;
+      if (!b || !f) return;
+      const change = moveBlock(currentText(), b.blocks, b.index, dir, b.item);
       if (!change) return;
+      // Keep the caret in the moved block (and the tool aimed at it) so it can be moved again.
+      const host = hostOf(document.activeElement);
+      const src = host ? sourceOf(host) : undefined;
+      if (src)
+        pending.current = {
+          kind: 'host',
+          src: { ...src, line: src.line + change.shift },
+          at: 'end',
+        };
+      lastFocus.current = { ...f, line: f.line + change.shift, end: f.end + change.shift };
+      focusCb.current?.(lastFocus.current);
       editorActions.edit(docId, { changes: change, userEvent: 'move.rich' });
     },
     remove() {
