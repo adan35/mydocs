@@ -377,6 +377,13 @@ export function SettingsView() {
             onChange={(formatToolbar) => set({ formatToolbar })}
           />
         </Row>
+        <Row label="Names on toolbar buttons" htmlFor="toolbar-labels">
+          <Toggle
+            id="toolbar-labels"
+            checked={s.toolbarLabels}
+            onChange={(toolbarLabels) => set({ toolbarLabels })}
+          />
+        </Row>
         <Row label="Word wrap" htmlFor="wrap">
           <Toggle id="wrap" checked={s.wordWrap} onChange={(wordWrap) => set({ wordWrap })} />
         </Row>

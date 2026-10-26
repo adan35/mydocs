@@ -5,7 +5,7 @@ import { EditorSelection } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import { syntaxTree } from '@codemirror/language';
 import { openSearchPanel, gotoLine } from '@codemirror/search';
-import { indentLess, indentMore } from '@codemirror/commands';
+import { deleteLine, indentLess, indentMore, moveLineDown, moveLineUp } from '@codemirror/commands';
 import {
   ArrowDown,
   ArrowUp,
@@ -80,6 +80,8 @@ export interface ToolContext {
 export interface Tool {
   id: string;
   label: string;
+  /** One line saying what the button does, shown in its tooltip beside the name. */
+  hint?: string | ((ctx: ToolContext) => string);
   icon: ReactNode;
   group: 'history' | 'inline' | 'block' | 'insert' | 'arrange' | 'text' | 'table';
   shortcut?: string;
@@ -109,6 +111,12 @@ function nodesAt(view: EditorView): Set<string> {
   )
     out.add(n.name);
   return out;
+}
+
+/** The caret is inside inline code in rich editing. */
+function inRichCode(): boolean {
+  const n = getSelection()?.anchorNode;
+  return !!(n instanceof Element ? n : n?.parentElement)?.closest('.prose code');
 }
 
 /** The block type at the cursor in source mode. */
@@ -303,16 +311,19 @@ export const TOOLS: Tool[] = [
   {
     id: 'inline-code',
     label: 'Inline code',
+    hint: 'Show the selected text as code, in a line of text. Use again to undo',
     icon: <CodeXml />,
     group: 'inline',
     shortcut: 'Mod+`',
     when: anyMd,
-    pressed: (c) => c.surface === 'source' && !!c.view && nodesAt(c.view).has('InlineCode'),
+    pressed: (c) =>
+      c.surface === 'rich' ? inRichCode() : !!c.view && nodesAt(c.view).has('InlineCode'),
     run: (c) => (c.surface === 'rich' ? c.rich!.format('code') : toggleWrap(c.view!, '`', 'code')),
   },
   {
     id: 'link',
     label: 'Link',
+    hint: 'Link the selected text to a web address or document',
     icon: <Link />,
     group: 'inline',
     shortcut: SHORTCUTS.link,
@@ -366,6 +377,7 @@ export const TOOLS: Tool[] = [
   {
     id: 'outdent',
     label: 'Decrease indent',
+    hint: 'Move the list item or line one level left',
     icon: <Outdent />,
     group: 'block',
     shortcut: 'Shift+Tab',
@@ -375,6 +387,7 @@ export const TOOLS: Tool[] = [
   {
     id: 'indent',
     label: 'Increase indent',
+    hint: 'Move the list item or line one level right',
     icon: <Indent />,
     group: 'block',
     shortcut: 'Tab',
@@ -383,32 +396,44 @@ export const TOOLS: Tool[] = [
   },
   {
     id: 'move-up',
-    label: 'Move block up',
+    label: 'Move up',
+    hint: (c) =>
+      c.surface === 'rich'
+        ? 'Move the current paragraph, list item or other block above the one before it'
+        : 'Move the current line, or the selected lines, up',
     icon: <ArrowUp />,
     group: 'arrange',
     shortcut: 'Mod+Alt+ArrowUp',
-    when: mdRich,
-    disabled: (c) => !c.richFocus,
-    run: (c) => c.rich!.move(-1),
+    when: anyMd,
+    disabled: (c) => c.surface === 'rich' && !c.richFocus,
+    run: (c) => (c.surface === 'rich' ? c.rich!.move(-1) : (moveLineUp(c.view!), c.view!.focus())),
   },
   {
     id: 'move-down',
-    label: 'Move block down',
+    label: 'Move down',
+    hint: (c) =>
+      c.surface === 'rich'
+        ? 'Move the current paragraph, list item or other block below the one after it'
+        : 'Move the current line, or the selected lines, down',
     icon: <ArrowDown />,
     group: 'arrange',
     shortcut: 'Mod+Alt+ArrowDown',
-    when: mdRich,
-    disabled: (c) => !c.richFocus,
-    run: (c) => c.rich!.move(1),
+    when: anyMd,
+    disabled: (c) => c.surface === 'rich' && !c.richFocus,
+    run: (c) => (c.surface === 'rich' ? c.rich!.move(1) : (moveLineDown(c.view!), c.view!.focus())),
   },
   {
     id: 'delete-block',
-    label: 'Delete block',
+    label: 'Delete',
+    hint: (c) =>
+      c.surface === 'rich'
+        ? 'Delete the current paragraph, list item or other block'
+        : 'Delete the current line, or the selected lines',
     icon: <Trash2 />,
     group: 'arrange',
-    when: mdRich,
-    disabled: (c) => !c.richFocus,
-    run: (c) => c.rich!.remove(),
+    when: anyMd,
+    disabled: (c) => c.surface === 'rich' && !c.richFocus,
+    run: (c) => (c.surface === 'rich' ? c.rich!.remove() : (deleteLine(c.view!), c.view!.focus())),
   },
   {
     id: 'image',
@@ -436,6 +461,7 @@ export const TOOLS: Tool[] = [
   {
     id: 'code-block',
     label: 'Code block',
+    hint: 'Insert a block for several lines of code',
     icon: <Code />,
     group: 'insert',
     shortcut: 'Mod+Alt+C',
@@ -446,6 +472,7 @@ export const TOOLS: Tool[] = [
   {
     id: 'equation',
     label: 'Equation',
+    hint: 'Insert a math formula block',
     icon: <Sigma />,
     group: 'insert',
     when: anyMd,
@@ -464,6 +491,7 @@ export const TOOLS: Tool[] = [
   {
     id: 'sheet',
     label: 'Edit tables as a sheet',
+    hint: 'Edit all tables in this document in a spreadsheet',
     icon: <Sheet />,
     group: 'table',
     when: (c) => md(c) && !!c.hasTables && !!c.openSheet,

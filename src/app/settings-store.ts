@@ -32,6 +32,8 @@ export interface Settings {
   spellcheck: boolean;
   /** Formatting buttons above the Markdown editor. */
   formatToolbar: boolean;
+  /** Show a text name beside each formatting button. */
+  toolbarLabels: boolean;
   /** Keep the line being edited near the middle of the screen. */
   typewriter: boolean;
   /** Folder path for daily notes ("Daily notes", "Journal/Daily"…). */
@@ -59,6 +61,7 @@ export const DEFAULT_SETTINGS: Settings = {
   explorerView: 'list',
   spellcheck: true,
   formatToolbar: true,
+  toolbarLabels: false,
   typewriter: false,
   dailyFolder: 'Daily notes',
   syncScroll: true,
