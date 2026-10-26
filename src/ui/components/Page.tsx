@@ -11,6 +11,7 @@ export function Page({
   children,
   back,
   subtitle,
+  wide,
 }: {
   title: ReactNode;
   icon?: ReactNode;
@@ -18,12 +19,16 @@ export function Page({
   children: ReactNode;
   back?: () => void;
   subtitle?: ReactNode;
+  /** Uses the full width, for card grids. */
+  wide?: boolean;
 }) {
   const { phone, tablet } = useLayout();
   const sidebarOpen = useUi((s) => s.sidebarOpen);
   return (
     <div className="scroll-area h-full">
-      <div className="mx-auto w-full max-w-[960px] px-4 pt-4 pb-24 sm:px-8 sm:pt-10">
+      <div
+        className={`mx-auto w-full ${wide ? 'max-w-[1400px]' : 'max-w-[960px]'} px-4 pt-4 pb-24 sm:px-8 sm:pt-10`}
+      >
         <header className="mb-6 flex flex-wrap items-start gap-2">
           {back ? (
             <button
