@@ -36,7 +36,10 @@ test('each format gets the controls that work for it', async ({ page }) => {
   await expect(ribbon.getByRole('button', { name: 'Wrap long lines' })).toHaveCount(0);
 
   // Plain text: find, replace, wrapping; no Markdown formatting that would be saved as symbols.
-  await page.getByRole('button', { name: 'New document', exact: true }).first().click();
+  await page
+    .getByRole('button', { name: 'New document', exact: true })
+    .first()
+    .click({ modifiers: ['Shift'] });
   await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('button').last().click();
   await page.getByRole('dialog').getByRole('textbox').fill('log.txt');
   await page.getByRole('dialog').getByRole('textbox').press('Enter');

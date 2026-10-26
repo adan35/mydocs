@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { EntryId } from '@/domain/types';
 import type { Table } from '@/domain/table';
+import type { NewKindId } from '@/domain/new-document';
 import type { FormatId } from '@/lib/convert/capabilities';
 
 export interface PromptOptions {
@@ -49,6 +50,7 @@ export type DialogRequest =
       resolve: (v: EntryId | null | undefined) => void;
     }
   | { kind: 'template'; resolve: (v: string | null) => void }
+  | { kind: 'new-document'; last: NewKindId; resolve: (v: NewKindId | null) => void }
   | { kind: 'history'; entryId: EntryId; resolve: (v: void) => void }
   | { kind: 'shortcuts'; resolve: (v: void) => void }
   | { kind: 'table'; table: Table; isNew: boolean; resolve: (v: Table | null) => void }
@@ -92,6 +94,9 @@ export const dialogs = {
   pickFolder: (options: PickFolderOptions) =>
     request<EntryId | null | undefined>((resolve) => ({ kind: 'pick-folder', options, resolve })),
   template: () => request<string | null>((resolve) => ({ kind: 'template', resolve })),
+  /** Resolves to the kind of document to make, or `null` if cancelled. */
+  newDocument: (last: NewKindId) =>
+    request<NewKindId | null>((resolve) => ({ kind: 'new-document', last, resolve })),
   history: (entryId: EntryId) =>
     request<void>((resolve) => ({ kind: 'history', entryId, resolve })),
   shortcuts: () => request<void>((resolve) => ({ kind: 'shortcuts', resolve })),

@@ -15,7 +15,10 @@ test('a modal owns its keyboard shortcuts and restores the app on close', async 
   await expect(page.getByRole('combobox', { name: 'Command palette' })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
-  await page.getByRole('button', { name: 'New document', exact: true }).first().click();
+  await page
+    .getByRole('button', { name: 'New document', exact: true })
+    .first()
+    .click({ modifiers: ['Shift'] });
   await expect(page.locator('.cm-content')).toBeVisible();
 });
 

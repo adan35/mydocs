@@ -24,6 +24,7 @@ import { useResolvedTheme } from '../hooks';
 import { toggleTheme } from '../components/ThemeToggle';
 import { themeMenuItems } from '../components/ThemePicker';
 import { importSubmenu } from '../entry-menu';
+import { menuBarAsSubmenus } from './MenuBar';
 
 /** Phone navigation: Documents, Search, the open document, and More. */
 export function MobileNav() {
@@ -84,7 +85,13 @@ export function MobileNav() {
           openMenuAt(
             e.currentTarget,
             [
-              { label: 'New document', icon: <FilePlus2 />, onSelect: () => void A.newDocument() },
+              ...menuBarAsSubmenus(),
+              'separator',
+              {
+                label: 'New document…',
+                icon: <FilePlus2 />,
+                onSelect: () => void A.chooseNewDocument(),
+              },
               { label: 'New folder', icon: <FolderPlus />, onSelect: () => void A.newFolder() },
               { label: 'Import', icon: <Upload />, submenu: importSubmenu(null) },
               {

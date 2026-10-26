@@ -45,7 +45,7 @@ export function useGlobalShortcuts() {
       // On the Notes page it starts a note instead.
       if (m('Mod+N') && route.name === 'notes')
         return run(() => useNotesUi.getState().setComposer('note'));
-      if (m(SHORTCUTS.newDoc) || m('Mod+N')) return run(() => void A.newDocument());
+      if (m(SHORTCUTS.newDoc) || m('Mod+N')) return run(() => void A.chooseNewDocument());
       if (m(SHORTCUTS.newFolder)) return run(() => void A.newFolder());
       if (m(SHORTCUTS.dailyNote)) return run(() => void A.openDailyNote());
       if (m(SHORTCUTS.quickNote)) return run(() => quickNote('note'));

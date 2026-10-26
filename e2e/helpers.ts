@@ -28,7 +28,10 @@ export async function waitSaved(page: Page) {
 }
 
 export async function newDocInRoot(page: Page, name: string) {
-  await page.getByRole('button', { name: 'New document', exact: true }).first().click();
+  await page
+    .getByRole('button', { name: 'New document', exact: true })
+    .first()
+    .click({ modifiers: ['Shift'] });
   await expect(page.locator('.cm-content')).toBeVisible();
   await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('button').last().click();
   await prompt(page, name);

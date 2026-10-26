@@ -26,6 +26,9 @@ import { importItems, type ImportItem } from './importer';
 import { canPrint } from '@/platform';
 import { diskLinks } from './disk-links';
 import { resolvePath } from '@/domain/paths';
+import { NEW_FILE_BODIES, lastNewKind, type NewKindId } from '@/domain/new-document';
+import { prefs } from './prefs';
+import { quickNote } from './notes';
 
 /**
  * User-facing commands. Each one handles its own confirmation, errors and
@@ -99,25 +102,22 @@ export function workspaceTemplates(): Template[] {
 
 let creating: Promise<void> = Promise.resolve();
 
-export async function newDocument(
-  parentId: EntryId | null = contextFolderId(),
-  templateId?: string,
+/** Creates a text file (name made free, body made from the final name) and opens it for writing. */
+function createTextFile(
+  parentId: EntryId | null,
+  desiredName: string,
+  bodyFor: (title: string) => string,
 ) {
-  const template =
-    [...workspaceTemplates(), ...TEMPLATES].find((t) => t.id === (templateId ?? 'blank')) ??
-    TEMPLATES[0]!;
-  const title = expandTemplate(template.fileName, { title: '' }) || 'Untitled';
   // Keys typed while the document is created must not press the "New document" button again.
   if (document.activeElement instanceof HTMLButtonElement) document.activeElement.blur();
   // One at a time: the name (and the heading made from it) must be free when the file is created.
   const run = creating.then(() =>
     guard('Unable to create the document.', async () => {
-      const name = ws().freeName(parentId, `${title}.md`);
-      const body = expandTemplate(template.body, { title: baseName(name), date: isoDate() });
-      const entry = await ws().createFile(parentId, name, body);
+      const name = ws().freeName(parentId, desiredName);
+      const entry = await ws().createFile(parentId, name, bodyFor(baseName(name)));
       if (parentId) appActions.setExpanded(parentId, true);
       // A new document is for writing: open it in the editor with the cursor in place.
-      if (useSettings.getState().defaultViewMode === 'preview')
+      if (isMarkdownName(name) && useSettings.getState().defaultViewMode === 'preview')
         useUi.getState().setViewMode(entry.id, 'edit');
       editorActions.requestFocus(entry.id, { end: true });
       await openEntry(entry.id);
@@ -126,6 +126,65 @@ export async function newDocument(
   );
   creating = run.then(() => undefined);
   return run;
+}
+
+/** Creates a Markdown document, from a template when one is given. */
+export async function newDocument(
+  parentId: EntryId | null = contextFolderId(),
+  templateId?: string,
+) {
+  const template =
+    [...workspaceTemplates(), ...TEMPLATES].find((t) => t.id === (templateId ?? 'blank')) ??
+    TEMPLATES[0]!;
+  const title = expandTemplate(template.fileName, { title: '' }) || 'Untitled';
+  return createTextFile(parentId, `${title}.md`, (name) =>
+    expandTemplate(template.body, { title: name, date: isoDate() }),
+  );
+}
+
+const NEW_KIND_KEY = 'mydoc:new-kind';
+
+/** The kind "New document" offered first: the one picked last time. */
+export const rememberedNewKind = () => lastNewKind(prefs.get<unknown>(NEW_KIND_KEY, null));
+
+/**
+ * "New document": asks which kind to make, then makes it. `quick` (Shift+click) skips the
+ * question and makes a Markdown document.
+ */
+export async function chooseNewDocument(
+  parentId: EntryId | null = contextFolderId(),
+  quick = false,
+) {
+  if (quick) return newDocument(parentId);
+  const kind = await dialogs.newDocument(rememberedNewKind());
+  if (!kind) return;
+  prefs.set(NEW_KIND_KEY, kind);
+  return createOfKind(kind, parentId);
+}
+
+export function createOfKind(kind: NewKindId, parentId: EntryId | null) {
+  switch (kind) {
+    case 'md':
+      return newDocument(parentId);
+    case 'meeting':
+      return newDocument(
+        parentId,
+        TEMPLATES.some((t) => t.id === 'minutes') ? 'minutes' : 'meeting',
+      );
+    case 'txt':
+      return createTextFile(parentId, 'Untitled.txt', NEW_FILE_BODIES.txt);
+    case 'csv':
+      return createTextFile(parentId, 'Untitled.csv', NEW_FILE_BODIES.csv);
+    case 'html':
+      return createTextFile(parentId, 'Untitled.html', NEW_FILE_BODIES.html);
+    case 'xlsx':
+      return newSpreadsheet(parentId);
+    case 'note':
+    case 'list':
+      return quickNote(kind);
+    case 'template':
+      return newFromTemplate(parentId);
+  }
 }
 
 /** Creates an empty Excel workbook and opens it in the sheet view. */

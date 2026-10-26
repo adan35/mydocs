@@ -510,7 +510,7 @@ const TreeRow = memo(function TreeRow({
             aria-label={`New document in ${entry.name}`}
             onClick={(e) => {
               e.stopPropagation();
-              void A.newDocument(entry.id);
+              void A.chooseNewDocument(entry.id, e.shiftKey);
             }}
           >
             <Plus size={14} />

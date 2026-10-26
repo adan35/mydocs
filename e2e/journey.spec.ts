@@ -23,7 +23,9 @@ test('core journey: create, edit, persist, link, search, organize, trash, restor
 
   // New document inside the folder (hover + button).
   await projects.hover();
-  await page.getByRole('button', { name: 'New document in Projects' }).click();
+  await page
+    .getByRole('button', { name: 'New document in Projects' })
+    .click({ modifiers: ['Shift'] });
   await expect(page.locator('.cm-content')).toBeVisible();
   await expect(page.getByRole('treeitem', { name: 'Untitled.md' })).toBeVisible();
 

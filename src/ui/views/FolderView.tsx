@@ -192,7 +192,7 @@ export function FolderView({ id }: { id: EntryId | null }) {
             <button
               type="button"
               className="btn btn-primary"
-              onClick={() => void A.newDocument(id)}
+              onClick={(e) => void A.chooseNewDocument(id, e.shiftKey)}
             >
               <FilePlus2 size={15} aria-hidden /> <span className="hidden sm:inline">New</span>
             </button>
@@ -353,7 +353,7 @@ export function FolderView({ id }: { id: EntryId | null }) {
                 <button
                   type="button"
                   className="btn btn-primary"
-                  onClick={() => void A.newDocument(id)}
+                  onClick={(e) => void A.chooseNewDocument(id, e.shiftKey)}
                 >
                   New document
                 </button>
