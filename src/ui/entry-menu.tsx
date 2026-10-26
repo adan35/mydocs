@@ -25,6 +25,28 @@ import { SHORTCUTS } from '@/app/shortcuts';
 import type { MenuEntry } from './components/Menu';
 import { pickImport } from './import-pickers';
 
+/** The context menu for a multi-selection in the tree. */
+export function bulkMenu(entries: Entry[]): MenuEntry[] {
+  const ids = entries.map((e) => e.id);
+  const allFavorite = entries.every((e) => e.favorite);
+  return [
+    {
+      label: allFavorite ? 'Remove from favorites' : 'Add to favorites',
+      icon: allFavorite ? <StarOff /> : <Star />,
+      onSelect: () => void A.favoriteEntries(ids, !allFavorite),
+    },
+    { label: 'Move to…', icon: <FolderInput />, onSelect: () => void A.moveEntries(ids) },
+    'separator',
+    {
+      label: 'Move to Trash',
+      icon: <Trash2 />,
+      danger: true,
+      shortcut: 'Delete',
+      onSelect: () => void A.trashEntries(ids),
+    },
+  ];
+}
+
 /** The context menu for any file or folder, shared by the tree, lists and headers. */
 export function entryMenu(e: Entry): MenuEntry[] {
   const items: MenuEntry[] = [];

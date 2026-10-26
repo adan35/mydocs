@@ -26,7 +26,7 @@ import { EntryList } from '../components/EntryList';
 import { openMenuAt, type MenuEntry } from '../components/Menu';
 import { entryMenu, importSubmenu } from '../entry-menu';
 import { useLayout, useTree } from '../hooks';
-import { TREE_DRAG_TYPE } from '../layout/FileTree';
+import { TREE_DRAG_TYPE, draggedIds } from '../layout/FileTree';
 
 const SORTS: { key: SortKey; label: string }[] = [
   { key: 'name', label: 'Name' },
@@ -148,8 +148,8 @@ export function FolderView({ id }: { id: EntryId | null }) {
         e.preventDefault();
         e.stopPropagation();
         setDropping(false);
-        const moving = e.dataTransfer.getData(TREE_DRAG_TYPE);
-        if (moving) return void A.moveEntries([moving], id);
+        const moving = draggedIds(e.dataTransfer);
+        if (moving.length) return void A.moveEntries(moving, id);
         if (e.dataTransfer.files.length)
           await A.runImport(await itemsFromDataTransfer(e.dataTransfer), id);
       }}
@@ -330,11 +330,11 @@ export function FolderView({ id }: { id: EntryId | null }) {
                       }
                     },
                     onDrop: (ev: React.DragEvent) => {
-                      const moving = ev.dataTransfer.getData(TREE_DRAG_TYPE);
-                      if (!moving || moving === e.id) return;
+                      const moving = draggedIds(ev.dataTransfer).filter((m) => m !== e.id);
+                      if (!moving.length) return;
                       ev.preventDefault();
                       ev.stopPropagation();
-                      void A.moveEntries([moving], e.id);
+                      void A.moveEntries(moving, e.id);
                     },
                   }
                 : {}),
