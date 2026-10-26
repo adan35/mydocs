@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { ChevronRight, Home } from 'lucide-react';
 import { useDialogs, type DialogRequest } from '@/app/dialog-store';
 import { TEMPLATES, type Template } from '@/domain/templates';
+import { NewDocumentDialog } from './NewDocumentDialog';
 import { TEMPLATES_FOLDER, workspaceTemplates } from '@/app/actions';
 import type { EntryId } from '@/domain/types';
 import { Dialog } from '../components/Dialog';
@@ -35,6 +36,8 @@ function DialogFor({ req }: { req: DialogRequest }) {
       return <FolderPicker req={req} />;
     case 'template':
       return <TemplateDialog req={req} />;
+    case 'new-document':
+      return <NewDocumentDialog last={req.last} onPick={req.resolve} />;
     case 'history':
       return <HistoryDialog entryId={req.entryId} onClose={() => req.resolve()} />;
     case 'shortcuts':

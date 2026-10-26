@@ -1,6 +1,7 @@
 import { useUi } from '@/app/ui-store';
 import { editorActions } from '@/app/editor-store';
 import { openEntry } from '@/app/actions';
+import type { EditAction } from './editor/clipboard';
 
 export type DocCommand =
   | 'find'
@@ -11,6 +12,7 @@ export type DocCommand =
   | 'focus-editor'
   | 'insert-table'
   | 'panel-sheet'
+  | `edit:${EditAction}`
   /** Runs an editing tool from the ribbon registry by id. */
   | `tool:${string}`
   /** Applies a paragraph style (text, h1…h6). */

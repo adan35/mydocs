@@ -92,6 +92,14 @@ export function getCommands(): Command[] {
       icon: <FilePlus2 />,
       shortcut: SHORTCUTS.newDoc,
       keywords: 'create file note page',
+      run: () => void A.chooseNewDocument(),
+    },
+    {
+      id: 'new-markdown',
+      title: 'New Markdown document (without asking)',
+      group: 'Create',
+      icon: <FilePlus2 />,
+      keywords: 'create file md quick blank',
       run: () => void A.newDocument(),
     },
     {

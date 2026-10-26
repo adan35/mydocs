@@ -369,7 +369,10 @@ test('PDFs that need character maps and PDFs with hundreds of pages open', async
     { length: 450 },
     (_, i) => `# Chapter ${i + 1}\n\nBody of chapter ${i + 1}.\n`,
   );
-  await page.getByRole('button', { name: 'New document', exact: true }).first().click();
+  await page
+    .getByRole('button', { name: 'New document', exact: true })
+    .first()
+    .click({ modifiers: ['Shift'] });
   await setDoc(page, lines.join('\n'));
   await waitSaved(page);
   const dialog = await openConvert(page);

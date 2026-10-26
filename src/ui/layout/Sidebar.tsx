@@ -77,9 +77,9 @@ export function Sidebar({ onClose, drawer }: { onClose?: () => void; drawer?: bo
           className="sidebar-new mb-1.5"
           aria-label="New document"
           title={`New document (${formatShortcut(SHORTCUTS.newDoc)})`}
-          onClick={() => {
+          onClick={(e) => {
             useUi.getState().setDrawer(false);
-            void A.newDocument();
+            void A.chooseNewDocument(undefined, e.shiftKey);
           }}
         >
           <FilePlus2 size={16} aria-hidden />
@@ -223,7 +223,7 @@ export function Sidebar({ onClose, drawer }: { onClose?: () => void; drawer?: bo
           className="icon-btn icon-btn-sm"
           aria-label="New document"
           title={`New document (${formatShortcut(SHORTCUTS.newDoc)})`}
-          onClick={() => void A.newDocument(null)}
+          onClick={(e) => void A.chooseNewDocument(null, e.shiftKey)}
         >
           <Plus size={15} />
         </button>

@@ -93,7 +93,7 @@ export function HomeView() {
           label="New document"
           hint={formatShortcut(SHORTCUTS.newDoc)}
           primary
-          onClick={() => void A.newDocument(null)}
+          onClick={(_, e) => void A.chooseNewDocument(null, e.shiftKey)}
         />
         <QuickAction
           icon={<LayoutTemplate />}
@@ -271,14 +271,14 @@ function QuickAction({
   icon: React.ReactNode;
   label: string;
   hint?: string;
-  onClick(el: HTMLElement): void;
+  onClick(el: HTMLElement, e: React.MouseEvent): void;
   primary?: boolean;
 }) {
   return (
     <button
       type="button"
       className={`flex h-[72px] flex-col items-start justify-between rounded-lg border p-3 text-left transition-colors ${primary ? 'border-transparent bg-[var(--primary-solid)] text-on-primary hover:bg-[var(--primary-solid-pressed)]' : 'border-hairline bg-canvas text-ink hover:bg-surface-soft'}`}
-      onClick={(e) => onClick(e.currentTarget)}
+      onClick={(e) => onClick(e.currentTarget, e)}
     >
       <span className={`[&>svg]:size-[18px] ${primary ? '' : 'text-steel'}`}>{icon}</span>
       <span className="flex w-full items-center justify-between gap-2 text-[14px] font-medium">

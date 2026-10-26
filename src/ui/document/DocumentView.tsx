@@ -47,6 +47,7 @@ import * as A from '@/app/actions';
 import '../editor/setup';
 import { Editor, type EditorHandle } from '../editor/Editor';
 import { insertTable } from '../editor/commands';
+import { runEdit, type EditAction } from '../editor/clipboard';
 import { Ribbon } from '../editor/Ribbon';
 import { TOOLS, applyBlockStyle, type EditSurface, type ToolContext } from '../editor/tools';
 import type { BlockType } from '@/domain/source-edit';
@@ -356,6 +357,8 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
       } else if (cmd === 'toggle-mode' && isMd) setMode(mode === 'edit' ? 'preview' : 'edit');
       else if (cmd === 'rich' && isMd) setMode(mode === 'rich' ? 'edit' : 'rich');
       else if (cmd === 'sync-scroll') useSettings.getState().update({ syncScroll: !syncScroll });
+      else if (cmd.startsWith('edit:'))
+        void runEdit(editorRef.current?.view ?? null, cmd.slice(5) as EditAction);
       else if (cmd.startsWith('tool:')) {
         const tool = TOOLS.find((t) => t.id === cmd.slice(5));
         if (tool && tool.when(toolCtx) && !tool.disabled?.(toolCtx)) tool.run(toolCtx);

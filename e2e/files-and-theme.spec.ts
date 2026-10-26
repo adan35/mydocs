@@ -56,7 +56,10 @@ test('the theme toggle switches themes, and line numbers follow', async ({ page 
     localStorage.setItem('mydoc:settings', JSON.stringify({ theme: 'light', lineNumbers: true })),
   );
   await freshApp(page);
-  await page.getByRole('button', { name: 'New document', exact: true }).first().click();
+  await page
+    .getByRole('button', { name: 'New document', exact: true })
+    .first()
+    .click({ modifiers: ['Shift'] });
   await page.keyboard.type('one\ntwo');
   const html = page.locator('html');
   await expect(html).toHaveAttribute('data-theme', 'light');
@@ -88,7 +91,10 @@ test('the theme menu switches palettes, the gutter follows, and the choice survi
     }
   });
   await freshApp(page);
-  await page.getByRole('button', { name: 'New document', exact: true }).first().click();
+  await page
+    .getByRole('button', { name: 'New document', exact: true })
+    .first()
+    .click({ modifiers: ['Shift'] });
   await page.keyboard.type('one\ntwo');
   const html = page.locator('html');
   const colors = () =>

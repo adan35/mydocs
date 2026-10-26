@@ -10,6 +10,7 @@ import { ws } from '@/app/app-store';
 import { Sidebar } from './Sidebar';
 import { TabBar } from './TabBar';
 import { MobileNav } from './MobileNav';
+import { MenuBar } from './MenuBar';
 import { CommandPalette, QuickOpen } from './Palette';
 import { HomeView } from '../views/HomeView';
 import { FolderView } from '../views/FolderView';
@@ -201,7 +202,7 @@ export function AppShell() {
 
   return (
     <div
-      className="flex h-full min-h-0 bg-canvas"
+      className="flex h-full min-h-0 flex-col bg-canvas"
       onDragEnter={(e) => {
         if (!isFileDrag(e)) return;
         dragDepth.current++;
@@ -229,106 +230,112 @@ export function AppShell() {
         if (useRouter.getState().route.name === 'home') navigate({ name: 'folder', id: null });
       }}
     >
-      <a
-        href="#main"
-        onClick={(e) => {
-          // The app uses hash routes, so following "#main" would leave the page.
-          e.preventDefault();
-          document.getElementById('main')?.focus();
-        }}
-        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[90] focus:rounded-md focus:bg-ink focus:px-3 focus:py-2 focus:text-canvas"
-      >
-        Skip to content
-      </a>
-      {showSidebar && (
-        <div className="relative shrink-0 border-r border-hairline no-print" style={{ width }}>
-          <Sidebar />
-          <div
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize sidebar"
-            tabIndex={0}
-            className="absolute top-0 -right-1 z-10 h-full w-2 cursor-col-resize hover:bg-[color-mix(in_srgb,var(--primary)_25%,transparent)]"
-            onKeyDown={(e) => {
-              if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-                const w = Math.min(420, Math.max(200, width + (e.key === 'ArrowRight' ? 16 : -16)));
-                setWidth(w);
-                localStorage.setItem(SIDEBAR_KEY, String(w));
-              }
-            }}
-            onPointerDown={(e) => {
-              const startX = e.clientX;
-              const start = width;
-              const move = (ev: PointerEvent) =>
-                setWidth(Math.min(420, Math.max(200, start + ev.clientX - startX)));
-              const up = (ev: PointerEvent) => {
-                removeEventListener('pointermove', move);
-                removeEventListener('pointerup', up);
-                localStorage.setItem(
-                  SIDEBAR_KEY,
-                  String(Math.min(420, Math.max(200, start + ev.clientX - startX))),
-                );
-              };
-              addEventListener('pointermove', move);
-              addEventListener('pointerup', up);
-            }}
-          />
-        </div>
-      )}
-      {showDrawer && (
-        <div
-          className="fixed inset-0 z-40 flex"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Sidebar"
-          onKeyDown={(e) => e.key === 'Escape' && useUi.getState().setDrawer(false)}
+      {!phone && !immersive && <MenuBar compact={tablet} />}
+      <div className="flex min-h-0 flex-1">
+        <a
+          href="#main"
+          onClick={(e) => {
+            // The app uses hash routes, so following "#main" would leave the page.
+            e.preventDefault();
+            document.getElementById('main')?.focus();
+          }}
+          className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[90] focus:rounded-md focus:bg-ink focus:px-3 focus:py-2 focus:text-canvas"
         >
-          <div className="animate-drawer relative h-full w-[min(300px,86vw)] shadow-3">
-            <Sidebar drawer onClose={() => useUi.getState().setDrawer(false)} />
-          </div>
-          <div
-            className="flex-1 bg-[var(--scrim)]"
-            onClick={() => useUi.getState().setDrawer(false)}
-            aria-hidden
-          />
-        </div>
-      )}
-      <div className="flex min-w-0 flex-1 flex-col">
-        {!phone && hasTabs && !immersive && (
-          <div className="flex shrink-0 items-stretch">
-            {(tablet || !sidebarOpen) && (
-              <button
-                type="button"
-                className="icon-btn m-1 self-center"
-                aria-label="Open sidebar"
-                onClick={() =>
-                  tablet ? useUi.getState().setDrawer(true) : useUi.getState().setSidebar(true)
+          Skip to content
+        </a>
+        {showSidebar && (
+          <div className="relative shrink-0 border-r border-hairline no-print" style={{ width }}>
+            <Sidebar />
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize sidebar"
+              tabIndex={0}
+              className="absolute top-0 -right-1 z-10 h-full w-2 cursor-col-resize hover:bg-[color-mix(in_srgb,var(--primary)_25%,transparent)]"
+              onKeyDown={(e) => {
+                if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                  const w = Math.min(
+                    420,
+                    Math.max(200, width + (e.key === 'ArrowRight' ? 16 : -16)),
+                  );
+                  setWidth(w);
+                  localStorage.setItem(SIDEBAR_KEY, String(w));
                 }
-              >
-                <PanelLeft size={16} />
-              </button>
-            )}
-            <div className="min-w-0 flex-1">
-              <TabBar />
-            </div>
+              }}
+              onPointerDown={(e) => {
+                const startX = e.clientX;
+                const start = width;
+                const move = (ev: PointerEvent) =>
+                  setWidth(Math.min(420, Math.max(200, start + ev.clientX - startX)));
+                const up = (ev: PointerEvent) => {
+                  removeEventListener('pointermove', move);
+                  removeEventListener('pointerup', up);
+                  localStorage.setItem(
+                    SIDEBAR_KEY,
+                    String(Math.min(420, Math.max(200, start + ev.clientX - startX))),
+                  );
+                };
+                addEventListener('pointermove', move);
+                addEventListener('pointerup', up);
+              }}
+            />
           </div>
         )}
-        {!phone && !hasTabs && route.name === 'doc' && (tablet || !sidebarOpen) && !immersive && (
-          <button
-            type="button"
-            className="icon-btn m-1"
-            aria-label="Open sidebar"
-            onClick={() =>
-              tablet ? useUi.getState().setDrawer(true) : useUi.getState().setSidebar(true)
-            }
+        {showDrawer && (
+          <div
+            className="fixed inset-0 z-40 flex"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Sidebar"
+            onKeyDown={(e) => e.key === 'Escape' && useUi.getState().setDrawer(false)}
           >
-            <PanelLeft size={16} />
-          </button>
+            <div className="animate-drawer relative h-full w-[min(300px,86vw)] shadow-3">
+              <Sidebar drawer onClose={() => useUi.getState().setDrawer(false)} />
+            </div>
+            <div
+              className="flex-1 bg-[var(--scrim)]"
+              onClick={() => useUi.getState().setDrawer(false)}
+              aria-hidden
+            />
+          </div>
         )}
-        <main id="main" className="min-h-0 flex-1 outline-none" tabIndex={-1}>
-          <RouteView />
-        </main>
-        {phone && !immersive && <MobileNav />}
+        <div className="flex min-w-0 flex-1 flex-col">
+          {!phone && hasTabs && !immersive && (
+            <div className="flex shrink-0 items-stretch">
+              {(tablet || !sidebarOpen) && (
+                <button
+                  type="button"
+                  className="icon-btn m-1 self-center"
+                  aria-label="Open sidebar"
+                  onClick={() =>
+                    tablet ? useUi.getState().setDrawer(true) : useUi.getState().setSidebar(true)
+                  }
+                >
+                  <PanelLeft size={16} />
+                </button>
+              )}
+              <div className="min-w-0 flex-1">
+                <TabBar />
+              </div>
+            </div>
+          )}
+          {!phone && !hasTabs && route.name === 'doc' && (tablet || !sidebarOpen) && !immersive && (
+            <button
+              type="button"
+              className="icon-btn m-1"
+              aria-label="Open sidebar"
+              onClick={() =>
+                tablet ? useUi.getState().setDrawer(true) : useUi.getState().setSidebar(true)
+              }
+            >
+              <PanelLeft size={16} />
+            </button>
+          )}
+          <main id="main" className="min-h-0 flex-1 outline-none" tabIndex={-1}>
+            <RouteView />
+          </main>
+          {phone && !immersive && <MobileNav />}
+        </div>
       </div>
       {overlay === 'palette' && <CommandPalette />}
       {overlay === 'quickopen' && <QuickOpen />}

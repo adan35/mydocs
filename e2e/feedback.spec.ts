@@ -19,7 +19,10 @@ async function importFiles(
 const editorText = (page: Page) => page.locator('.cm-content');
 
 async function newDoc(page: Page) {
-  await page.getByRole('button', { name: 'New document', exact: true }).first().click();
+  await page
+    .getByRole('button', { name: 'New document', exact: true })
+    .first()
+    .click({ modifiers: ['Shift'] });
   await expect(editorText(page)).toBeFocused();
 }
 
