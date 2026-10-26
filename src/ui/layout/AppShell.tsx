@@ -153,7 +153,13 @@ export function AppShell() {
     };
     addEventListener('drop', reset, true);
     addEventListener('dragend', reset, true);
+    // A dragged <img> carries its file ("Files" type), so dropping it back on the window re-imported it.
+    const noImageDrag = (e: DragEvent) => {
+      if (e.target instanceof HTMLImageElement) e.preventDefault();
+    };
+    addEventListener('dragstart', noImageDrag);
     return () => {
+      removeEventListener('dragstart', noImageDrag);
       removeEventListener('drop', reset, true);
       removeEventListener('dragend', reset, true);
     };
