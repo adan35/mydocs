@@ -21,16 +21,17 @@ async function pick(page: Page, opener: ReturnType<Page['locator']>, name: RegEx
   await page.getByRole('menuitemradio', { name }).click();
 }
 
-test('tables start one line per row and switch to Normal, Medium and Full height', async ({
-  page,
-}) => {
+test('tables show whole rows and switch to Compact, Normal and Medium height', async ({ page }) => {
   await freshApp(page);
   await newDocInRoot(page, 'Cases');
   await setDoc(page, table);
   await page.getByRole('button', { name: 'Read', exact: true }).click();
 
   const rows = page.locator('.table-rows-btn');
-  await expect(rows).toHaveText('Rows: Default');
+  await expect(rows).toHaveText('Rows: Full');
+  const whole = await rowHeight(page, 0);
+  await pick(page, rows, /^Compact/);
+  await expect(rows).toHaveText('Rows: Compact');
   const single = await rowHeight(page, 0);
   expect(single).toBeLessThan(45);
   // The whole cell text is still there, in the tooltip.
@@ -49,14 +50,15 @@ test('tables start one line per row and switch to Normal, Medium and Full height
 
   await pick(page, rows, /^Full/);
   expect(await rowHeight(page, 0)).toBeGreaterThan(medium);
+  expect(await rowHeight(page, 0)).toBe(whole);
 
   // Clicking a row opens just that row in full; the choice is remembered.
-  await pick(page, rows, /^Default/);
+  await pick(page, rows, /^Compact/);
   await page.locator('.prose tbody tr').nth(1).locator('td').nth(2).click();
   expect(await rowHeight(page, 1)).toBeGreaterThan(single * 3);
   expect(await rowHeight(page, 0)).toBeLessThan(45);
   await page.reload();
-  await expect(page.locator('.table-rows-btn')).toHaveText('Rows: Default');
+  await expect(page.locator('.table-rows-btn')).toHaveText('Rows: Compact');
 });
 
 test('the sheet view uses the same row height', async ({ page }) => {
@@ -66,6 +68,7 @@ test('the sheet view uses the same row height', async ({ page }) => {
   await page.getByRole('button', { name: 'Sheet', exact: true }).click();
   const cell = page.locator('[data-cell="C2"]');
   await expect(cell).toBeVisible();
+  await pick(page, page.getByTestId('row-height'), /^Compact/);
   const single = await cell.evaluate((el) => el.getBoundingClientRect().height);
   expect(single).toBe(28);
   await pick(page, page.getByTestId('row-height'), /^Medium/);

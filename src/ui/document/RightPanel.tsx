@@ -9,11 +9,14 @@ import {
   X,
   ArrowUpRight,
   AlertTriangle,
+  ExternalLink,
+  Globe,
 } from 'lucide-react';
 import type { EntryId } from '@/domain/types';
 import type { OutlineItem } from '@/domain/outline';
 import type { DocOutline } from '@/app/outline-store';
 import { countWords } from '@/domain/tasks';
+import { extractExternalLinks } from '@/domain/links';
 import { formatBytes, fileTypeOf } from '@/domain/names';
 import { session } from '@/app/app-store';
 import { useUi, type RightPanel as Panel } from '@/app/ui-store';
@@ -81,7 +84,7 @@ export function RightPanel({ docId, text, outline, onClose }: Props) {
       </div>
       <div role="tabpanel" className="scroll-area min-h-0 flex-1 p-3">
         {panel === 'outline' && <Outline outline={outline} />}
-        {panel === 'backlinks' && <Links docId={docId} />}
+        {panel === 'backlinks' && <Links docId={docId} text={text} />}
         {panel === 'info' && <DocInfo docId={docId} text={text} />}
       </div>
     </aside>
@@ -245,7 +248,7 @@ export function Outline({ outline }: { outline: DocOutline }) {
   );
 }
 
-function Links({ docId }: { docId: EntryId }) {
+function Links({ docId, text }: { docId: EntryId; text?: string }) {
   const tree = useTree()!;
   useIndexVersion();
   const s = session();
@@ -255,6 +258,8 @@ function Links({ docId }: { docId: EntryId }) {
     ...new Map(outgoing.filter((o) => o.targetId).map((o) => [o.targetId!, o])).values(),
   ];
   const broken = outgoing.filter((o) => !o.targetId);
+  const external = useMemo(() => (text ? extractExternalLinks(text) : []), [text]);
+  const total = uniqueOut.length + external.length;
   const ambiguous = s.knowledge.ambiguousLinks(tree, docId);
   const linkedIds = new Set([...backlinks, ...uniqueOut.map((o) => o.targetId!)]);
   const related = s.knowledge
@@ -274,12 +279,34 @@ function Links({ docId }: { docId: EntryId }) {
         )}
       </section>
       <section>
-        <h3 className="section-label mb-1.5 px-1">Links from this document · {uniqueOut.length}</h3>
-        {uniqueOut.length ? (
+        <h3 className="section-label mb-1.5 px-1">Links from this document · {total}</h3>
+        {uniqueOut.length > 0 && (
           <EntryList ids={uniqueOut.map((o) => o.targetId!)} icon={<ArrowUpRight size={13} />} />
-        ) : (
-          <p className="px-1 text-caption text-steel">None.</p>
         )}
+        {external.length > 0 && (
+          <ul className="space-y-px" aria-label="Web links">
+            {external.map((l) => (
+              <li key={l.href}>
+                <a
+                  href={l.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left hover:bg-hover"
+                >
+                  <Globe size={14} aria-hidden className="shrink-0 text-steel" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13px] text-ink">{l.label}</span>
+                    <span className="block truncate text-xs text-stone">
+                      {l.href.replace(/^(https?:\/\/|mailto:)/i, '')}
+                    </span>
+                  </span>
+                  <ExternalLink size={13} aria-hidden className="text-stone" />
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
+        {!total && <p className="px-1 text-caption text-steel">None.</p>}
       </section>
       <UnlinkedMentions docId={docId} />
       {related.length > 0 && (

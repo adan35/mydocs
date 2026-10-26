@@ -55,3 +55,52 @@ export function diffLines(a: string, b: string, maxCells = 4_000_000): DiffLine[
   while (j < m) mid.push({ type: 'add', text: b2[j++]! });
   return [...head, ...mid, ...tail];
 }
+
+export interface ChangeSummary {
+  added: number;
+  removed: number;
+  /** One line describing the change, like a commit message. */
+  message: string;
+}
+
+const clip = (s: string, n = 48) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s);
+const plain = (s: string) =>
+  s
+    .replace(/^\s*(?:#{1,6}\s+|[-*+]\s+(?:\[[ x]\]\s+)?|\d+[.)]\s+|>\s*)/i, '')
+    .replace(/[*_`~]|\[\[|\]\]/g, '')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .trim();
+
+/** Line counts and a commit-style message for the change from `before` to `after`. */
+export function summarizeChange(before: string, after: string): ChangeSummary {
+  if (!before.trim()) return { added: after.split('\n').length, removed: 0, message: 'Created' };
+  const diff = diffLines(before, after);
+  let added = 0;
+  let removed = 0;
+  let heading = '';
+  let section = '';
+  let first: DiffLine | undefined;
+  for (const d of diff) {
+    const h = /^#{1,6}\s+(.+)/.exec(d.text);
+    if (d.type === 'same') {
+      if (h) heading = h[1]!;
+      continue;
+    }
+    if (d.type === 'add') added++;
+    else removed++;
+    // The message names the first changed line with text in it.
+    if (!first || (!first.text.trim() && d.text.trim())) {
+      first = d;
+      section = h ? '' : heading;
+    }
+  }
+  if (!first) return { added, removed, message: 'No text changes' };
+  const verb = removed && added ? 'Edited' : added ? 'Added' : 'Removed';
+  const line = plain(first.text);
+  const message = section
+    ? `${verb} in “${clip(plain(section))}”`
+    : line
+      ? `${verb} “${clip(line)}”`
+      : `${verb} blank lines`;
+  return { added, removed, message };
+}

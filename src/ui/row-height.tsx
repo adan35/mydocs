@@ -4,10 +4,10 @@ import { openMenuAt, type MenuEntry } from './components/Menu';
 
 /** The row heights, as the menus and Settings name them. */
 export const ROW_HEIGHTS: { id: RowHeight; label: string; menu: string }[] = [
-  { id: 'default', label: 'Default', menu: 'Default · one line' },
+  { id: 'default', label: 'Compact', menu: 'Compact · one line' },
   { id: 'normal', label: 'Normal', menu: 'Normal · up to 3 lines' },
   { id: 'medium', label: 'Medium', menu: 'Medium · up to 6 lines' },
-  { id: 'full', label: 'Full', menu: 'Full height · everything' },
+  { id: 'full', label: 'Full', menu: 'Full height · everything (default)' },
 ];
 
 export function rowHeightMenu(): MenuEntry[] {

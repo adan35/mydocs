@@ -3,10 +3,11 @@ import { sanitizeName, uniqueName, validateName, fileTypeOf } from './names';
 import { normalizePath, relativePath, resolvePath } from './paths';
 import { extractTags, addTag, replaceTag, removeTag } from './tags';
 import { extractHeadings } from './outline';
-import { extractLinks, rewriteLinks } from './links';
+import { extractExternalLinks, extractLinks, rewriteLinks } from './links';
 import { Tree, sortEntries } from './tree';
 import type { Entry } from './types';
 import { expandTemplate } from './templates';
+import { summarizeChange } from './diff';
 
 const entry = (
   id: string,
@@ -118,6 +119,15 @@ describe('links', () => {
       ['markdown', 'my file.md', 'sec'],
     ]);
   });
+  it('extracts web links once each, skipping code, images and unsafe schemes', () => {
+    const links = extractExternalLinks(
+      '| [Tauri 2](https://tauri.app) | <https://x.com> ![i](https://i.png) `[c](https://c.com)` [j](javascript:alert(1)) [again](https://tauri.app)',
+    );
+    expect(links).toEqual([
+      { href: 'https://tauri.app', label: 'Tauri 2' },
+      { href: 'https://x.com', label: 'https://x.com' },
+    ]);
+  });
   it('treats ![[embeds]] as wiki links', () => {
     const links = extractLinks('![[photo.png]] ![[Note#Part]]');
     expect(links.map((l) => [l.kind, l.target, l.fragment, l.embed])).toEqual([
@@ -185,5 +195,27 @@ describe('templates', () => {
     expect(expandTemplate('# {{title}} {{ date }}', { title: 'X', date: '2024-01-01' })).toBe(
       '# X 2024-01-01',
     );
+  });
+});
+
+describe('summarizeChange', () => {
+  it('names the section and counts lines like a commit', () => {
+    const before = '# Doc\n\n## Setup\n\nOld step\n\n## Usage\n\nRun it';
+    expect(summarizeChange(before, before.replace('Old step', 'New step'))).toEqual({
+      added: 1,
+      removed: 1,
+      message: 'Edited in “Setup”',
+    });
+    expect(summarizeChange(before, before + '\n- [ ] **Ship** it')).toEqual({
+      added: 1,
+      removed: 0,
+      message: 'Added in “Usage”',
+    });
+    expect(summarizeChange('Intro\n\nBye', 'Intro')).toMatchObject({
+      removed: 2,
+      message: 'Removed “Bye”',
+    });
+    expect(summarizeChange('', 'a\nb').message).toBe('Created');
+    expect(summarizeChange('a', 'a').message).toBe('No text changes');
   });
 });

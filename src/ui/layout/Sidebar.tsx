@@ -21,6 +21,7 @@ import {
   X,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
+import type { EntryId } from '@/domain/types';
 import { useApp } from '@/app/app-store';
 import { useRouter, navigate, type Route } from '@/app/router';
 import { useUi } from '@/app/ui-store';
@@ -31,7 +32,7 @@ import { openMenuAt, type MenuEntry } from '../components/Menu';
 import { FileIcon } from '../components/FileIcon';
 import { formatShortcut, useTree } from '../hooks';
 import { importSubmenu } from '../entry-menu';
-import { FileTree } from './FileTree';
+import { FileTree, useEntryDrop } from './FileTree';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { ThemeMenuButton } from '../components/ThemePicker';
 
@@ -43,6 +44,10 @@ export function Sidebar({ onClose, drawer }: { onClose?: () => void; drawer?: bo
     .liveEntries()
     .filter((e) => e.favorite)
     .slice(0, 12);
+  const addFavorite = (id: EntryId) => {
+    if (!tree.get(id)?.favorite) void A.toggleFavorite(id);
+  };
+  const favDrop = useEntryDrop(addFavorite);
 
   return (
     <nav aria-label="Workspace" className="flex h-full min-h-0 flex-col bg-sidebar text-charcoal">
@@ -67,7 +72,23 @@ export function Sidebar({ onClose, drawer }: { onClose?: () => void; drawer?: bo
         )}
       </div>
 
-      <div className="px-2 pb-2">
+      <div className="px-2 pt-1 pb-2">
+        <button
+          type="button"
+          className="sidebar-new mb-1.5"
+          aria-label="New document"
+          title={`New document (${formatShortcut(SHORTCUTS.newDoc)})`}
+          onClick={() => {
+            useUi.getState().setDrawer(false);
+            void A.newDocument();
+          }}
+        >
+          <FilePlus2 size={16} aria-hidden />
+          <span className="flex-1 text-left">New document</span>
+          <kbd className="hidden text-xs opacity-75 md:inline">
+            {formatShortcut(SHORTCUTS.newDoc)}
+          </kbd>
+        </button>
         <button
           type="button"
           className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-[14px] text-steel hover:bg-hover"
@@ -94,6 +115,7 @@ export function Sidebar({ onClose, drawer }: { onClose?: () => void; drawer?: bo
           label="Favorites"
           route={{ name: 'favorites' }}
           current={route.name === 'favorites'}
+          onDropEntry={addFavorite}
         />
         <NavItem
           icon={<Hash size={16} />}
@@ -140,11 +162,15 @@ export function Sidebar({ onClose, drawer }: { onClose?: () => void; drawer?: bo
           route={{ name: 'trash' }}
           current={route.name === 'trash'}
           badge={trashCount || undefined}
+          onDropEntry={(id) => void A.trashEntries([id])}
         />
       </div>
 
       {favorites.length > 0 && (
-        <div className="px-2 pb-2">
+        <div
+          className={`mx-2 mb-2 rounded-md ${favDrop.over ? 'drop-target' : ''}`}
+          {...favDrop.props}
+        >
           <div className="section-label px-2 pt-2 pb-1">Favorites</div>
           {favorites.map((e) => (
             <button
@@ -200,13 +226,6 @@ export function Sidebar({ onClose, drawer }: { onClose?: () => void; drawer?: bo
       <FileTree />
 
       <div className="border-t border-hairline px-2 py-2">
-        <button
-          type="button"
-          className="btn btn-ghost h-8 w-full justify-start gap-2 px-2 font-normal"
-          onClick={() => void A.newDocument()}
-        >
-          <FilePlus2 size={16} className="text-steel" aria-hidden /> New document
-        </button>
         <NavItem
           icon={<Settings size={16} />}
           label="Settings"
@@ -224,18 +243,23 @@ function NavItem({
   route,
   current,
   badge,
+  onDropEntry,
 }: {
   icon: ReactNode;
   label: string;
   route: Route;
   current: boolean;
   badge?: number;
+  /** Makes the item a drop target for dragged files and folders. */
+  onDropEntry?: (id: EntryId) => void;
 }) {
+  const drop = useEntryDrop((id) => onDropEntry?.(id));
   return (
     <button
       type="button"
       aria-current={current ? 'page' : undefined}
-      className={`nav-item flex h-[30px] w-full items-center gap-2 rounded-md px-2 text-left text-[14px] ${current ? 'bg-active font-medium text-ink' : 'hover:bg-hover'}`}
+      className={`nav-item flex h-[30px] w-full items-center gap-2 rounded-md px-2 text-left text-[14px] ${current ? 'bg-active font-medium text-ink' : 'hover:bg-hover'} ${drop.over ? 'drop-target' : ''}`}
+      {...(onDropEntry ? drop.props : {})}
       onClick={() => {
         useUi.getState().setDrawer(false);
         navigate(route);

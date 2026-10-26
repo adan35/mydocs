@@ -19,8 +19,8 @@ import type { ChangeSet, WorkspaceStore } from '@/storage/types';
 import { migrateWorkspace } from './migrations';
 
 /** Snapshot the previous content when the last snapshot is older than this. */
-export const VERSION_INTERVAL_MS = 5 * 60 * 1000;
-export const MAX_VERSIONS_PER_DOC = 50;
+export const VERSION_INTERVAL_MS = 2 * 60 * 1000;
+export const MAX_VERSIONS_PER_DOC = 100;
 /** Largest text file opened in the editor. Bigger files are treated as binary. */
 export const MAX_TEXT_BYTES = 20 * 1024 * 1024;
 

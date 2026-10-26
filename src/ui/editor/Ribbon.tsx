@@ -74,13 +74,13 @@ export function Ribbon({ ctx, tick }: { ctx: ToolContext; tick: number }) {
       role="toolbar"
       aria-label="Formatting"
       data-testid="ribbon"
-      className={`ribbon flex min-h-10 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-hairline-soft bg-canvas px-2 py-1 [scrollbar-width:none] no-print ${phone && keyboardInset ? 'fixed inset-x-0 z-40 border-t shadow-2' : ''}`}
+      className={`ribbon flex min-h-10 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-hairline bg-surface-soft px-2 py-1.5 [scrollbar-width:none] no-print ${phone && keyboardInset ? 'fixed inset-x-0 z-40 border-t shadow-2' : ''}`}
       style={phone && keyboardInset ? { bottom: keyboardInset } : undefined}
       onKeyDown={onKeyDown}
     >
       {ctx.kind === 'markdown' && (
         <select
-          className="input h-8 w-auto min-w-[112px] shrink-0 py-0 text-caption"
+          className="input h-8 w-auto min-w-[112px] shrink-0 bg-canvas py-0 text-caption font-medium"
           aria-label="Paragraph style"
           title="Paragraph style"
           tabIndex={tabIndex()}
@@ -120,7 +120,7 @@ export function Ribbon({ ctx, tick }: { ctx: ToolContext; tick: number }) {
               <button
                 key={tool.id}
                 type="button"
-                className={`icon-btn size-8 shrink-0 [&>svg]:size-4 ${pressed ? 'bg-active text-ink' : ''}`}
+                className={`icon-btn size-8 shrink-0 [&>svg]:size-4 ${pressed ? 'bg-primary-soft text-primary-soft-ink' : ''}`}
                 aria-label={tool.label}
                 aria-pressed={tool.pressed ? !!pressed : undefined}
                 title={title}

@@ -452,6 +452,176 @@
   .safe-bottom {
     padding-bottom: env(safe-area-inset-bottom);
   }
+
+  /* The sidebar's main action, at the top where it is easy to find. */
+  .sidebar-new {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    height: 34px;
+    padding: 0 10px;
+    border-radius: var(--radius-md);
+    background: var(--primary-solid);
+    color: var(--on-primary);
+    font-size: 14px;
+    font-weight: 500;
+    box-shadow: var(--shadow-1);
+    transition: background-color 120ms;
+  }
+  .sidebar-new:hover {
+    background: var(--primary-solid-pressed);
+  }
+  .sidebar-new:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+  /* Where a dragged file or folder will land (Trash, Favorites). */
+  .drop-target {
+    background: color-mix(in srgb, var(--primary) 12%, transparent) !important;
+    box-shadow: inset 0 0 0 1.5px var(--primary);
+    color: var(--ink);
+  }
+  /* Home's drag-and-drop hint. */
+  .drop-zone {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    padding: 18px 20px;
+    border: 1.5px dashed var(--hairline-strong);
+    border-radius: var(--radius-lg);
+    background: var(--surface-soft);
+    text-align: left;
+    transition:
+      border-color 120ms,
+      background-color 120ms;
+  }
+  .drop-zone:hover,
+  .drop-zone[data-over] {
+    border-color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 6%, var(--canvas));
+  }
+
+  /* Save and disk status in the document toolbar: a tinted pill, so it reads at a glance. */
+  .status-pill {
+    --tone: var(--steel);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 26px;
+    padding: 0 10px;
+    border: 1px solid color-mix(in srgb, var(--tone) 28%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--tone) 10%, var(--canvas));
+    color: color-mix(in srgb, var(--tone) 78%, var(--ink));
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .status-pill[data-tone='success'] {
+    --tone: var(--success);
+  }
+  .status-pill[data-tone='primary'] {
+    --tone: var(--primary);
+  }
+  .status-pill[data-tone='warning'] {
+    --tone: var(--warning);
+  }
+  .status-pill[data-tone='danger'] {
+    --tone: var(--danger);
+  }
+  .status-pill .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--tone);
+  }
+  button.status-pill:hover {
+    background: color-mix(in srgb, var(--tone) 16%, var(--canvas));
+  }
+
+  /* Version history as a commit log: a rail with one dot per version. */
+  .history-commit {
+    position: relative;
+    padding-left: 22px;
+  }
+  .history-commit::before {
+    content: '';
+    position: absolute;
+    left: 7px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--hairline);
+  }
+  .history-commit:first-child::before {
+    top: 16px;
+  }
+  .history-commit:last-child::before {
+    bottom: calc(100% - 16px);
+  }
+  .history-commit::after {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 11px;
+    width: 10px;
+    height: 10px;
+    border: 2px solid var(--hairline-strong);
+    border-radius: 999px;
+    background: var(--canvas);
+  }
+  .history-commit[data-head]::after {
+    border-color: var(--primary);
+    background: var(--primary);
+  }
+  .history-commit:has([data-active='true'])::after {
+    border-color: var(--primary);
+  }
+  .history-commit-btn {
+    display: block;
+    width: 100%;
+    margin: 1px 0;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    text-align: left;
+  }
+  .history-commit-btn:hover {
+    background: var(--hover);
+  }
+  .history-commit-btn[data-active='true'] {
+    background: var(--primary-soft);
+  }
+  .history-commit-btn:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: -2px;
+  }
+  .history-badge {
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--primary-solid);
+    color: var(--on-primary);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 16px;
+  }
+  .history-gap {
+    margin: 2px 0;
+    padding: 1px 12px;
+    background: var(--hover);
+    color: var(--stone);
+    font-family: var(--font-sans);
+    font-size: 11px;
+  }
+  [data-diff='add'] {
+    background: color-mix(in srgb, var(--success) 14%, transparent);
+  }
+  [data-diff='del'] {
+    background: color-mix(in srgb, var(--danger) 14%, transparent);
+    text-decoration: line-through;
+    text-decoration-color: color-mix(in srgb, var(--danger) 50%, transparent);
+  }
 }
 
 @layer utilities {

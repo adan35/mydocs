@@ -322,14 +322,14 @@ export function SettingsView() {
         </Row>
         <Row
           label="Table row height"
-          hint="Tables in documents and spreadsheets. Default keeps each row to one line, like a spreadsheet."
+          hint="Tables in documents and spreadsheets. Full shows every row whole; Compact keeps each row to one line, like a spreadsheet."
         >
           <Segmented
             label="Table row height"
             value={s.tableRowHeight}
             onChange={(tableRowHeight) => set({ tableRowHeight })}
             options={[
-              ['default', 'Default'],
+              ['default', 'Compact'],
               ['normal', 'Normal'],
               ['medium', 'Medium'],
               ['full', 'Full'],
