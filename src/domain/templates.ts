@@ -63,6 +63,85 @@ A short description of what this project does and who it is for.
 `,
   },
   {
+    id: 'minutes',
+    name: 'Meeting minutes',
+    description: 'Formal minutes: attendees, agenda, decisions, action items and next steps.',
+    fileName: 'Meeting minutes {{date}}',
+    body: `---
+type: meeting-minutes
+date: {{date}}
+status: draft
+---
+
+# {{title}}
+
+> [!NOTE] Purpose
+> One sentence on why this meeting was held and what it needed to decide.
+
+- 📅 **Date:** {{date}}
+- 🕒 **Time:** {{time}} –
+- 📍 **Location:** Room or video link
+- 🧭 **Chair:** 
+- ✍️ **Minutes by:** 
+
+## 👥 Attendees
+
+| Name | Role | Attendance |
+| --- | --- | :---: |
+|  |  | ✅ Present |
+|  |  | ⏳ Late |
+|  |  | ❌ Absent |
+
+## 📋 Agenda
+
+1.
+2.
+3.
+
+## 💬 Discussion
+
+### 1. Topic
+
+- **Summary:**
+- **Points raised:**
+  -
+
+> [!TIP] Key takeaway
+> The one thing everybody should remember from this item.
+
+## ✅ Decisions
+
+| # | Decision | Decided by |
+| ---: | --- | --- |
+| 1 |  |  |
+
+## 🎯 Action items
+
+| Action | Owner | Due | Status |
+| --- | --- | --- | :---: |
+|  |  |  | ⬜ To do |
+
+- [ ]
+
+## 🅿️ Parking lot
+
+Topics raised but not discussed. Carry them to the next meeting.
+
+-
+
+## 🔜 Next meeting
+
+- **When:**
+- **Focus:**
+
+---
+
+*Minutes taken {{date}}. Please send corrections to the chair within two working days.*
+
+#meeting
+`,
+  },
+  {
     id: 'project',
     name: 'Project documentation',
     description: 'Goals, scope, architecture and milestones.',

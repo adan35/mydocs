@@ -217,7 +217,9 @@ test('a .unl export opens as a sheet without the trailing empty column and conve
   );
 });
 
-test('Markdown tables edit as a sheet, with a picker for several tables', async ({ page }) => {
+test('Markdown tables edit as a sheet, and several tables are stacked with a gap', async ({
+  page,
+}) => {
   await freshApp(page);
   await newDocInRoot(page, 'Tables');
   await setDoc(
@@ -232,9 +234,12 @@ test('Markdown tables edit as a sheet, with a picker for several tables', async 
   await grid.locator('[data-cell="B2"]').click();
   await expect(page.getByTestId('formula-bar')).toHaveValue('007');
   await expect(grid.locator('[data-cell="B2"]')).toHaveClass(/text-right/);
-  await page.getByRole('combobox', { name: 'Table' }).selectOption({ index: 1 });
-  await expect(grid.locator('[data-cell="A2"]')).toHaveText('Ada');
-  await grid.locator('[data-cell="B2"]').click();
+  // The second table follows after two empty rows, with its own row numbers.
+  await expect(grid.locator('[data-cell="A3"]')).toHaveText('');
+  await expect(grid.locator('[data-cell="A5"]')).toHaveText('Name');
+  await expect(grid.locator('[data-cell="A6"]')).toHaveText('Ada');
+  await grid.locator('[data-cell="B6"]').click();
+  await expect(page.getByLabel('Selected cell')).toHaveText('B2');
   await page.keyboard.type('Owner');
   await page.keyboard.press('Enter');
   await page.getByRole('button', { name: 'Insert row below' }).click();

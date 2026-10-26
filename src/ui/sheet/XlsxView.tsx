@@ -305,6 +305,13 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
             if (a.select !== undefined) setSelection({ r: a.select, c: selection.c });
           }}
           onClear={(r, c) => edit((book) => setCellRaw(book.sheets[sheetIndex]!, r, c, undefined))}
+          onClearRange={([r1, c1, r2, c2]) =>
+            edit((book) => {
+              for (let r = r1; r <= r2; r++)
+                for (let c = c1; c <= c2; c++)
+                  setCellRaw(book.sheets[sheetIndex]!, r, c, undefined);
+            })
+          }
           onPaste={(r, c, block) =>
             edit((book) => {
               const s = book.sheets[sheetIndex]!;

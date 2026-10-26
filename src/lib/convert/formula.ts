@@ -717,6 +717,11 @@ export function formulaSupported(f: string): boolean {
 export function mapRefs(
   f: string,
   fn: (r: number, c: number, absR: boolean, absC: boolean) => { r: number; c: number } | null,
+  /** Maps both ends of a range (A1:B3) together, so a range can shrink instead of breaking. */
+  range?: (
+    a: { r: number; c: number },
+    b: { r: number; c: number },
+  ) => [{ r: number; c: number }, { r: number; c: number }] | null,
 ): string {
   let out = '';
   let i = 0;
@@ -741,6 +746,20 @@ export function mapRefs(
     const m = /[A-Za-z_$]/.test(ch) && !/[\w.]/.test(prev) ? re.exec(f.slice(i)) : null;
     if (m) {
       const [, ac, col, ar, row] = m;
+      const tail = range
+        ? /^:(\$?)([A-Za-z]{1,3})(\$?)(\d+)(?![\w(!])/.exec(f.slice(i + m[0].length))
+        : null;
+      if (tail) {
+        const next = range!(
+          { r: Number(row) - 1, c: colIndex(col!) },
+          { r: Number(tail[4]) - 1, c: colIndex(tail[2]!) },
+        );
+        out += next
+          ? `${ac}${colName(next[0].c)}${ar}${next[0].r + 1}:${tail[1]}${colName(next[1].c)}${tail[3]}${next[1].r + 1}`
+          : '#REF!';
+        i += m[0].length + tail[0].length;
+        continue;
+      }
       const next = fn(Number(row) - 1, colIndex(col!), !!ar, !!ac);
       out +=
         !next || next.c < 0 || next.r < 0 ? '#REF!' : `${ac}${colName(next.c)}${ar}${next.r + 1}`;
@@ -774,10 +793,28 @@ export function shiftFormula(f: string, dr: number, dc: number): string {
  * (delta > 0) or deleted (delta < 0) at `at`. References to deleted cells become #REF!.
  */
 export function moveRefs(f: string, axis: 'row' | 'col', at: number, delta: number): string {
-  return mapRefs(f, (r, c) => {
-    const v = axis === 'row' ? r : c;
-    if (v < at) return { r, c };
-    if (delta < 0 && v < at - delta) return null;
-    return axis === 'row' ? { r: r + delta, c } : { r, c: c + delta };
-  });
+  const key = axis === 'row' ? 'r' : 'c';
+  return mapRefs(
+    f,
+    (r, c) => {
+      const v = axis === 'row' ? r : c;
+      if (v < at) return { r, c };
+      if (delta < 0 && v < at - delta) return null;
+      return axis === 'row' ? { r: r + delta, c } : { r, c: c + delta };
+    },
+    // A range loses the deleted cells at its ends and grows when cells are inserted inside it.
+    (a, b) => {
+      const lo = Math.min(a[key], b[key]);
+      const hi = Math.max(a[key], b[key]);
+      const end = at - delta;
+      const nlo = lo < at ? lo : delta < 0 && lo < end ? at : lo + delta;
+      const nhi = hi < at ? hi : delta < 0 && hi < end ? at - 1 : hi + delta;
+      if (nlo > nhi) return null;
+      const forward = a[key] <= b[key];
+      return [
+        { ...a, [key]: forward ? nlo : nhi },
+        { ...b, [key]: forward ? nhi : nlo },
+      ];
+    },
+  );
 }

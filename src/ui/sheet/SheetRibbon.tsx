@@ -11,6 +11,18 @@ import {
   Undo2,
   Columns3,
   Rows3,
+  Sigma,
+  ChevronsDown,
+  ChevronsRight,
+  Bold,
+  Italic,
+  Strikethrough,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  Filter,
+  PanelTop,
+  PanelLeft,
 } from 'lucide-react';
 import { formatShortcut } from '../hooks';
 import { RowHeightButton } from '../row-height';
@@ -22,7 +34,7 @@ export interface SheetAction {
   run(): void;
   disabled?: boolean;
   shortcut?: string;
-  group: 'history' | 'rows' | 'cols' | 'sort';
+  group: string;
 }
 
 export type SheetCommand =
@@ -35,7 +47,19 @@ export type SheetCommand =
   | 'col-right'
   | 'delete-col'
   | 'sort-asc'
-  | 'sort-desc';
+  | 'sort-desc'
+  | 'autosum'
+  | 'fill-down'
+  | 'fill-right'
+  | 'bold'
+  | 'italic'
+  | 'strike'
+  | 'align-left'
+  | 'align-center'
+  | 'align-right'
+  | 'filter'
+  | 'freeze-row'
+  | 'freeze-col';
 
 const META: Record<SheetCommand, Omit<SheetAction, 'run' | 'disabled'>> = {
   undo: { id: 'undo', label: 'Undo', icon: <Undo2 />, shortcut: 'Mod+Z', group: 'history' },
@@ -98,29 +122,84 @@ const META: Record<SheetCommand, Omit<SheetAction, 'run' | 'disabled'>> = {
     icon: <ArrowDownZA />,
     group: 'sort',
   },
+  autosum: { id: 'autosum', label: 'AutoSum', icon: <Sigma />, group: 'calc' },
+  'fill-down': {
+    id: 'fill-down',
+    label: 'Fill down',
+    icon: <ChevronsDown />,
+    shortcut: 'Mod+D',
+    group: 'calc',
+  },
+  'fill-right': {
+    id: 'fill-right',
+    label: 'Fill right',
+    icon: <ChevronsRight />,
+    shortcut: 'Mod+R',
+    group: 'calc',
+  },
+  bold: { id: 'bold', label: 'Bold', icon: <Bold />, group: 'text' },
+  italic: { id: 'italic', label: 'Italic', icon: <Italic />, group: 'text' },
+  strike: { id: 'strike', label: 'Strikethrough', icon: <Strikethrough />, group: 'text' },
+  'align-left': {
+    id: 'align-left',
+    label: 'Align column left',
+    icon: <AlignLeft />,
+    group: 'align',
+  },
+  'align-center': {
+    id: 'align-center',
+    label: 'Center column',
+    icon: <AlignCenter />,
+    group: 'align',
+  },
+  'align-right': {
+    id: 'align-right',
+    label: 'Align column right',
+    icon: <AlignRight />,
+    group: 'align',
+  },
+  filter: { id: 'filter', label: 'Filter rows', icon: <Filter />, group: 'view' },
+  'freeze-row': {
+    id: 'freeze-row',
+    label: 'Freeze header row',
+    icon: <PanelTop />,
+    group: 'view',
+  },
+  'freeze-col': {
+    id: 'freeze-col',
+    label: 'Freeze first column',
+    icon: <PanelLeft />,
+    group: 'view',
+  },
 };
+
+const DEFAULT_GROUPS: SheetCommand[][] = [
+  ['undo', 'redo'],
+  ['row-above', 'row-below', 'delete-row'],
+  ['col-left', 'col-right', 'delete-col'],
+  ['sort-asc', 'sort-desc'],
+];
 
 /** The ribbon for spreadsheets: the same toolbar pattern as the document ribbon. */
 export function SheetRibbon({
   run,
   disabled = {},
+  pressed = {},
+  groups: wanted = DEFAULT_GROUPS,
   readOnly,
   children,
 }: {
   run(cmd: SheetCommand): void;
   disabled?: Partial<Record<SheetCommand, boolean>>;
+  /** Toggle buttons that are currently on. */
+  pressed?: Partial<Record<SheetCommand, boolean>>;
+  /** Which buttons to show, in groups. */
+  groups?: SheetCommand[][];
   readOnly?: boolean;
   /** Extra controls at the start (table picker, sheet info). */
   children?: ReactNode;
 }) {
-  const groups: SheetCommand[][] = readOnly
-    ? []
-    : [
-        ['undo', 'redo'],
-        ['row-above', 'row-below', 'delete-row'],
-        ['col-left', 'col-right', 'delete-col'],
-        ['sort-asc', 'sort-desc'],
-      ];
+  const groups: SheetCommand[][] = readOnly ? [] : wanted;
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     const items = [...e.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled)')];
     const i = items.indexOf(document.activeElement as HTMLElement);
@@ -153,6 +232,7 @@ export function SheetRibbon({
                 title={m.shortcut ? `${m.label} (${formatShortcut(m.shortcut)})` : m.label}
                 data-tool={cmd}
                 disabled={disabled[cmd]}
+                aria-pressed={cmd in pressed ? !!pressed[cmd] : undefined}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => run(cmd)}
               >

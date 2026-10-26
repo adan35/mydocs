@@ -71,6 +71,41 @@
   outline-offset: -2px;
   z-index: 1;
 }
+.sheet-cell.is-in-range {
+  background: var(--primary-soft);
+}
+/* Frozen rows and columns stay put while the rest scrolls, so they need a solid background. */
+.sheet-frozen-rows {
+  background: var(--canvas);
+}
+.sheet-cell.is-frozen {
+  background: var(--canvas);
+}
+.sheet-cell.is-frozen.is-in-range {
+  background: var(--primary-soft);
+}
+.sheet-cell.is-frozen-edge {
+  border-right: 2px solid var(--hairline);
+}
+.sheet-cell.is-frozen-bottom {
+  border-bottom: 2px solid var(--hairline);
+}
+.sheet-head.is-frozen {
+  border-right: 1px solid var(--hairline);
+}
+.sheet-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  width: 7px;
+  cursor: col-resize;
+  z-index: 2;
+}
+.sheet-resizer:hover {
+  background: var(--primary);
+  opacity: 0.45;
+}
 .sheet-cell.is-stale::after {
   content: '';
   position: absolute;
