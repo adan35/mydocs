@@ -4,6 +4,7 @@ import { useUi } from '@/app/ui-store';
 import { useRouter, navigate } from '@/app/router';
 import { editorActions, useEditor } from '@/app/editor-store';
 import * as A from '@/app/actions';
+import { quickNote, useNotesUi } from '@/app/notes';
 import { isMac } from '../hooks';
 import { reopenClosedTab, sendDocCommand, toggleSidePanel } from '../doc-commands';
 
@@ -40,10 +41,15 @@ export function useGlobalShortcuts() {
       if (m(SHORTCUTS.quickOpen))
         return run(() => ui.setOverlay(ui.overlay === 'quickopen' ? null : 'quickopen'));
       if (m(SHORTCUTS.search)) return run(() => navigate({ name: 'search', q: '' }));
-      // Mod+N also works where the browser doesn't reserve it.
+      // Mod+N also works where the browser doesn't reserve it (the installed and desktop apps).
+      // On the Notes page it starts a note instead.
+      if (m('Mod+N') && route.name === 'notes')
+        return run(() => useNotesUi.getState().setComposer('note'));
       if (m(SHORTCUTS.newDoc) || m('Mod+N')) return run(() => void A.newDocument());
       if (m(SHORTCUTS.newFolder)) return run(() => void A.newFolder());
       if (m(SHORTCUTS.dailyNote)) return run(() => void A.openDailyNote());
+      if (m(SHORTCUTS.quickNote)) return run(() => quickNote('note'));
+      if (m(SHORTCUTS.quickList)) return run(() => quickNote('list'));
       if (m(SHORTCUTS.toggleSidebar))
         return run(() =>
           matchMedia('(max-width: 1099px)').matches

@@ -1,0 +1,302 @@
+/* Keep-style notes. Colors are pastel on light themes and deep on dark ones. */
+.note {
+  --note-bg: var(--canvas);
+  --note-line: var(--hairline-strong);
+  position: relative;
+  background: var(--note-bg);
+  border: 1px solid var(--note-line);
+  border-radius: 12px;
+  color: var(--ink);
+  transition: box-shadow 120ms ease;
+}
+.note[data-color]:not([data-color='default']) {
+  --note-line: transparent;
+}
+.note[data-color='coral'] {
+  --note-bg: #faafa8;
+}
+.note[data-color='peach'] {
+  --note-bg: #f6c79f;
+}
+.note[data-color='sand'] {
+  --note-bg: #fff3a3;
+}
+.note[data-color='mint'] {
+  --note-bg: #d3efbd;
+}
+.note[data-color='sage'] {
+  --note-bg: #b4ddd3;
+}
+.note[data-color='fog'] {
+  --note-bg: #d4e4ed;
+}
+.note[data-color='storm'] {
+  --note-bg: #aeccdc;
+}
+.note[data-color='dusk'] {
+  --note-bg: #d3bfdb;
+}
+.note[data-color='blossom'] {
+  --note-bg: #f6d9d2;
+}
+.note[data-color='clay'] {
+  --note-bg: #e4dcc6;
+}
+.note[data-color='chalk'] {
+  --note-bg: #e6e6ea;
+}
+[data-theme='dark'] .note[data-color='coral'] {
+  --note-bg: #77172e;
+}
+[data-theme='dark'] .note[data-color='peach'] {
+  --note-bg: #692b17;
+}
+[data-theme='dark'] .note[data-color='sand'] {
+  --note-bg: #7c4a03;
+}
+[data-theme='dark'] .note[data-color='mint'] {
+  --note-bg: #264d3b;
+}
+[data-theme='dark'] .note[data-color='sage'] {
+  --note-bg: #0c625d;
+}
+[data-theme='dark'] .note[data-color='fog'] {
+  --note-bg: #256377;
+}
+[data-theme='dark'] .note[data-color='storm'] {
+  --note-bg: #284255;
+}
+[data-theme='dark'] .note[data-color='dusk'] {
+  --note-bg: #472e5b;
+}
+[data-theme='dark'] .note[data-color='blossom'] {
+  --note-bg: #6c394f;
+}
+[data-theme='dark'] .note[data-color='clay'] {
+  --note-bg: #4b443a;
+}
+[data-theme='dark'] .note[data-color='chalk'] {
+  --note-bg: #232427;
+}
+
+/* Swatch used in color menus. */
+.note-swatch {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--note-bg);
+  border: 1px solid var(--hairline-strong);
+}
+.note-swatch[data-color='coral'] {
+  --note-bg: #faafa8;
+}
+.note-swatch[data-color='peach'] {
+  --note-bg: #f6c79f;
+}
+.note-swatch[data-color='sand'] {
+  --note-bg: #fff3a3;
+}
+.note-swatch[data-color='mint'] {
+  --note-bg: #d3efbd;
+}
+.note-swatch[data-color='sage'] {
+  --note-bg: #b4ddd3;
+}
+.note-swatch[data-color='fog'] {
+  --note-bg: #d4e4ed;
+}
+.note-swatch[data-color='storm'] {
+  --note-bg: #aeccdc;
+}
+.note-swatch[data-color='dusk'] {
+  --note-bg: #d3bfdb;
+}
+.note-swatch[data-color='blossom'] {
+  --note-bg: #f6d9d2;
+}
+.note-swatch[data-color='clay'] {
+  --note-bg: #e4dcc6;
+}
+.note-swatch[data-color='chalk'] {
+  --note-bg: #e6e6ea;
+}
+.note-swatch[data-color='default'] {
+  --note-bg: var(--canvas);
+}
+
+.note-card {
+  cursor: pointer;
+  break-inside: avoid;
+}
+.note-card:hover,
+.note-card:focus-within {
+  box-shadow: var(--shadow-2);
+}
+.note-card[data-selected='true'] {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+.note-card[data-drop='true'] {
+  outline: 2px dashed var(--primary);
+  outline-offset: 2px;
+}
+.note-card[data-dragging='true'] {
+  opacity: 0.4;
+}
+.note-card[data-trashed='true'] .note-text {
+  opacity: 0.7;
+}
+
+/* Tools only appear on hover or focus; touch screens always show them. */
+.note-card .note-tools,
+.note-card .note-corner {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.note-card:hover .note-tools,
+.note-card:focus-within .note-tools,
+.note-card:hover .note-corner,
+.note-card:focus-within .note-corner,
+.note-card[data-pinned='true'] .note-pin,
+.note-card[data-selecting='true'] .note-corner {
+  opacity: 1;
+}
+@media (hover: none) {
+  .note-card .note-tools,
+  .note-card .note-corner {
+    opacity: 1;
+  }
+}
+.note .icon-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  color: inherit;
+}
+.note .icon-btn {
+  color: color-mix(in srgb, var(--ink) 72%, transparent);
+}
+
+.note-input {
+  width: 100%;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: inherit;
+  font: inherit;
+  resize: none;
+  padding: 0;
+}
+.note-input::placeholder {
+  color: color-mix(in srgb, var(--ink) 55%, transparent);
+}
+.note-title {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.note-body-text {
+  font-size: 14px;
+  line-height: 1.5;
+}
+.note-check {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  accent-color: var(--primary-solid);
+}
+.note-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--ink) 22%, transparent);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+.note-chip[data-overdue='true'] {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 50%, transparent);
+}
+.note-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--hairline-strong);
+  font-size: 13px;
+  color: var(--charcoal);
+  white-space: nowrap;
+}
+.note-pill:hover {
+  background: var(--hover);
+}
+.note-pill[aria-current='page'],
+.note-pill[aria-pressed='true'] {
+  background: var(--primary-soft);
+  border-color: transparent;
+  color: var(--primary-soft-ink);
+}
+@media (pointer: coarse) {
+  .note-pill {
+    height: 40px;
+  }
+}
+.note-frame {
+  max-height: min(86dvh, 760px);
+  overflow-y: auto;
+  box-shadow: var(--shadow-3);
+}
+
+/* Card tools stay inside narrow cards: smaller hit areas, and touch selects from the menu. */
+.note-card .note-tools {
+  flex-wrap: wrap;
+  gap: 0;
+}
+@media (pointer: coarse) {
+  .note-card .note-tools .icon-btn {
+    width: 32px;
+    height: 32px;
+  }
+}
+@media (hover: none) {
+  .note-card:not([data-selecting='true']) .note-select {
+    display: none;
+  }
+}
+
+/* Selection circle sits on the card's corner, like Keep, so it never covers the text. */
+.note-select {
+  position: absolute;
+  top: -9px;
+  left: -9px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--canvas);
+  color: var(--steel);
+  border: 1px solid var(--hairline-strong);
+  box-shadow: var(--shadow-1);
+}
+.note-card[data-selected='true'] .note-select {
+  background: var(--primary-solid);
+  border-color: var(--primary-solid);
+  color: var(--on-primary);
+}
+.note-card[data-selected='true'] .note-select {
+  opacity: 1;
+}
+/* Pin stays readable on top of a picture. */
+.note-card[data-has-image='true'] .note-pin {
+  background: color-mix(in srgb, var(--canvas) 80%, transparent);
+  color: var(--ink);
+}

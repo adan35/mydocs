@@ -12,6 +12,8 @@ export type Route =
   | { name: 'trash' }
   | { name: 'settings' }
   | { name: 'download' }
+  /** Keep-style notes; `view` picks Reminders, Archive or Trash, `label` one label. */
+  | { name: 'notes'; view?: 'reminders' | 'archive' | 'trash'; label?: string }
   /** `id` shows the local graph around one document. */
   | { name: 'graph'; id?: string };
 
@@ -46,6 +48,11 @@ export function parseHash(hash: string): Route {
       return { name: 'settings' };
     case 'download':
       return { name: 'download' };
+    case 'notes':
+      if (rest[0] === 'label' && rest[1]) return { name: 'notes', label: rest.slice(1).join('/') };
+      return rest[0] === 'reminders' || rest[0] === 'archive' || rest[0] === 'trash'
+        ? { name: 'notes', view: rest[0] }
+        : { name: 'notes' };
     case 'graph':
       return rest[0] ? { name: 'graph', id: rest[0] } : { name: 'graph' };
     default:
@@ -63,6 +70,12 @@ export function routeToHash(r: Route): string {
       return `#/search?q=${encodeURIComponent(r.q)}`;
     case 'tags':
       return r.tag ? `#/tags/${r.tag.split('/').map(encodeURIComponent).join('/')}` : '#/tags';
+    case 'notes':
+      return r.label
+        ? `#/notes/label/${encodeURIComponent(r.label)}`
+        : r.view
+          ? `#/notes/${r.view}`
+          : '#/notes';
     case 'home':
       return '#/';
     case 'graph':

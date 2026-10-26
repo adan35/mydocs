@@ -18,6 +18,7 @@ import {
   Command,
   CalendarDays,
   Palette,
+  StickyNote,
 } from 'lucide-react';
 import { useResolvedTheme } from '../hooks';
 import { toggleTheme } from '../components/ThemeToggle';
@@ -104,6 +105,7 @@ export function MobileNav() {
                 onSelect: () => navigate({ name: 'favorites' }),
               },
               { label: 'Tags', icon: <Hash />, onSelect: () => navigate({ name: 'tags' }) },
+              { label: 'Notes', icon: <StickyNote />, onSelect: () => navigate({ name: 'notes' }) },
               { label: 'Trash', icon: <Trash2 />, onSelect: () => navigate({ name: 'trash' }) },
               'separator',
               {

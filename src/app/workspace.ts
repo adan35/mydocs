@@ -709,11 +709,14 @@ export class Workspace {
 
   // ---------------------------------------------------------------- tags
 
-  private async editTexts(ids: EntryId[], fn: (text: string) => string): Promise<EntryId[]> {
+  private async editTexts(
+    ids: EntryId[],
+    fn: (text: string, id: EntryId) => string,
+  ): Promise<EntryId[]> {
     const changed = new Map<EntryId, string>();
     for (const id of ids) {
       const text = await this.readText(id);
-      const next = fn(text);
+      const next = fn(text, id);
       if (next !== text) changed.set(id, next);
     }
     if (!changed.size) return [];
@@ -739,6 +742,11 @@ export class Workspace {
 
   removeTag(id: EntryId, tag: string) {
     return this.serial(() => this.editTexts([id], (t) => removeTag(t, tag)));
+  }
+
+  /** Rewrites text files in one commit without taking a history snapshot (notes: pin, color, check items). */
+  updateTexts(ids: EntryId[], fn: (text: string, id: EntryId) => string) {
+    return this.serial(() => this.editTexts(ids, fn));
   }
 
   renameTag(docIds: EntryId[], from: string, to: string) {

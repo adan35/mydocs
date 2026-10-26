@@ -18,6 +18,7 @@ import {
   Upload,
   Keyboard,
   PencilLine,
+  StickyNote,
   X,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -114,6 +115,12 @@ export function Sidebar({ onClose, drawer }: { onClose?: () => void; drawer?: bo
           route={{ name: 'favorites' }}
           current={route.name === 'favorites'}
           onDropEntry={addFavorite}
+        />
+        <NavItem
+          icon={<StickyNote size={16} />}
+          label="Notes"
+          route={{ name: 'notes' }}
+          current={route.name === 'notes'}
         />
         <NavItem
           icon={<Hash size={16} />}

@@ -23,6 +23,8 @@ export const SHORTCUTS = {
   readingMode: 'Mod+Shift+R',
   rename: 'F2',
   dailyNote: 'Mod+Shift+D',
+  quickNote: 'Alt+K',
+  quickList: 'Alt+Shift+K',
 } as const;
 
 export const SHORTCUT_GROUPS: { title: string; items: [string, string][] }[] = [
@@ -35,9 +37,25 @@ export const SHORTCUT_GROUPS: { title: string; items: [string, string][] }[] = [
       ['New document', SHORTCUTS.newDoc],
       ['New folder', SHORTCUTS.newFolder],
       ["Today's daily note", SHORTCUTS.dailyNote],
+      ['Quick note', SHORTCUTS.quickNote],
+      ['Quick checklist', SHORTCUTS.quickList],
       ['Toggle sidebar', SHORTCUTS.toggleSidebar],
       ['Toggle side panel', SHORTCUTS.togglePanel],
       ['Close overlays', 'Esc'],
+    ],
+  },
+  {
+    title: 'Notes',
+    items: [
+      ['Quick note / checklist, from anywhere', `${SHORTCUTS.quickNote} / ${SHORTCUTS.quickList}`],
+      ['New note (installed and desktop apps)', 'Mod+N'],
+      ['New note / new checklist', 'C / L'],
+      ['Move between notes', 'Arrow keys'],
+      ['Open the focused note', 'Enter'],
+      ['Select the focused note', 'X'],
+      ['Move to Trash', 'Delete'],
+      ['Archive', 'E'],
+      ['Clear the selection', 'Esc'],
     ],
   },
   {
