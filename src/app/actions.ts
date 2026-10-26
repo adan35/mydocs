@@ -464,6 +464,20 @@ export async function toggleFavorite(id: EntryId) {
   await guard('Unable to update favorites.', () => ws().setFavorite(id, !e.favorite));
 }
 
+/** Adds or removes several entries from Favorites, skipping those already in that state. */
+export async function favoriteEntries(ids: EntryId[], favorite: boolean) {
+  const changed = ids.filter((id) => {
+    const e = ws().get(id);
+    return e && !!e.favorite !== favorite;
+  });
+  for (const id of changed)
+    await guard('Unable to update favorites.', () => ws().setFavorite(id, favorite));
+  if (changed.length > 1)
+    toast({
+      message: `${changed.length} items ${favorite ? 'added to' : 'removed from'} Favorites.`,
+    });
+}
+
 export async function runImport(items: ImportItem[], targetId: EntryId | null = contextFolderId()) {
   if (!items.length) return;
   if (!(await editorActions.saveBeforeAction())) return;

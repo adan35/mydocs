@@ -72,9 +72,7 @@ export function HomeView() {
     return out.slice(0, 6);
   }, [recentDocs, modified, tree]);
   const continueDoc = recentDocs[0] ?? modified[0];
-  const favDrop = useEntryDrop((id) => {
-    if (!tree.get(id)?.favorite) void A.toggleFavorite(id);
-  });
+  const favDrop = useEntryDrop((ids) => void A.favoriteEntries(ids, true));
   const total = tree.liveFiles().length;
 
   return (

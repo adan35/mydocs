@@ -41,6 +41,8 @@ import {
   Palette,
   Printer,
   Users,
+  StickyNote,
+  ListChecks,
 } from 'lucide-react';
 import * as A from '@/app/actions';
 import { ws } from '@/app/app-store';
@@ -51,6 +53,7 @@ import { useSettings } from '@/app/settings-store';
 import { PALETTES } from '@/app/themes';
 import { useUi } from '@/app/ui-store';
 import { dialogs } from '@/app/dialog-store';
+import { quickNote } from '@/app/notes';
 import { SHORTCUTS } from '@/app/shortcuts';
 import { isMarkdownName } from '@/domain/names';
 import { conversionsFrom, formatOf } from '@/lib/convert/capabilities';
@@ -93,6 +96,24 @@ export function getCommands(): Command[] {
       shortcut: SHORTCUTS.newDoc,
       keywords: 'create file note page',
       run: () => void A.newDocument(),
+    },
+    {
+      id: 'quick-note',
+      title: 'Quick note',
+      group: 'Create',
+      icon: <StickyNote />,
+      shortcut: SHORTCUTS.quickNote,
+      keywords: 'keep sticky memo jot capture idea',
+      run: () => quickNote('note'),
+    },
+    {
+      id: 'quick-list',
+      title: 'Quick checklist',
+      group: 'Create',
+      icon: <ListChecks />,
+      shortcut: SHORTCUTS.quickList,
+      keywords: 'keep todo shopping list tasks capture',
+      run: () => quickNote('list'),
     },
     {
       id: 'new-sheet',
@@ -213,6 +234,14 @@ export function getCommands(): Command[] {
       group: 'Navigate',
       icon: <Hash />,
       run: () => navigate({ name: 'tags' }),
+    },
+    {
+      id: 'notes',
+      title: 'Go to Notes',
+      group: 'Navigate',
+      icon: <StickyNote />,
+      keywords: 'keep sticky memo reminders archive labels',
+      run: () => navigate({ name: 'notes' }),
     },
     {
       id: 'graph',

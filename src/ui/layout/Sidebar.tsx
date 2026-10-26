@@ -19,6 +19,7 @@ import {
   Upload,
   Keyboard,
   PencilLine,
+  StickyNote,
   X,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -46,9 +47,7 @@ export function Sidebar({ onClose, drawer }: { onClose?: () => void; drawer?: bo
     .liveEntries()
     .filter((e) => e.favorite)
     .slice(0, 12);
-  const addFavorite = (id: EntryId) => {
-    if (!tree.get(id)?.favorite) void A.toggleFavorite(id);
-  };
+  const addFavorite = (ids: EntryId[]) => void A.favoriteEntries(ids, true);
   const favDrop = useEntryDrop(addFavorite);
 
   return (
@@ -120,6 +119,12 @@ export function Sidebar({ onClose, drawer }: { onClose?: () => void; drawer?: bo
           onDropEntry={addFavorite}
         />
         <NavItem
+          icon={<StickyNote size={16} />}
+          label="Notes"
+          route={{ name: 'notes' }}
+          current={route.name === 'notes'}
+        />
+        <NavItem
           icon={<Hash size={16} />}
           label="Tags"
           route={{ name: 'tags' }}
@@ -172,7 +177,7 @@ export function Sidebar({ onClose, drawer }: { onClose?: () => void; drawer?: bo
           route={{ name: 'trash' }}
           current={route.name === 'trash'}
           badge={trashCount || undefined}
-          onDropEntry={(id) => void A.trashEntries([id])}
+          onDropEntry={(ids) => void A.trashEntries(ids)}
         />
       </div>
 
@@ -261,9 +266,9 @@ function NavItem({
   current: boolean;
   badge?: number;
   /** Makes the item a drop target for dragged files and folders. */
-  onDropEntry?: (id: EntryId) => void;
+  onDropEntry?: (ids: EntryId[]) => void;
 }) {
-  const drop = useEntryDrop((id) => onDropEntry?.(id));
+  const drop = useEntryDrop((ids) => onDropEntry?.(ids));
   return (
     <button
       type="button"

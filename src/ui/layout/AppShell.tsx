@@ -18,6 +18,9 @@ import { SearchView } from '../views/SearchView';
 import { FavoritesView, RecentView, TagsView, TrashView } from '../views/ListViews';
 import { SettingsView } from '../views/SettingsView';
 import { DownloadView } from '../views/DownloadView';
+import { NotesView } from '../notes/NotesView';
+import { NoteHost } from '../notes/NoteHost';
+import { useNoteReminders } from '@/app/notes';
 import { useLayout } from '../hooks';
 import { TREE_DRAG_TYPE } from './FileTree';
 import { useGlobalShortcuts } from './shortcuts';
@@ -125,6 +128,8 @@ function RouteView() {
       return <ShareLanding key={route.id} id={route.id} secret={route.key} />;
     case 'shared':
       return <SharedWithMe />;
+    case 'notes':
+      return <NotesView view={route.view} label={route.label} />;
     case 'graph':
       return (
         <Suspense fallback={<DocumentFallback />}>
@@ -150,6 +155,7 @@ export function AppShell() {
   const [fileDrag, setFileDrag] = useState<DropHint | null>(null);
   const dragDepth = useRef(0);
   useGlobalShortcuts();
+  useNoteReminders();
 
   useEffect(() => {
     const reset = () => {
@@ -158,7 +164,13 @@ export function AppShell() {
     };
     addEventListener('drop', reset, true);
     addEventListener('dragend', reset, true);
+    // A dragged <img> carries its file ("Files" type), so dropping it back on the window re-imported it.
+    const noImageDrag = (e: DragEvent) => {
+      if (e.target instanceof HTMLImageElement) e.preventDefault();
+    };
+    addEventListener('dragstart', noImageDrag);
     return () => {
+      removeEventListener('dragstart', noImageDrag);
       removeEventListener('drop', reset, true);
       removeEventListener('dragend', reset, true);
     };
@@ -325,6 +337,7 @@ export function AppShell() {
       </div>
       {overlay === 'palette' && <CommandPalette />}
       {overlay === 'quickopen' && <QuickOpen />}
+      <NoteHost />
       {fileDrag && <DropOverlay hint={fileDrag} />}
     </div>
   );
