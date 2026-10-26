@@ -56,7 +56,7 @@ export interface SheetGridProps {
   sheet: Sheet;
   readOnly?: boolean;
   /** Row 1 is a header (Markdown tables, most CSV files): shown bold. */
-  headerRow?: boolean;
+  headerRow?: boolean | ((r: number) => boolean);
   /** Called with what the person typed; the parent parses and stores it. */
   onEdit?(r: number, c: number, input: string): void;
   /** Pasted block of text (tab/newline separated) starting at a cell. */
@@ -69,7 +69,7 @@ export interface SheetGridProps {
   /** Leading rows and columns that stay in view while scrolling. */
   freeze?: { rows: number; cols: number };
   /** Numbers to show in the row headers when rows are hidden by a filter. */
-  rowLabels?: readonly number[];
+  rowLabels?: readonly (number | string)[];
   /** Cell text uses Markdown emphasis (`**bold**`, `*italic*`, `~~strike~~`). */
   markdownText?: boolean;
   selection: Selection;
@@ -86,9 +86,11 @@ export interface SheetGridProps {
   /** Click or right-click a row number to insert or delete rows. */
   onRows?(action: RowAction): void;
   /** Row 1 is a table header that can't be moved or removed (Markdown tables). */
-  fixedHeader?: boolean;
+  fixedHeader?: boolean | ((r: number) => boolean);
   /** Column alignment, as a Markdown table declares it. */
-  align?: readonly ('left' | 'center' | 'right' | null)[];
+  align?:
+    | readonly ('left' | 'center' | 'right' | null)[]
+    | ((r: number, c: number) => 'left' | 'center' | 'right' | null | undefined);
 }
 
 /**
@@ -125,6 +127,12 @@ export function SheetGrid({
   const hasRange = sr1 !== sr2 || sc1 !== sc2;
   const frozenRows = Math.min(freeze?.rows ?? 0, 50);
   const frozenCols = Math.min(freeze?.cols ?? 0, 10);
+  const isHeader = (r: number) =>
+    typeof headerRow === 'function' ? headerRow(r) : !!headerRow && r === 0;
+  const alignAt = (r: number, c: number) =>
+    typeof align === 'function' ? align(r, c) : align?.[c];
+  // The address as the row numbers show it (a table of a stacked sheet counts from 1).
+  const shownAddr = (r: number, c: number) => `${colName(c)}${rowLabels?.[r] || r + 1}`;
   const [colW, setColW] = useState<Record<number, number>>({});
   const dragFrom = useRef<{ r: number; c: number } | null>(null);
   useEffect(() => {
@@ -438,7 +446,7 @@ export function SheetGrid({
       const pos = where === 'above' ? r : r + 1;
       onRows({ kind: 'insert', at: pos, count, select: where === 'above' ? r : r + 1 });
     };
-    const lockedTop = !!fixedHeader && r === 0;
+    const lockedTop = typeof fixedHeader === 'function' ? fixedHeader(r) : !!fixedHeader && r === 0;
     const items: MenuEntry[] = [
       {
         label: 'Insert row above',
@@ -558,7 +566,7 @@ export function SheetGrid({
             aria-colindex={c + 1}
             data-cell={addr(r, c)}
             title={cellTitle(v) ?? (!wrap && shown.length > 20 ? shown : undefined)}
-            className={`sheet-cell ${wrap ? 'is-wrapped' : ''} ${isActive ? 'is-active' : ''} ${inRange ? 'is-in-range' : ''} ${c < frozenCols ? 'is-frozen' : ''} ${c === frozenCols - 1 ? 'is-frozen-edge' : ''} ${r === frozenRows - 1 ? 'is-frozen-bottom' : ''} ${numeric || align?.[c] === 'right' ? 'text-right' : align?.[c] === 'center' ? 'text-center' : ''} ${v && isError(v.v) ? 'text-danger' : ''} ${v?.stale ? 'is-stale' : ''}`}
+            className={`sheet-cell ${wrap ? 'is-wrapped' : ''} ${isActive ? 'is-active' : ''} ${inRange ? 'is-in-range' : ''} ${c < frozenCols ? 'is-frozen' : ''} ${c === frozenCols - 1 ? 'is-frozen-edge' : ''} ${r === frozenRows - 1 ? 'is-frozen-bottom' : ''} ${numeric || alignAt(r, c) === 'right' ? 'text-right' : alignAt(r, c) === 'center' ? 'text-center' : ''} ${v && isError(v.v) ? 'text-danger' : ''} ${v?.stale ? 'is-stale' : ''}`}
             style={{
               width: w,
               height: rowH(r),
@@ -598,7 +606,7 @@ export function SheetGrid({
               />
             ) : (
               <span
-                className={`${wrap ? 'cell-lines' : 'truncate'} ${headerRow && r === 0 ? 'font-semibold' : ''} ${em?.bold ? 'font-bold' : ''} ${em?.italic ? 'italic' : ''} ${em?.strike ? 'line-through' : ''}`}
+                className={`${wrap ? 'cell-lines' : 'truncate'} ${isHeader(r) ? 'font-semibold' : ''} ${em?.bold ? 'font-bold' : ''} ${em?.italic ? 'italic' : ''} ${em?.strike ? 'line-through' : ''}`}
                 style={
                   wrap && maxLines !== Infinity
                     ? { WebkitLineClamp: maxLines, lineClamp: maxLines }
@@ -621,7 +629,9 @@ export function SheetGrid({
           className="min-w-14 shrink-0 text-center font-mono text-caption text-steel"
           aria-label="Selected cell"
         >
-          {hasRange ? `${addr(sr1, sc1)}:${addr(sr2, sc2)}` : addr(selection.r, selection.c)}
+          {hasRange
+            ? `${shownAddr(sr1, sc1)}:${shownAddr(sr2, sc2)}`
+            : shownAddr(selection.r, selection.c)}
         </span>
         <span className="font-mono text-caption text-stone" aria-hidden>
           fx

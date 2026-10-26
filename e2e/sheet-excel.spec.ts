@@ -87,7 +87,7 @@ test('the meeting minutes template creates a ready-to-fill document with editabl
   await expect(page.getByRole('heading', { name: /Action items/ })).toBeVisible();
   await expect(page.locator('article.prose .callout')).not.toHaveCount(0);
   await mode(page, 'Sheet');
-  await expect(page.getByRole('combobox', { name: 'Table' }).locator('option')).toHaveCount(3);
+  await expect(page.getByTestId('sheet-ribbon').getByText('3 tables')).toBeVisible();
 });
 
 test('the table sheet shows a full grid of empty cells and typing in one grows the table', async ({
@@ -108,4 +108,27 @@ test('the table sheet shows a full grid of empty cells and typing in one grows t
   await waitSaved(page);
   await mode(page, 'Source');
   expect(await sourceText(page)).toMatch(/\| 1 +\| 2 +\| =A2\+B2 +\|/);
+});
+
+test('formulas in a later table use the cell addresses of that table', async ({ page }) => {
+  await freshApp(page);
+  await newDocInRoot(page, 'Two');
+  await setDoc(page, '| A |\n| --- |\n| 1 |\n\n| N |\n| --- |\n| 5 |\n| 6 |\n|  |\n');
+  await waitSaved(page);
+  await mode(page, 'Sheet');
+  const grid = page.getByTestId('sheet-grid');
+  // Table 1 takes grid rows 1-2, two empty rows follow, so table 2 starts on grid row 5.
+  await grid.locator('[data-cell="A8"]').click();
+  await expect(page.getByLabel('Selected cell')).toHaveText('A4');
+  await page.keyboard.type('=SUM(A2:A3)');
+  await page.keyboard.press('Enter');
+  await expect(grid.locator('[data-cell="A8"]')).toHaveText('11');
+  // Between the tables nothing is editable.
+  await grid.locator('[data-cell="A3"]').click();
+  await page.keyboard.type('x');
+  await page.keyboard.press('Enter');
+  await expect(page.getByText(/between two tables/)).toBeVisible();
+  await waitSaved(page);
+  await mode(page, 'Source');
+  expect(await sourceText(page)).toContain('=SUM(A2:A3)');
 });

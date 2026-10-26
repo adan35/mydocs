@@ -17,6 +17,7 @@ import {
   tableToSheet,
 } from '@/lib/convert/delimited';
 import type { Cell, Sheet } from '@/lib/convert/workbook';
+import type { Align } from '@/domain/table';
 import {
   FILTER_OPS,
   autoSum,
@@ -34,6 +35,7 @@ import {
   toggleEmphasis,
   type Filter,
   type FilterOp,
+  type Rows,
 } from '@/lib/convert/table-sheet';
 import { SheetGrid, selectionRange, type RowAction, type Selection } from './SheetGrid';
 import { SheetRibbon, type SheetCommand } from './SheetRibbon';
@@ -64,10 +66,17 @@ const cellText = (c: Cell | undefined) => (c ? String(c.v ?? '') : '');
 const colLetter = (c: number): string =>
   (c >= 26 ? colLetter(Math.floor(c / 26) - 1) : '') + String.fromCharCode(65 + (c % 26));
 
+/** Empty rows between tables when a document's tables are shown together. */
+const TABLE_GAP = 2;
+
 /**
  * Edits CSV/TSV/UNL files and Markdown tables as a grid. Every change is written back to the
  * text as one transaction on the document model: only the edited row (CSV) or the
  * edited table (Markdown) changes, and undo works across the grid and the source.
+ *
+ * A Markdown document with several tables shows them all in one grid, stacked with a gap.
+ * Each table keeps its own cell addresses (A1 is its header's first cell) and its own row
+ * numbers, so a formula means the same thing here as in the file.
  */
 export function TextSheetView({
   docId,
@@ -82,25 +91,95 @@ export function TextSheetView({
 }) {
   const ext = extensionOf(name);
   const markdown = !DELIMITED_EXTENSIONS.includes(ext);
+  // Used when one table is shown on its own (a filter is open).
   const [tableIndex, setTableIndex] = useState(0);
   const [selection, setSelection] = useState<Selection>({ r: 0, c: 0 });
   // UNL exports have no header row; their columns are named A, B, C…
   const [headerRow, setHeaderRow] = useState(ext !== 'unl');
+  const [filters, setFilters] = useState<Filter[]>([]);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [freeze, setFreeze] = useState({ rows: 0, cols: 0 });
 
   const dialect = useMemo(
     () => (markdown ? null : detectDialect(text, ext)),
     [markdown, text, ext],
   );
   const tables = useMemo(() => (markdown ? findMarkdownTables(text) : []), [markdown, text]);
-  const table = tables[Math.min(tableIndex, tables.length - 1)];
-  const sheet = useMemo<Sheet | null>(() => {
-    if (dialect) return delimitedToSheet(text, dialect).sheet;
-    return table ? tableToSheet(table.table) : null;
-  }, [dialect, text, table]);
+  // Every table (or the one CSV sheet): the file's cell text and the calculated view of it.
+  const parts = useMemo(() => {
+    const sheets = dialect
+      ? [delimitedToSheet(text, dialect).sheet]
+      : tables.map((t) => tableToSheet(t.table));
+    return sheets.map((sh) => {
+      const rows = rowsOf(sh);
+      return { rows, shown: evaluateRows(rows, markdown) };
+    });
+  }, [dialect, text, tables, markdown]);
+  const header = headerRow || markdown;
+  const skip = header ? 1 : 0;
+
+  // Which tables are on the grid, and where each starts. With a filter open only one is shown.
+  const stacked = markdown && parts.length > 1 && !filterOpen;
+  const only = Math.max(0, Math.min(tableIndex, parts.length - 1));
+  const visible = useMemo(
+    () => (stacked ? parts.map((_, i) => i) : parts.length ? [only] : []),
+    [stacked, parts, only],
+  );
+  const starts = useMemo(() => {
+    const out: number[] = [];
+    let y = 0;
+    for (const t of visible) {
+      out.push(y);
+      y += parts[t]!.rows.length + TABLE_GAP;
+    }
+    return out;
+  }, [visible, parts]);
+
+  const rowMap = useMemo(
+    () => (filters.length && parts[only] ? filterRows(parts[only]!.shown, filters, skip) : null),
+    [filters, parts, only, skip],
+  );
+  const view = useMemo<Sheet>(() => {
+    const rows: (Cell | undefined)[][] = [];
+    visible.forEach((t, k) => {
+      const own = parts[t]!.shown.rows;
+      rows.push(...(rowMap && !stacked ? rowMap.map((i) => own[i]!) : own));
+      if (k < visible.length - 1) for (let g = 0; g < TABLE_GAP; g++) rows.push([]);
+    });
+    return { name: 'Table', rows };
+  }, [visible, parts, rowMap, stacked]);
+  // Row numbers: each table counts from 1 (as its formulas do); gaps have none.
+  const rowLabels = useMemo<(number | string)[] | undefined>(() => {
+    if (rowMap) return rowMap.map((i) => i + 1);
+    if (!stacked) return undefined;
+    const out: (number | string)[] = [];
+    visible.forEach((t, k) => {
+      const n = parts[t]!.rows.length;
+      for (let i = 0; i < n; i++) out.push(i + 1);
+      if (k < visible.length - 1) for (let g = 0; g < TABLE_GAP; g++) out.push('');
+      else for (let i = 0; i < 200; i++) out.push(n + i + 1);
+    });
+    return out;
+  }, [rowMap, stacked, visible, parts]);
+
+  /** The table a grid row belongs to, and the row inside it; null for the gaps between tables. */
+  const locate = (r: number): { k: number; t: number; r: number } | null => {
+    if (!visible.length) return null;
+    if (!stacked) return { k: 0, t: visible[0]!, r: rowMap ? (rowMap[r] ?? r) : r };
+    let k = visible.length - 1;
+    while (k > 0 && r < starts[k]!) k--;
+    const local = r - starts[k]!;
+    if (k < visible.length - 1 && local >= parts[visible[k]!]!.rows.length) return null;
+    return { k, t: visible[k]!, r: local };
+  };
+  const at = locate(selection.r);
+  const activeTable = at ? at.t : only;
+  const resetFilters = () => {
+    setFilters([]);
+    setSelection({ r: 0, c: 0 });
+  };
 
   // Outline: the document's tables (Markdown), or the file's columns (CSV and the like).
-  const activeTable = Math.min(tableIndex, tables.length - 1);
-  const header = headerRow || markdown;
   useEffect(() => {
     if (markdown) {
       publishOutline(docId, {
@@ -109,18 +188,19 @@ export function TextSheetView({
           level: 1,
           text: t.label ? t.label : `Table ${t.index + 1}`,
           badge: `T${t.index + 1}`,
-          detail: `${Math.max(0, t.table.rows.length - 1)} rows`,
+          detail: `${t.table.rows.length} rows`,
         })),
         active: activeTable,
         noun: 'tables',
         empty: 'This document has no tables.',
         jump: (i) => {
           setTableIndex(i);
-          setSelection({ r: 0, c: 0 });
+          setSelection({ r: stacked ? (starts[i] ?? 0) : 0, c: 0 });
         },
       });
       return;
     }
+    const sheet = parts[0]?.shown;
     const first = sheet?.rows[0] ?? [];
     const width = Math.max(0, ...(sheet?.rows.map((r) => r?.length ?? 0) ?? [0]));
     const rows = sheet ? sheet.rows.length - (header ? 1 : 0) : 0;
@@ -137,29 +217,9 @@ export function TextSheetView({
       empty: 'This file is empty.',
       jump: (c) => setSelection({ r: header ? 1 : 0, c }),
     });
-  }, [markdown, tables, activeTable, sheet, header, selection.c, docId]);
+  }, [markdown, tables, activeTable, parts, header, selection.c, docId, stacked, starts]);
   useEffect(() => () => publishOutline(docId, null), [docId]);
 
-  // The file's cell text, and the table as it shows (formulas calculated).
-  const src = useMemo(() => (sheet ? rowsOf(sheet) : []), [sheet]);
-  const shown = useMemo(() => evaluateRows(src, markdown), [src, markdown]);
-  const skip = header ? 1 : 0;
-  const [filters, setFilters] = useState<Filter[]>([]);
-  const [filterOpen, setFilterOpen] = useState(false);
-  const [freeze, setFreeze] = useState({ rows: 0, cols: 0 });
-  const rowMap = useMemo(
-    () => (filters.length ? filterRows(shown, filters, skip) : null),
-    [filters, shown, skip],
-  );
-  const view = useMemo<Sheet>(
-    () => (rowMap ? { ...shown, rows: rowMap.map((i) => shown.rows[i]!) } : shown),
-    [rowMap, shown],
-  );
-  const mapRow = (r: number) => (rowMap ? (rowMap[r] ?? r) : r);
-  const resetFilters = () => {
-    setFilters([]);
-    setSelection({ r: 0, c: 0 });
-  };
   /** Changes that move or add rows would act on hidden rows too; ask to clear the filter first. */
   const blockedByFilter = () => {
     if (!rowMap) return false;
@@ -167,24 +227,45 @@ export function TextSheetView({
     return true;
   };
 
-  const write = (rows: string[][], align = table?.table.align) => {
+  /** Writes one table (or the CSV file) back to the text. */
+  const write = (t: number, rows: Rows, align?: Align[]) => {
     if (dialect) {
       applyText(docId, text, rewriteDelimited(text, rows, dialect));
       return;
     }
-    if (!table) return;
+    const tb = tables[t];
+    if (!tb) return;
     const s: Sheet = {
       name: 'Table',
       rows: rows.map((r) => r.map((v) => (v === '' ? undefined : { v }))),
     };
-    const t = sheetToTable(s, align ?? table.table.align, true);
+    const out = sheetToTable(s, align ?? tb.table.align, true);
     const lines = text.split('\n');
-    const next = [
-      ...lines.slice(0, table.start),
-      serializeTable(t),
-      ...lines.slice(table.end),
-    ].join('\n');
-    applyText(docId, text, next);
+    applyText(
+      docId,
+      text,
+      [...lines.slice(0, tb.start), serializeTable(out), ...lines.slice(tb.end)].join('\n'),
+    );
+  };
+
+  /** The selected range inside a single table, or null (with a hint) when it spans several. */
+  const selected = () => {
+    const [r1, c1, r2, c2] = selectionRange(selection);
+    const a = locate(r1);
+    const b = locate(r2);
+    if (!a || !b || a.k !== b.k) {
+      toast({ message: 'Select cells inside one table.' });
+      return null;
+    }
+    const part = parts[a.t]!;
+    return {
+      ...a,
+      src: part.rows,
+      shown: part.shown,
+      range: [a.r, c1, b.r, c2] as [number, number, number, number],
+      /** Where a cell of this table sits on the grid. */
+      row: (local: number) => starts[a.k]! + local,
+    };
   };
 
   const onEdit = (r: number, c: number, input: string) => {
@@ -195,29 +276,41 @@ export function TextSheetView({
       });
       return;
     }
+    const loc = locate(r);
+    if (!loc) {
+      toast({ message: 'These rows sit between two tables. Type inside a table to edit it.' });
+      return;
+    }
     // Cells are text, kept exactly as typed; a Markdown cell starting with "=" is a formula.
-    write(setCellText(src, mapRow(r), c, input));
+    write(loc.t, setCellText(parts[loc.t]!.rows, loc.r, c, input));
   };
 
   const onPaste = (r: number, c: number, block: string[][]) => {
     if (blockedByFilter()) return;
-    write(setBlock(src, r, c, block));
+    const loc = locate(r);
+    if (!loc) return void toast({ message: 'Paste inside a table, not between tables.' });
+    write(loc.t, setBlock(parts[loc.t]!.rows, loc.r, c, block));
   };
 
-  const onClearRange = ([r1, c1, r2, c2]: [number, number, number, number]) => {
-    const out = src.map((row) => [...row]);
+  const onClearRange = () => {
+    const sel = selected();
+    if (!sel) return;
+    const [r1, c1, r2, c2] = sel.range;
+    const out = sel.src.map((row) => [...row]);
     for (let r = r1; r <= r2; r++)
       for (let c = c1; c <= c2; c++) {
-        const row = out[mapRow(r)];
+        const row = out[rowMap ? (rowMap[r] ?? r) : r];
         if (row && row[c] !== undefined) row[c] = '';
       }
-    write(out);
+    write(sel.t, out);
   };
 
   const fill = (dir: 'down' | 'right') => {
     if (blockedByFilter()) return;
-    const out = fillRange(src, selectionRange(selection), dir);
-    if (out) write(out);
+    const sel = selected();
+    if (!sel) return;
+    const out = fillRange(sel.src, sel.range, dir);
+    if (out) write(sel.t, out);
     else toast({ message: `Nothing to fill ${dir === 'down' ? 'down' : 'right'} from.` });
   };
 
@@ -226,81 +319,87 @@ export function TextSheetView({
     if (cmd === 'redo') return void docModel.redo(docId);
     if (cmd === 'filter') {
       if (filterOpen) resetFilters();
+      else {
+        // The filter works on one table: the one the cursor is in.
+        setTableIndex(activeTable);
+        setSelection({ r: 0, c: selection.c });
+      }
       setFilterOpen(!filterOpen);
       return;
     }
     if (cmd === 'freeze-row') return void setFreeze((f) => ({ ...f, rows: f.rows ? 0 : 1 }));
     if (cmd === 'freeze-col') return void setFreeze((f) => ({ ...f, cols: f.cols ? 0 : 1 }));
-    if (!sheet) return;
-    const [r1, c1, r2, c2] = selectionRange(selection);
-    const { r, c } = selection;
+    if (cmd === 'fill-down' || cmd === 'fill-right') return fill(cmd.slice(5) as 'down' | 'right');
+    if (!parts.length) return;
+    if (cmd !== 'sort-asc' && cmd !== 'sort-desc' && blockedByFilter()) return;
+    const sel = selected();
+    if (!sel) return;
+    const [r1, c1, r2, c2] = sel.range;
+    const c = selection.c;
+    const { src, shown } = sel;
     const width = Math.max(1, ...src.map((row) => row.length));
-    const align = table ? [...table.table.align] : [];
+    const tb = tables[sel.t];
+    const align: Align[] = tb ? [...tb.table.align] : [];
     while (align.length < width) align.push(null);
     switch (cmd) {
       case 'row-above':
       case 'row-below': {
-        if (blockedByFilter()) return;
         const count = r2 - r1 + 1;
-        const at = cmd === 'row-above' ? r1 : r2 + 1;
-        if (markdown && at === 0) return;
-        write(insertRowsAt(src, Math.min(at, src.length), count));
-        setSelection({ r: at, c });
+        const to = cmd === 'row-above' ? r1 : r2 + 1;
+        if (markdown && to === 0) return;
+        write(sel.t, insertRowsAt(src, Math.min(to, src.length), count));
+        setSelection({ r: sel.row(to), c });
         return;
       }
       case 'delete-row': {
-        if (blockedByFilter()) return;
         const first = markdown ? Math.max(1, r1) : r1; // a Markdown table keeps its header
         const last = Math.min(r2, src.length - 1);
         if (last < first) return;
-        write(deleteRowsAt(src, first, last - first + 1));
-        setSelection({ r: Math.max(0, Math.min(first, src.length - (last - first + 1) - 1)), c });
+        write(sel.t, deleteRowsAt(src, first, last - first + 1));
+        setSelection({
+          r: sel.row(Math.max(0, Math.min(first, src.length - (last - first + 1) - 1))),
+          c,
+        });
         return;
       }
       case 'col-left':
       case 'col-right': {
         const count = c2 - c1 + 1;
-        const at = cmd === 'col-left' ? c1 : c2 + 1;
-        align.splice(at, 0, ...Array.from({ length: count }, () => null));
-        write(insertColsAt(src, at, count), align);
-        setSelection({ r, c: at });
+        const to = cmd === 'col-left' ? c1 : c2 + 1;
+        align.splice(to, 0, ...Array.from({ length: count }, () => null));
+        write(sel.t, insertColsAt(src, to, count), align);
+        setSelection({ r: selection.r, c: to });
         return;
       }
       case 'delete-col': {
         const count = Math.min(c2 - c1 + 1, width - 1);
         if (count < 1) return;
         align.splice(c1, count);
-        write(deleteColsAt(src, c1, count), align);
-        setSelection({ r, c: Math.max(0, Math.min(c1, width - count - 1)) });
+        write(sel.t, deleteColsAt(src, c1, count), align);
+        setSelection({ r: selection.r, c: Math.max(0, Math.min(c1, width - count - 1)) });
         return;
       }
       case 'sort-asc':
       case 'sort-desc':
         if (blockedByFilter()) return;
-        write(sortRows(src, shown, c, cmd === 'sort-asc' ? 'asc' : 'desc', skip));
+        write(sel.t, sortRows(src, shown, c, cmd === 'sort-asc' ? 'asc' : 'desc', skip));
         return;
       case 'autosum': {
-        if (blockedByFilter()) return;
-        const out = autoSum(src, shown, [r1, c1, r2, c2]);
+        const out = autoSum(src, shown, sel.range);
         if (!out) {
           toast({
             message: 'Select the numbers to add up, or an empty cell under or beside them.',
           });
           return;
         }
-        write(out.rows);
-        setSelection(out.at);
+        write(sel.t, out.rows);
+        setSelection({ r: sel.row(out.at.r), c: out.at.c });
         return;
       }
-      case 'fill-down':
-        return fill('down');
-      case 'fill-right':
-        return fill('right');
       case 'bold':
       case 'italic':
       case 'strike':
-        if (blockedByFilter()) return;
-        write(toggleEmphasis(src, [r1, c1, r2, c2], cmd));
+        write(sel.t, toggleEmphasis(src, sel.range, cmd));
         return;
       case 'align-left':
       case 'align-center':
@@ -308,16 +407,23 @@ export function TextSheetView({
         const to = cmd.slice(6) as 'left' | 'center' | 'right';
         const all = align.slice(c1, c2 + 1).every((a) => a === to);
         for (let k = c1; k <= c2; k++) align[k] = all ? null : to;
-        write(src, align);
+        write(sel.t, src, align);
         return;
       }
     }
   };
 
   const onRows = (a: RowAction) => {
-    if (!sheet || blockedByFilter()) return;
+    if (blockedByFilter()) return;
+    // "Insert below" the last row of a table lands in the gap: it still belongs to that table.
+    const below = a.kind === 'insert' && !locate(a.at) && a.at > 0 ? locate(a.at - 1) : null;
+    const loc = below ?? locate(a.at);
+    if (!loc) return;
+    const rows = parts[loc.t]!.rows;
+    const row = below ? loc.r + 1 : loc.r;
     write(
-      a.kind === 'insert' ? insertRowsAt(src, a.at, a.count) : deleteRowsAt(src, a.at, a.count),
+      loc.t,
+      a.kind === 'insert' ? insertRowsAt(rows, row, a.count) : deleteRowsAt(rows, row, a.count),
     );
     if (a.select !== undefined) setSelection({ r: a.select, c: selection.c });
   };
@@ -358,6 +464,7 @@ export function TextSheetView({
     );
   }
 
+  const src = parts[activeTable]?.rows ?? [];
   const columnNames = Array.from(
     { length: Math.max(1, ...src.map((row) => row.length)) },
     (_, c) => {
@@ -380,7 +487,15 @@ export function TextSheetView({
     ['filter', 'freeze-row', 'freeze-col'],
   ];
   const [r1, c1, r2, c2] = selectionRange(selection);
-  const alignNow = table?.table.align.slice(c1, c2 + 1) ?? [];
+  const firstLoc = locate(r1);
+  const lastLoc = locate(r2);
+  const alignNow = (firstLoc && tables[firstLoc.t]?.table.align.slice(c1, c2 + 1)) || [];
+  /** A header row of a Markdown table: bold, and locked in place. */
+  const isHeader = (r: number) => markdown && locate(r)?.r === 0;
+  const alignAt = (r: number, c: number) => {
+    const loc = locate(r);
+    return loc ? tables[loc.t]?.table.align[c] : null;
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col" onKeyDown={onKeyDown}>
@@ -398,15 +513,15 @@ export function TextSheetView({
         disabled={{
           undo: !docModel.canUndo(docId),
           redo: !docModel.canRedo(docId),
-          'row-above': markdown && r1 === 0,
-          'delete-row': markdown && r1 === 0 && r2 === 0,
+          'row-above': markdown && firstLoc?.r === 0,
+          'delete-row': markdown && firstLoc?.r === 0 && lastLoc?.r === 0,
         }}
       >
-        {markdown && tables.length > 1 && (
+        {markdown && tables.length > 1 && !stacked && (
           <select
             className="input h-8 w-auto max-w-[220px] shrink-0 py-0 text-caption"
             aria-label="Table"
-            value={Math.min(tableIndex, tables.length - 1)}
+            value={only}
             onChange={(e) => {
               setTableIndex(Number(e.target.value));
               setSelection({ r: 0, c: 0 });
@@ -420,9 +535,12 @@ export function TextSheetView({
             ))}
           </select>
         )}
+        {stacked && (
+          <span className="shrink-0 px-2 text-caption text-steel">{tables.length} tables</span>
+        )}
         {markdown && tables.length === 1 && (
           <span className="shrink-0 px-2 text-caption text-steel">
-            {table?.label ? `Table under “${table.label}”` : 'Table 1'}
+            {tables[0]?.label ? `Table under “${tables[0].label}”` : 'Table 1'}
           </span>
         )}
         {!markdown && (
@@ -448,12 +566,12 @@ export function TextSheetView({
           total={Math.max(0, src.length - skip)}
         />
       )}
-      {sheet && (
+      {parts.length > 0 && (
         <div className="min-h-0 flex-1">
           <SheetGrid
             sheet={view}
             label={markdown ? 'Table cells' : `${name} cells`}
-            headerRow={markdown || headerRow}
+            headerRow={markdown ? isHeader : headerRow}
             selection={selection}
             onSelect={setSelection}
             onEdit={onEdit}
@@ -463,13 +581,13 @@ export function TextSheetView({
             onFill={fill}
             onRows={onRows}
             freeze={freeze}
-            rowLabels={rowMap ? rowMap.map((i) => i + 1) : undefined}
+            rowLabels={rowLabels}
             markdownText={markdown}
-            fixedHeader={markdown}
+            fixedHeader={markdown ? isHeader : false}
             // Empty cells all around, like a spreadsheet; typing in one adds it to the table.
             pad={{ rows: rowMap ? 0 : 100, cols: 24 }}
             textOnly
-            align={markdown ? table?.table.align : undefined}
+            align={markdown ? alignAt : undefined}
           />
         </div>
       )}
