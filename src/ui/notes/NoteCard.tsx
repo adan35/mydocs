@@ -161,10 +161,12 @@ export function NoteCard(p: CardProps) {
       data-selected={p.selected}
       data-selecting={p.selecting}
       data-pinned={n.pinned}
+      data-has-image={n.images.length > 0}
       data-trashed={!!trashed}
       data-dragging={!!p.dragging}
       data-drop={!!p.dropTarget}
       data-testid="note-card"
+      data-id={n.id}
       draggable={p.draggable}
       onDragStart={p.onDragStart}
       onDragOver={p.onDragOver}
@@ -175,6 +177,7 @@ export function NoteCard(p: CardProps) {
     >
       <div
         role="button"
+        data-note-open
         tabIndex={0}
         aria-label={`Open note: ${title}`}
         className={`note-text flex flex-col gap-2 rounded-xl pb-2 outline-offset-2 ${n.images.length ? '' : 'pt-3'}`}
@@ -190,7 +193,15 @@ export function NoteCard(p: CardProps) {
             className={`grid gap-px overflow-hidden rounded-t-[11px] ${n.images.length > 1 ? 'grid-cols-2' : ''}`}
           >
             {n.images.slice(0, 4).map((href) => (
-              <NoteImage key={href} href={href} className="max-h-48 min-h-20 w-full object-cover" />
+              <NoteImage
+                key={href}
+                href={href}
+                className={
+                  n.images.length > 1
+                    ? 'h-28 w-full object-cover'
+                    : 'h-auto max-h-80 w-full object-cover'
+                }
+              />
             ))}
           </div>
         )}
@@ -258,7 +269,7 @@ export function NoteCard(p: CardProps) {
 
       <button
         type="button"
-        className="note-corner note-select icon-btn absolute top-1.5 left-1.5 !rounded-full bg-[color-mix(in_srgb,var(--canvas)_85%,transparent)]"
+        className="note-corner note-select"
         aria-label={p.selected ? 'Deselect note' : 'Select note'}
         aria-pressed={p.selected}
         onClick={(e) => {

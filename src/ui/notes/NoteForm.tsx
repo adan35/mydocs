@@ -353,7 +353,15 @@ export function NoteForm({ id, initial, variant, focus = 'body', editedAt, onClo
         >
           {pictures.map((p) => (
             <div key={p.key} className="relative">
-              <NoteImage href={p.href} file={p.file} className="max-h-72 w-full object-cover" />
+              <NoteImage
+                href={p.href}
+                file={p.file}
+                className={
+                  pictures.length > 1
+                    ? 'h-40 w-full object-cover'
+                    : 'h-auto max-h-[60vh] w-full object-cover'
+                }
+              />
               <button
                 type="button"
                 className="icon-btn absolute top-1.5 right-1.5 !bg-[color-mix(in_srgb,var(--canvas)_85%,transparent)]"

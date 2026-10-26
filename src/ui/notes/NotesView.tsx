@@ -43,6 +43,7 @@ import {
 import { EmptyState, Page } from '../components/Page';
 import { openMenuAt } from '../components/Menu';
 import { NoteCard, labelEntries } from './NoteCard';
+import { useNoteKeys } from './keys';
 import { NoteForm } from './NoteForm';
 import { colorMenu, colorName } from './format';
 import './notes.css';
@@ -57,7 +58,8 @@ export function NotesView({ view, label }: { view?: View; label?: string }) {
   const layout = useNotesUi((s) => s.layout);
   const selectedRaw = useNotesUi((s) => s.selected);
   const [filter, setFilter] = useState<NoteFilter>({ query: '' });
-  const [composer, setComposer] = useState<'note' | 'list' | null>(null);
+  const composer = useNotesUi((s) => s.composer);
+  const setComposer = useNotesUi.getState().setComposer;
   const [drag, setDrag] = useState<Drag>(null);
 
   const searching = hasFilter(filter);
@@ -79,6 +81,8 @@ export function NotesView({ view, label }: { view?: View; label?: string }) {
   const select = useNotesUi.getState().select;
   const toggleSelect = (id: string) =>
     select(selectedRaw.includes(id) ? selectedRaw.filter((x) => x !== id) : [...selectedRaw, id]);
+
+  useNoteKeys({ trash: view === 'trash', canCompose: !view || view === 'reminders' });
 
   // Selection belongs to one page.
   useEffect(() => select([]), [view, label, select]);

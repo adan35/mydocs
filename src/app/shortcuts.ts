@@ -45,6 +45,20 @@ export const SHORTCUT_GROUPS: { title: string; items: [string, string][] }[] = [
     ],
   },
   {
+    title: 'Notes',
+    items: [
+      ['Quick note / checklist, from anywhere', `${SHORTCUTS.quickNote} / ${SHORTCUTS.quickList}`],
+      ['New note (installed and desktop apps)', 'Mod+N'],
+      ['New note / new checklist', 'C / L'],
+      ['Move between notes', 'Arrow keys'],
+      ['Open the focused note', 'Enter'],
+      ['Select the focused note', 'X'],
+      ['Move to Trash', 'Delete'],
+      ['Archive', 'E'],
+      ['Clear the selection', 'Esc'],
+    ],
+  },
+  {
     title: 'Documents',
     items: [
       ['Save now', SHORTCUTS.save],

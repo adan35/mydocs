@@ -3,6 +3,7 @@ import {
   emptyNote,
   masonry,
   matchesFilter,
+  neighborInDirection,
   nextReminder,
   noteFileName,
   orderFor,
@@ -107,5 +108,24 @@ describe('reminders and layout', () => {
   it('balances columns by height', () => {
     const cols = masonry([100, 100, 30, 30, 30], 2, (h) => h);
     expect(cols.map((c) => c.length)).toEqual([3, 2]);
+  });
+});
+
+describe('arrow navigation', () => {
+  // Two columns: a tall card on the left, two short ones on the right.
+  const boxes = [
+    { left: 0, top: 0, width: 100, height: 300 },
+    { left: 112, top: 0, width: 100, height: 100 },
+    { left: 112, top: 112, width: 100, height: 100 },
+  ];
+  it('moves to the nearest card in each direction', () => {
+    expect(neighborInDirection(boxes, 0, 'right')).toBe(2);
+    expect(neighborInDirection(boxes, 1, 'down')).toBe(2);
+    expect(neighborInDirection(boxes, 2, 'up')).toBe(1);
+    expect(neighborInDirection(boxes, 2, 'left')).toBe(0);
+  });
+  it('stays put at the edges', () => {
+    expect(neighborInDirection(boxes, 0, 'left')).toBeUndefined();
+    expect(neighborInDirection(boxes, 1, 'up')).toBeUndefined();
   });
 });

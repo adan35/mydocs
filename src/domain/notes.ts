@@ -289,3 +289,33 @@ export function masonry<T>(items: readonly T[], cols: number, height: (t: T) => 
   }
   return out;
 }
+
+export interface Box {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/** The card an arrow key moves to: the nearest one in that direction, preferring the same row or column. */
+export function neighborInDirection(
+  boxes: readonly Box[],
+  from: number,
+  dir: 'left' | 'right' | 'up' | 'down',
+): number | undefined {
+  const c = (b: Box) => [b.left + b.width / 2, b.top + b.height / 2] as const;
+  const [x, y] = c(boxes[from]!);
+  let best: number | undefined;
+  let bestScore = Infinity;
+  boxes.forEach((b, i) => {
+    if (i === from) return;
+    const [bx, by] = c(b);
+    const along =
+      dir === 'right' ? bx - x : dir === 'left' ? x - bx : dir === 'down' ? by - y : y - by;
+    if (along <= 4) return;
+    const across = dir === 'left' || dir === 'right' ? Math.abs(by - y) : Math.abs(bx - x);
+    const score = along + 3 * across;
+    if (score < bestScore) [best, bestScore] = [i, score];
+  });
+  return best;
+}

@@ -269,3 +269,34 @@
     display: none;
   }
 }
+
+/* Selection circle sits on the card's corner, like Keep, so it never covers the text. */
+.note-select {
+  position: absolute;
+  top: -9px;
+  left: -9px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--canvas);
+  color: var(--steel);
+  border: 1px solid var(--hairline-strong);
+  box-shadow: var(--shadow-1);
+}
+.note-card[data-selected='true'] .note-select {
+  background: var(--primary-solid);
+  border-color: var(--primary-solid);
+  color: var(--on-primary);
+}
+.note-card[data-selected='true'] .note-select {
+  opacity: 1;
+}
+/* Pin stays readable on top of a picture. */
+.note-card[data-has-image='true'] .note-pin {
+  background: color-mix(in srgb, var(--canvas) 80%, transparent);
+  color: var(--ink);
+}

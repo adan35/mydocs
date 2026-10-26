@@ -169,3 +169,41 @@ test('drag a note to reorder, and quick capture from anywhere', async ({ page })
   await expect(card(page, 'Idea')).toBeVisible();
   void mod;
 });
+
+test('keyboard: arrows move between notes, Delete trashes, C and Ctrl+N start a note', async ({
+  page,
+}) => {
+  await addNote(page, 'First', 'a');
+  await addNote(page, 'Second', 'b');
+  await addNote(page, 'Third', 'c');
+  const focusedTitle = () =>
+    page.evaluate(
+      () =>
+        document.activeElement?.closest('[data-testid=note-card]')?.querySelector('h3')
+          ?.textContent,
+    );
+
+  await page.keyboard.press('ArrowRight'); // nothing focused yet: lands on the first card
+  expect(await focusedTitle()).toBe('Third');
+  await page.keyboard.press('ArrowRight');
+  expect(await focusedTitle()).toBe('Second');
+  await page.keyboard.press('ArrowLeft');
+  expect(await focusedTitle()).toBe('Third');
+
+  await page.keyboard.press('Delete');
+  await expect(card(page, 'Third')).toHaveCount(0);
+  await expect(page.getByText(/moved to Trash/)).toBeVisible();
+  expect(await focusedTitle()).toBe('Second'); // focus stays in the grid
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(card(page, 'Third')).toBeVisible();
+
+  await page.keyboard.press('Escape');
+  await page.locator('body').click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press('c');
+  await expect(page.getByTestId('note-composer')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('note-composer')).toHaveCount(0);
+  await page.locator('body').click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press(`${mod}+n`);
+  await expect(page.getByTestId('note-composer')).toBeVisible();
+});

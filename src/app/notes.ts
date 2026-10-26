@@ -100,8 +100,11 @@ interface NotesUi {
   /** Quick capture dialog, opened from anywhere. */
   quick: 'note' | 'list' | null;
   selected: EntryId[];
+  /** The "Take a note" box on the Notes page: closed, a note, or a checklist. */
+  composer: 'note' | 'list' | null;
   setLayout(l: NoteLayout): void;
   select(ids: EntryId[]): void;
+  setComposer(c: 'note' | 'list' | null): void;
 }
 
 export const useNotesUi = create<NotesUi>((set) => ({
@@ -109,11 +112,13 @@ export const useNotesUi = create<NotesUi>((set) => ({
   openId: null,
   quick: null,
   selected: [],
+  composer: null,
   setLayout(layout) {
     prefs.set('mydoc:notes-layout', layout);
     set({ layout });
   },
   select: (selected) => set({ selected }),
+  setComposer: (composer) => set({ composer }),
 }));
 
 export const openNote = (id: EntryId) => useNotesUi.setState({ openId: id });
