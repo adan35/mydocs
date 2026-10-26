@@ -64,6 +64,7 @@ import { DiskStatus, SaveStatus } from './SaveStatus';
 import { ShareChip } from '../share/ShareChip';
 import { useReadOnly } from '@/app/collab-state';
 import { cloudAvailable } from '@/app/cloud';
+import { useShares } from '@/app/share';
 import { BinaryView } from './BinaryView';
 import { formatOf, conversionsFrom } from '@/lib/convert/capabilities';
 import { DocxView, PdfView, TextSheetView, XlsxView } from '../lazy-views';
@@ -765,6 +766,7 @@ function DocHeader({
   const isMd = isMarkdownName(entry.name);
   const textual = ws().isEditable(entry);
   const ancestors = tree.ancestors(entry.id);
+  const shared = useShares((s) => !!s.bindings[entry.id]);
   const delimited = /\.(csv|tsv|tab|unl)$/i.test(entry.name);
   const format = formatOf(entry.name)?.id;
   const canConvert = !!format && conversionsFrom(format).length > 0;
@@ -779,6 +781,15 @@ function DocHeader({
     ...(textual && cloudAvailable
       ? ([
           { label: 'Share…', icon: <Users />, onSelect: () => void dialogs.share(entry.id) },
+          ...(shared
+            ? [
+                {
+                  label: 'Shared history…',
+                  icon: <History />,
+                  onSelect: () => void dialogs.shareHistory(entry.id),
+                },
+              ]
+            : []),
         ] as MenuEntry[])
       : []),
     ...(isMd

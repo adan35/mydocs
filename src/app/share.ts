@@ -129,3 +129,22 @@ export async function openShared(id: string, key?: string) {
   navigate({ name: 'doc', id: entry.id }, { replace: true });
   return entry.id;
 }
+
+export interface SharedHistory {
+  authors: { name: string; email?: string }[];
+  sessions: {
+    a: number;
+    start: number;
+    end: number;
+    edits: number;
+    lines: { type: 'add' | 'del'; text: string }[];
+    truncated: boolean;
+  }[];
+  older: number;
+  blame: { a: number; t: number; text: string }[];
+  blameTruncated: boolean;
+}
+
+/** Who changed what in a shared document, from the server's record of every edit. */
+export const fetchHistory = (b: Binding) =>
+  api<SharedHistory>(`/api/shares/${encodeURIComponent(b.id)}/history`, { key: b.key });

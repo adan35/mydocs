@@ -54,7 +54,8 @@ export type DialogRequest =
   | { kind: 'table'; table: Table; isNew: boolean; resolve: (v: Table | null) => void }
   | { kind: 'convert'; entryId: EntryId; to?: FormatId; resolve: (v: void) => void }
   | { kind: 'formats'; resolve: (v: void) => void }
-  | { kind: 'share'; entryId: EntryId; resolve: (v: void) => void };
+  | { kind: 'share'; entryId: EntryId; resolve: (v: void) => void }
+  | { kind: 'share-history'; entryId: EntryId; resolve: (v: void) => void };
 
 interface DialogState {
   stack: DialogRequest[];
@@ -102,4 +103,6 @@ export const dialogs = {
     request<void>((resolve) => ({ kind: 'convert', entryId, to, resolve })),
   formats: () => request<void>((resolve) => ({ kind: 'formats', resolve })),
   share: (entryId: EntryId) => request<void>((resolve) => ({ kind: 'share', entryId, resolve })),
+  shareHistory: (entryId: EntryId) =>
+    request<void>((resolve) => ({ kind: 'share-history', entryId, resolve })),
 };

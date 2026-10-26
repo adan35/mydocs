@@ -69,6 +69,26 @@ test('two people edit the same document live, and a viewer cannot', async ({ bro
   // Both copies were also saved on their own devices.
   await expect(alice.getByRole('status').filter({ hasText: 'Saved' }).first()).toBeVisible();
 
+  // History shows who wrote what.
+  await alice.getByRole('button', { name: /^Live/ }).click();
+  await alice
+    .getByRole('dialog', { name: 'Share' })
+    .getByRole('button', { name: 'Who changed what' })
+    .click();
+  const history = alice.getByRole('dialog', { name: 'Shared history' });
+  await expect(history.getByText('Hello from Bob')).toBeVisible();
+  await history
+    .getByRole('button', { name: /Show \d+ more lines/ })
+    .first()
+    .click();
+  await expect(history.getByText('Hello from Alice')).toBeVisible();
+  await expect(history.getByText('bob', { exact: false }).first()).toBeVisible();
+  await history.getByRole('tab', { name: 'Line by line' }).click();
+  const bobLine = history.locator('div', { hasText: /^bob.*Hello from Bob$/i }).last();
+  await expect(bobLine).toBeVisible();
+  await history.getByRole('button', { name: 'Close' }).click();
+  await alice.getByRole('dialog', { name: 'Share' }).getByRole('button', { name: 'Close' }).click();
+
   // Carol is not signed in: the edit link only lets her read.
   const carol = await signedIn(browser, null);
   await carol.goto(editLink);

@@ -148,6 +148,8 @@ async function handle(req: Request, env: Env, url: URL): Promise<Response> {
     if (m === 'GET') return room(env, id, '/info', user, key);
     if (m === 'DELETE') return room(env, id, '/', need(user), null, { method: 'DELETE' });
   }
+  match = p.match(/^\/api\/shares\/([^/]+)\/history$/);
+  if (match && m === 'GET') return room(env, match[1]!, '/history', user, key);
   match = p.match(/^\/api\/shares\/([^/]+)\/settings$/);
   if (match && m === 'POST')
     return room(env, match[1]!, '/settings', need(user), null, {

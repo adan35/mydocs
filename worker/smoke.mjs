@@ -89,6 +89,28 @@ await sleep(300);
 assert.equal(a.text.toString(), '>> hello world', 'a viewer cannot write');
 assert.equal(b.text.toString(), '>> hello world');
 
+// History: who changed what, visible to everyone with access; emails only to the owner.
+const hist = (await call(`/api/shares/${id}/history`, { token: alice })).body;
+assert.deepEqual(hist.authors.map((x) => x.name.replace(/\d+/, '')).sort(), ['alice', 'bob']);
+assert.ok(
+  hist.authors.every((x) => x.email),
+  'owner sees emails',
+);
+const bobIdx = hist.authors.findIndex((x) => x.name.startsWith('bob'));
+const bobSession = hist.sessions.find((x) => x.a === bobIdx);
+assert.deepEqual(
+  bobSession.lines.map((l) => l.type),
+  ['del', 'add'],
+  "Bob's change replaced a line",
+);
+assert.equal(hist.blame.map((l) => l.text).join('\n'), '>> hello world');
+const seen = (await call(`/api/shares/${id}/history?k=${linkKey}`, {})).body;
+assert.ok(
+  seen.authors.every((x) => !('email' in x)),
+  'link viewers never see email addresses',
+);
+assert.equal((await call(`/api/shares/${id}/history`, {})).status, 401);
+
 // Persistence: everyone leaves, a new client still sees the text.
 for (const x of [a, b, c]) x.provider.destroy();
 await sleep(300);

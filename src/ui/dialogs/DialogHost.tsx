@@ -12,6 +12,7 @@ import { ShortcutsDialog } from './ShortcutsDialog';
 import { TableDialog } from './TableDialog';
 import { ConvertDialog, FormatsDialog } from '../lazy-views';
 import { ShareDialog } from '../share/ShareDialog';
+import { SharedHistoryDialog } from '../share/SharedHistoryDialog';
 
 export function DialogHost() {
   const stack = useDialogs((s) => s.stack);
@@ -48,6 +49,8 @@ function DialogFor({ req }: { req: DialogRequest }) {
       return <FormatsDialog onClose={() => req.resolve()} />;
     case 'share':
       return <ShareDialog entryId={req.entryId} onClose={() => req.resolve()} />;
+    case 'share-history':
+      return <SharedHistoryDialog entryId={req.entryId} onClose={() => req.resolve()} />;
   }
 }
 

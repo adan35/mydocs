@@ -114,6 +114,13 @@ export function ShareDialog({ entryId, onClose }: { entryId: EntryId; onClose():
         </p>
         <button
           type="button"
+          className="btn btn-secondary mt-4 mr-2"
+          onClick={() => void dialogs.shareHistory(entryId)}
+        >
+          Who changed what
+        </button>
+        <button
+          type="button"
           className="btn btn-secondary mt-4"
           onClick={() => {
             leaveShare(entryId);
@@ -281,6 +288,13 @@ export function ShareDialog({ entryId, onClose }: { entryId: EntryId; onClose():
           </ul>
         </section>
 
+        <button
+          type="button"
+          className="btn btn-secondary mr-2"
+          onClick={() => void dialogs.shareHistory(entryId)}
+        >
+          Who changed what
+        </button>
         <button
           type="button"
           className="btn btn-secondary text-danger"

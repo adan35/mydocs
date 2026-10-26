@@ -13,6 +13,15 @@ import {
 } from './access';
 import { randomToken } from './auth';
 import type { Env } from './env';
+import {
+  emptyState,
+  mergeOps,
+  replay,
+  summarize,
+  type Entry,
+  type Op,
+  type State,
+} from './history';
 
 const MSG_SYNC = 0;
 const MSG_AWARENESS = 1;
@@ -20,9 +29,14 @@ const MSG_AWARENESS = 1;
 const MAX_MESSAGE = 1_000_000;
 const MAX_STATE = 1_800_000;
 const COMPACT_EVERY = 50;
+/** Recorded edits kept in full; older ones are folded into a per-character authorship snapshot. */
+const MAX_ROWS = 3000;
+/** Edits closer together than this by one person are one history entry. */
+const MERGE_MS = 2000;
 
 interface Conn {
   email: string | null;
+  name: string;
   key: string | null;
   role: Role;
   clientIds: Set<number>;
@@ -44,6 +58,8 @@ export class Room implements DurableObject {
   private meta: ShareMeta | null = null;
   private conns = new Map<WebSocket, Conn>();
   private sinceCompact = 0;
+  private rows = 0;
+  private last: { id: number; at: number; email: string; delta: Op[] } | null = null;
 
   constructor(
     private ctx: DurableObjectState,
@@ -51,12 +67,30 @@ export class Room implements DurableObject {
   ) {
     this.awareness.setLocalState(null);
     ctx.blockConcurrencyWhile(async () => {
-      this.ctx.storage.sql.exec(
+      const sql = this.ctx.storage.sql;
+      sql.exec(
         'CREATE TABLE IF NOT EXISTS updates (id INTEGER PRIMARY KEY AUTOINCREMENT, data BLOB NOT NULL)',
       );
+      sql.exec(
+        'CREATE TABLE IF NOT EXISTS history (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, email TEXT NOT NULL, name TEXT NOT NULL, delta TEXT NOT NULL)',
+      );
+      sql.exec('CREATE TABLE IF NOT EXISTS base (id INTEGER PRIMARY KEY, state TEXT NOT NULL)');
+      this.rows = Number(sql.exec('SELECT COUNT(*) AS n FROM history').one().n);
       this.meta = (await ctx.storage.get<ShareMeta>('meta')) ?? null;
       for (const row of ctx.storage.sql.exec('SELECT data FROM updates ORDER BY id'))
         Y.applyUpdate(this.doc, new Uint8Array(row.data as ArrayBuffer));
+    });
+    // Every change a collaborator makes is recorded with who made it (see history.ts).
+    this.doc.getText('text').observe((event, txn) => {
+      const who = txn.origin as Conn | null;
+      if (!who || typeof who !== 'object' || !('role' in who)) return;
+      const delta: Op[] = [];
+      for (const d of event.delta) {
+        if (typeof d.insert === 'string') delta.push({ insert: d.insert });
+        else if (d.delete) delta.push({ delete: d.delete });
+        else if (d.retain) delta.push({ retain: d.retain });
+      }
+      this.record(who.email ?? 'unknown', who.name, delta);
     });
     this.doc.on('update', (update: Uint8Array) => {
       this.persist(update);
@@ -111,6 +145,7 @@ export class Room implements DurableObject {
       };
       await this.ctx.storage.put('meta', this.meta);
       this.doc.getText('text').insert(0, text);
+      if (text) this.record(this.meta.ownerEmail, this.meta.ownerName, [{ insert: text }]);
       this.compact();
       return json({ ok: true, linkKey: this.meta.linkKey });
     }
@@ -127,7 +162,18 @@ export class Room implements DurableObject {
           { error: email ? 'No access' : 'Sign in to open this document' },
           email ? 403 : 401,
         );
-      return this.accept(email, key, role);
+      return this.accept(email, name, key, role);
+    }
+
+    if (url.pathname === '/history' && req.method === 'GET') {
+      if (!role)
+        return json(
+          { error: email ? 'No access' : 'Sign in to open this document' },
+          email ? 403 : 401,
+        );
+      const { base, entries } = this.loadHistory();
+      // Only the owner sees collaborators' email addresses.
+      return json(summarize(base, entries, role === 'owner'));
     }
 
     if (url.pathname === '/info' && req.method === 'GET') {
@@ -213,13 +259,13 @@ export class Room implements DurableObject {
     };
   }
 
-  private accept(email: string | null, key: string | null, role: Role): Response {
+  private accept(email: string | null, name: string, key: string | null, role: Role): Response {
     const pair = new WebSocketPair();
     const [client, server] = [pair[0], pair[1]];
     server.accept();
     // Newer compatibility dates default to Blob, which can't be decoded synchronously.
     server.binaryType = 'arraybuffer';
-    const conn: Conn = { email, key, role, clientIds: new Set() };
+    const conn: Conn = { email, name, key, role, clientIds: new Set() };
     this.conns.set(server, conn);
     server.addEventListener('message', (ev) => this.onMessage(server, conn, ev.data));
     const gone = () => this.onClose(server, conn);
@@ -289,6 +335,88 @@ export class Room implements DurableObject {
       } catch {
         /* closed sockets are removed by their close handler */
       }
+    }
+  }
+
+  private record(email: string, name: string, delta: Op[], at = Date.now()) {
+    if (!delta.length) return;
+    const sql = this.ctx.storage.sql;
+    const l = this.last;
+    if (l && l.email === email && at - l.at <= MERGE_MS) {
+      const merged = mergeOps(l.delta, delta);
+      if (merged) {
+        if (merged.length) {
+          sql.exec(
+            'UPDATE history SET at = ?, delta = ? WHERE id = ?',
+            at,
+            JSON.stringify(merged),
+            l.id,
+          );
+          this.last = { ...l, at, delta: merged };
+        } else {
+          sql.exec('DELETE FROM history WHERE id = ?', l.id);
+          this.rows--;
+          this.last = null;
+        }
+        return;
+      }
+    }
+    const id = Number(
+      sql
+        .exec(
+          'INSERT INTO history (at, email, name, delta) VALUES (?, ?, ?, ?) RETURNING id',
+          at,
+          email,
+          name,
+          JSON.stringify(delta),
+        )
+        .one().id,
+    );
+    this.last = { id, at, email, delta };
+    if (++this.rows > MAX_ROWS) this.fold();
+  }
+
+  private loadHistory(): { base: State; entries: Entry[] } {
+    const sql = this.ctx.storage.sql;
+    const b = [...sql.exec('SELECT state FROM base WHERE id = 1')][0];
+    const base = b ? (JSON.parse(b.state as string) as State) : emptyState();
+    const entries = [...sql.exec('SELECT at, email, name, delta FROM history ORDER BY id')].map(
+      (r) => ({
+        at: r.at as number,
+        email: r.email as string,
+        name: r.name as string,
+        delta: JSON.parse(r.delta as string) as Op[],
+      }),
+    );
+    return { base, entries };
+  }
+
+  /** Folds the oldest half of the recorded edits into the snapshot, keeping who wrote each character. */
+  private fold() {
+    try {
+      const { base, entries } = this.loadHistory();
+      const old = entries.slice(0, Math.floor(entries.length / 2));
+      const upTo = Number(
+        [
+          ...this.ctx.storage.sql.exec(
+            'SELECT id FROM history ORDER BY id LIMIT 1 OFFSET ?',
+            old.length - 1,
+          ),
+        ][0]?.id,
+      );
+      const state = replay(base, old);
+      this.ctx.storage.transactionSync(() => {
+        this.ctx.storage.sql.exec(
+          'INSERT OR REPLACE INTO base (id, state) VALUES (1, ?)',
+          JSON.stringify(state),
+        );
+        this.ctx.storage.sql.exec('DELETE FROM history WHERE id <= ?', upTo);
+      });
+      this.rows -= old.length;
+      if (this.last && this.last.id <= upTo) this.last = null;
+    } catch (err) {
+      // History is a record, not the document: never let it break editing.
+      console.error('history fold failed', err);
     }
   }
 

@@ -56,6 +56,7 @@ import { isMarkdownName } from '@/domain/names';
 import { conversionsFrom, formatOf } from '@/lib/convert/capabilities';
 import { canPrint } from '@/platform';
 import { cloudAvailable } from '@/app/cloud';
+import { useShares } from '@/app/share';
 
 const convertible = (name: string) => {
   const f = formatOf(name)?.id;
@@ -560,6 +561,18 @@ export function getCommands(): Command[] {
                 keywords: 'collaborate invite link google live edit',
                 run: () => void dialogs.share(doc.id),
               },
+              ...(useShares.getState().bindings[doc.id]
+                ? [
+                    {
+                      id: 'share-history',
+                      title: 'Shared history: who changed what',
+                      group: 'Document' as const,
+                      icon: <History />,
+                      keywords: 'blame authors changes collaborators line',
+                      run: () => void dialogs.shareHistory(doc.id),
+                    },
+                  ]
+                : []),
             ]
           : []),
         {
