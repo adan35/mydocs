@@ -1,8 +1,10 @@
 import {
+  Annotation,
+  Compartment,
   EditorState,
   Facet,
   type Extension,
-  type Transaction,
+  Transaction,
   type TransactionSpec,
 } from '@codemirror/state';
 import { history, redo, redoDepth, undo, undoDepth } from '@codemirror/commands';
@@ -25,6 +27,17 @@ import type { EntryId } from '@/domain/types';
 /** The document a state belongs to. */
 export const docIdFacet = Facet.define<string, string>({ combine: (v) => v[0] ?? '' });
 
+/** Marks a change that came from a collaborator, so it is not sent back to them. */
+export const remoteChange = Annotation.define<boolean>();
+
+/** Where a shared document's collaboration extensions (remote cursors) live in its state. */
+const collabComp = new Compartment();
+
+/** Mirrors a shared document's local edits to its collaborators (see `collab.ts`). */
+export interface DocSync {
+  local(transactions: readonly Transaction[]): void;
+}
+
 /** Something that shows a state and applies transactions to it (an `EditorView`). */
 export interface DocView {
   readonly state: EditorState;
@@ -37,6 +50,9 @@ type ChangeListener = (id: EntryId, text: string) => void;
 const states = new Map<EntryId, EditorState>();
 const views = new Map<EntryId, DocView>();
 const listeners = new Set<ChangeListener>();
+const syncs = new Map<EntryId, DocSync>();
+/** Documents that can't be edited right now (viewer role, or a shared document that is offline). */
+const locked = new Set<EntryId>();
 let extensionsFor: (id: EntryId) => Extension = () => [];
 
 function notify(id: EntryId, state: EditorState) {
@@ -47,7 +63,7 @@ function notify(id: EntryId, state: EditorState) {
 function create(id: EntryId, text: string): EditorState {
   return EditorState.create({
     doc: text,
-    extensions: [docIdFacet.of(id), history(), extensionsFor(id)],
+    extensions: [docIdFacet.of(id), history(), collabComp.of([]), extensionsFor(id)],
   });
 }
 
@@ -96,7 +112,43 @@ export const docModel = {
 
   /** Called by an attached editor after it applied transactions. */
   viewUpdated(id: EntryId, transactions: readonly Transaction[], state: EditorState) {
-    if (transactions.some((tr) => tr.docChanged)) notify(id, state);
+    if (!transactions.some((tr) => tr.docChanged)) return;
+    syncs.get(id)?.local(transactions);
+    notify(id, state);
+  },
+
+  /** Starts mirroring a document's edits to collaborators; returns the function that stops it. */
+  setSync(id: EntryId, sync: DocSync): () => void {
+    syncs.set(id, sync);
+    return () => {
+      if (syncs.get(id) === sync) syncs.delete(id);
+    };
+  },
+
+  /** Locked documents refuse edits from the app (the editor is also made read-only). */
+  setLocked(id: EntryId, value: boolean) {
+    if (value) locked.add(id);
+    else locked.delete(id);
+  },
+
+  isLocked: (id: EntryId) => locked.has(id),
+
+  /** Collaboration extensions (remote cursors) for a document, or none. */
+  setCollabExtension(id: EntryId, ext: Extension) {
+    docModel.dispatchRemote(id, { effects: collabComp.reconfigure(ext) });
+  },
+
+  /** Applies a collaborator's change: never mirrored back, not undoable, allowed on locked documents. */
+  dispatchRemote(id: EntryId, spec: TransactionSpec): boolean {
+    const was = locked.delete(id);
+    try {
+      return docModel.dispatch(id, {
+        ...spec,
+        annotations: [remoteChange.of(true), Transaction.addToHistory.of(false)],
+      });
+    } finally {
+      if (was) locked.add(id);
+    }
   },
 
   /**
@@ -104,6 +156,7 @@ export const docModel = {
    * Returns false when the document isn't open.
    */
   dispatch(id: EntryId, spec: TransactionSpec): boolean {
+    if (locked.has(id)) return false;
     const view = views.get(id);
     if (view) {
       view.dispatch(spec);
@@ -113,7 +166,10 @@ export const docModel = {
     if (!s) return false;
     const tr = s.update(spec);
     states.set(id, tr.state);
-    if (tr.docChanged) notify(id, tr.state);
+    if (tr.docChanged) {
+      syncs.get(id)?.local([tr]);
+      notify(id, tr.state);
+    }
     return true;
   },
 
@@ -148,6 +204,8 @@ export const docModel = {
   /** Forgets a closed document. */
   drop(id: EntryId) {
     states.delete(id);
+    syncs.delete(id);
+    locked.delete(id);
   },
 
   /** Forgets everything (another tab took over the workspace). */
@@ -160,6 +218,7 @@ function runCommand(
   id: EntryId,
   cmd: (t: { state: EditorState; dispatch: (tr: Transaction) => void }) => boolean,
 ): boolean {
+  if (locked.has(id)) return false;
   const view = views.get(id);
   const state = view?.state ?? states.get(id);
   if (!state) return false;
@@ -169,7 +228,10 @@ function runCommand(
       if (view) view.dispatch(tr);
       else {
         states.set(id, tr.state);
-        if (tr.docChanged) notify(id, tr.state);
+        if (tr.docChanged) {
+          syncs.get(id)?.local([tr]);
+          notify(id, tr.state);
+        }
       }
     },
   });

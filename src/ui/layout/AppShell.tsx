@@ -12,6 +12,7 @@ import { TabBar } from './TabBar';
 import { MobileNav } from './MobileNav';
 import { MenuBar } from './MenuBar';
 import { CommandPalette, QuickOpen } from './Palette';
+import { ShareLanding, SharedWithMe } from '../share/ShareViews';
 import { HomeView } from '../views/HomeView';
 import { FolderView } from '../views/FolderView';
 import { SearchView } from '../views/SearchView';
@@ -21,6 +22,7 @@ import { DownloadView } from '../views/DownloadView';
 import { NotesView } from '../notes/NotesView';
 import { NoteHost } from '../notes/NoteHost';
 import { useNoteReminders } from '@/app/notes';
+import { useAon } from '@/app/aon/chat';
 import { useLayout } from '../hooks';
 import { TREE_DRAG_TYPE } from './FileTree';
 import { useGlobalShortcuts } from './shortcuts';
@@ -30,6 +32,8 @@ import { closeMenu } from '../components/Menu';
 const DocumentView = lazy(() =>
   import('../document/DocumentView').then((m) => ({ default: m.DocumentView })),
 );
+
+const AonPanel = lazy(() => import('../aon/AonPanel').then((m) => ({ default: m.AonPanel })));
 
 // The graph is optional, so its code loads only when it's opened.
 const GraphView = lazy(() => import('../views/GraphView').then((m) => ({ default: m.GraphView })));
@@ -124,6 +128,10 @@ function RouteView() {
       return <SettingsView />;
     case 'download':
       return <DownloadView />;
+    case 'share':
+      return <ShareLanding key={route.id} id={route.id} secret={route.key} />;
+    case 'shared':
+      return <SharedWithMe />;
     case 'notes':
       return <NotesView view={route.view} label={route.label} />;
     case 'graph':
@@ -145,6 +153,7 @@ export function AppShell() {
   const focusMode = useUi((s) => s.focusMode);
   const readingMode = useUi((s) => s.readingMode);
   const route = useRouter((s) => s.route);
+  const aonOpen = useAon((s) => s.open);
   const hasTabs = useEditor((s) => s.tabs.length > 0);
   const density = useSettings((s) => s.density);
   const [width, setWidth] = useState(() => Number(localStorage.getItem(SIDEBAR_KEY)) || 264);
@@ -337,6 +346,11 @@ export function AppShell() {
           {phone && !immersive && <MobileNav />}
         </div>
       </div>
+      {aonOpen && (
+        <Suspense fallback={null}>
+          <AonPanel />
+        </Suspense>
+      )}
       {overlay === 'palette' && <CommandPalette />}
       {overlay === 'quickopen' && <QuickOpen />}
       <NoteHost />

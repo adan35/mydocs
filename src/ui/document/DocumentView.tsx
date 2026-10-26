@@ -21,6 +21,7 @@ import {
   ChevronRight,
   FileQuestion,
   BookOpenCheck,
+  Users,
   FileCode2,
   Link2,
   Link2Off,
@@ -40,6 +41,7 @@ import { ws } from '@/app/app-store';
 import { editorActions, useEditor } from '@/app/editor-store';
 import { useSettings, type ViewMode } from '@/app/settings-store';
 import { useUi } from '@/app/ui-store';
+import { useAon } from '@/app/aon/chat';
 import { navigate } from '@/app/router';
 import { SHORTCUTS } from '@/app/shortcuts';
 import { dialogs } from '@/app/dialog-store';
@@ -61,6 +63,10 @@ import { sendDocCommand } from '../doc-commands';
 import { Preview, type PreviewHandle } from './Preview';
 import { RightPanel } from './RightPanel';
 import { DiskStatus, SaveStatus } from './SaveStatus';
+import { ShareChip } from '../share/ShareChip';
+import { useReadOnly } from '@/app/collab-state';
+import { cloudAvailable } from '@/app/cloud';
+import { useShares } from '@/app/share';
 import { BinaryView } from './BinaryView';
 import { formatOf, conversionsFrom } from '@/lib/convert/capabilities';
 import { DocxView, PdfView, TextSheetView, XlsxView } from '../lazy-views';
@@ -90,7 +96,9 @@ export function DocumentView({ id, anchor }: { id: EntryId; anchor?: string }) {
 /** Word, Excel, PDF, images and other files that aren't edited as text. */
 function FileDocument({ entry }: { entry: Entry }) {
   const { wide } = useLayout();
-  const panelOpen = useUi((s) => s.rightPanelOpen);
+  // The docked details panel steps aside while AON's panel is open, so the document keeps its width.
+  const aonOpen = useAon((s) => s.open);
+  const panelOpen = useUi((s) => s.rightPanelOpen) && !aonOpen;
   const panelWidth = useUi((s) => s.rightPanelWidth);
   const focusMode = useUi((s) => s.focusMode);
   const readingMode = useUi((s) => s.readingMode);
@@ -213,7 +221,9 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
   const storedMode = useUi((s) => s.viewModes[id]);
   const focusMode = useUi((s) => s.focusMode);
   const readingMode = useUi((s) => s.readingMode);
-  const panelOpen = useUi((s) => s.rightPanelOpen);
+  // The docked details panel steps aside while AON's panel is open, so the document keeps its width.
+  const aonOpen = useAon((s) => s.open);
+  const panelOpen = useUi((s) => s.rightPanelOpen) && !aonOpen;
   const syncScroll = useSettings((s) => s.syncScroll);
   const splitRatio = useUi((s) => s.splitRatio);
   const panelWidth = useUi((s) => s.rightPanelWidth);
@@ -248,6 +258,7 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
   // Following a link from the details sheet shows the new document, not the sheet.
   useEffect(() => setOutlineSheet(false), [id]);
   const focusRequest = useEditor((s) => s.focusRequest);
+  const sharedReadOnly = useReadOnly(id);
 
   const delimited = /\.(csv|tsv|tab|unl)$/i.test(entry.name);
   let mode: ViewMode = isMd
@@ -568,6 +579,7 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
                     docId={id}
                     name={entry.name}
                     text={text}
+                    readOnly={sharedReadOnly}
                     onUpdate={bumpTick}
                     onScrollLine={(line) => {
                       if (mode === 'edit') followLine(line);
@@ -758,10 +770,13 @@ function DocHeader({
   const { phone, wide } = useLayout();
   const focusMode = useUi((s) => s.focusMode);
   const readingMode = useUi((s) => s.readingMode);
-  const panelOpen = useUi((s) => s.rightPanelOpen);
+  // The docked details panel steps aside while AON's panel is open, so the document keeps its width.
+  const aonOpen = useAon((s) => s.open);
+  const panelOpen = useUi((s) => s.rightPanelOpen) && !aonOpen;
   const isMd = isMarkdownName(entry.name);
   const textual = ws().isEditable(entry);
   const ancestors = tree.ancestors(entry.id);
+  const shared = useShares((s) => !!s.bindings[entry.id]);
   const delimited = /\.(csv|tsv|tab|unl)$/i.test(entry.name);
   const format = formatOf(entry.name)?.id;
   const canConvert = !!format && conversionsFrom(format).length > 0;
@@ -773,6 +788,20 @@ function DocHeader({
     { label: 'Rename…', icon: <PencilLine />, onSelect: () => void A.renameEntry(entry.id) },
     { label: 'Move to…', icon: <FolderInput />, onSelect: () => void A.moveEntries([entry.id]) },
     { label: 'Duplicate', icon: <Copy />, onSelect: () => void A.duplicateEntry(entry.id) },
+    ...(textual && cloudAvailable
+      ? ([
+          { label: 'Share…', icon: <Users />, onSelect: () => void dialogs.share(entry.id) },
+          ...(shared
+            ? [
+                {
+                  label: 'Shared history…',
+                  icon: <History />,
+                  onSelect: () => void dialogs.shareHistory(entry.id),
+                },
+              ]
+            : []),
+        ] as MenuEntry[])
+      : []),
     ...(isMd
       ? ([
           { label: 'Add tag…', icon: <Tag />, onSelect: () => void A.addTagTo(entry.id) },
@@ -931,6 +960,7 @@ function DocHeader({
           {entry.name}
         </button>
       </nav>
+      {textual && <ShareChip id={entry.id} />}
       {textual && <SaveStatus id={entry.id} />}
       <DiskStatus id={entry.id} />
       {isMd && !readingMode && (

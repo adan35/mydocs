@@ -12,6 +12,10 @@ export type Route =
   | { name: 'trash' }
   | { name: 'settings' }
   | { name: 'download' }
+  /** A link someone sent: opens a live-shared document. */
+  | { name: 'share'; id: string; key?: string }
+  /** Documents other people shared with this user. */
+  | { name: 'shared' }
   /** Keep-style notes; `view` picks Reminders, Archive or Trash, `label` one label. */
   | { name: 'notes'; view?: 'reminders' | 'archive' | 'trash'; label?: string }
   /** `id` shows the local graph around one document. */
@@ -48,6 +52,12 @@ export function parseHash(hash: string): Route {
       return { name: 'settings' };
     case 'download':
       return { name: 'download' };
+    case 's':
+      return rest[0]
+        ? { name: 'share', id: rest[0], key: params.get('k') ?? undefined }
+        : { name: 'home' };
+    case 'shared':
+      return { name: 'shared' };
     case 'notes':
       if (rest[0] === 'label' && rest[1]) return { name: 'notes', label: rest.slice(1).join('/') };
       return rest[0] === 'reminders' || rest[0] === 'archive' || rest[0] === 'trash'
@@ -70,6 +80,8 @@ export function routeToHash(r: Route): string {
       return `#/search?q=${encodeURIComponent(r.q)}`;
     case 'tags':
       return r.tag ? `#/tags/${r.tag.split('/').map(encodeURIComponent).join('/')}` : '#/tags';
+    case 'share':
+      return `#/s/${encodeURIComponent(r.id)}${r.key ? `?k=${encodeURIComponent(r.key)}` : ''}`;
     case 'notes':
       return r.label
         ? `#/notes/label/${encodeURIComponent(r.label)}`

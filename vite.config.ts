@@ -1,5 +1,5 @@
 /// <reference types="vitest/config" />
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath } from 'node:url';
@@ -16,30 +16,36 @@ const { version: APP_VERSION } = JSON.parse(
  * ever failed, inline and third-party scripts still could not run.
  * 'unsafe-inline' styles are required by CodeMirror, KaTeX and Mermaid output.
  */
-const CSP = [
-  "default-src 'self'",
-  // 'wasm-unsafe-eval' lets pdf.js run its image decoders (JPEG 2000, ICC); it allows
-  // WebAssembly only, not eval() of text.
-  "script-src 'self' 'wasm-unsafe-eval'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https:",
-  "media-src 'self' blob:",
-  "font-src 'self' data:",
-  // The desktop app talks to its native side over Tauri's IPC protocol.
-  `connect-src 'self'${process.env.TAURI_ENV_PLATFORM ? ' ipc: http://ipc.localhost' : ''}`,
-  "object-src 'none'",
-  "frame-src 'none'",
-  "base-uri 'none'",
-  "form-action 'none'",
-].join('; ');
+const csp = (env: Record<string, string>) => {
+  // Sharing (Google sign-in + the Worker API) is only allowed when the build is configured for it.
+  const api = env.VITE_API_URL && env.VITE_GOOGLE_CLIENT_ID ? new URL(env.VITE_API_URL) : null;
+  const google = 'https://accounts.google.com/gsi/';
+  return [
+    "default-src 'self'",
+    // 'wasm-unsafe-eval' lets pdf.js run its image decoders (JPEG 2000, ICC); it allows
+    // WebAssembly only, not eval() of text.
+    `script-src 'self' 'wasm-unsafe-eval'${api ? ` ${google}client` : ''}`,
+    `style-src 'self' 'unsafe-inline'${api ? ` ${google}style` : ''}`,
+    "img-src 'self' data: blob: https:",
+    "media-src 'self' blob:",
+    "font-src 'self' data:",
+    // The desktop app talks to its native side over Tauri's IPC protocol. The AI providers are
+    // called directly (with the user's own key) only when the user adds one in Settings.
+    `connect-src 'self'${process.env.TAURI_ENV_PLATFORM ? ' ipc: http://ipc.localhost' : ''} https://api.anthropic.com https://api.openai.com${api ? ` ${api.origin} ${api.origin.replace(/^http/, 'ws')} ${google}` : ''}`,
+    "object-src 'none'",
+    `frame-src ${api ? google : "'none'"}`,
+    "base-uri 'none'",
+    "form-action 'none'",
+  ].join('; ');
+};
 
-const cspPlugin = (): Plugin => ({
+const cspPlugin = (env: Record<string, string>): Plugin => ({
   name: 'mydoc-csp',
   apply: 'build',
   transformIndexHtml: (html) =>
     html.replace(
       '<meta charset="UTF-8" />',
-      `<meta charset="UTF-8" />\n    <meta http-equiv="Content-Security-Policy" content="${CSP}" />`,
+      `<meta charset="UTF-8" />\n    <meta http-equiv="Content-Security-Policy" content="${csp(env)}" />`,
     ),
 });
 
@@ -116,9 +122,15 @@ const serviceWorkerPlugin = (): Plugin => ({
   },
 });
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   define: { __APP_VERSION__: JSON.stringify(APP_VERSION) },
-  plugins: [react(), tailwindcss(), cspPlugin(), pdfjsAssetsPlugin(), serviceWorkerPlugin()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    cspPlugin(loadEnv(mode, process.cwd(), 'VITE_')),
+    pdfjsAssetsPlugin(),
+    serviceWorkerPlugin(),
+  ],
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
@@ -129,7 +141,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
-    include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.ts'],
+    include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.ts', 'worker/**/*.test.ts'],
     exclude: ['e2e/**', 'node_modules/**'],
   },
-});
+}));
