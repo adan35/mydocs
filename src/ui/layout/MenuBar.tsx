@@ -37,6 +37,8 @@ import {
   RotateCcw,
   PencilLine,
   FolderOpen,
+  LocateFixed,
+  Link2,
 } from 'lucide-react';
 import * as A from '@/app/actions';
 import { ws } from '@/app/app-store';
@@ -51,7 +53,7 @@ import { conversionsFrom, formatOf } from '@/lib/convert/capabilities';
 import { isNativeApp } from '@/platform';
 import { openMenuAt, useMenuOpen, type MenuEntry } from '../components/Menu';
 import { themeMenuItems } from '../components/ThemePicker';
-import { exportSubmenu, importSubmenu } from '../entry-menu';
+import { copyPathSubmenu, exportSubmenu, importSubmenu } from '../entry-menu';
 import { reopenClosedTab, sendDocCommand, toggleSidePanel } from '../doc-commands';
 
 export interface AppMenu {
@@ -144,6 +146,18 @@ export function appMenus(): AppMenu[] {
       icon: <PencilLine />,
       disabled: !doc,
       onSelect: () => doc && void A.renameEntry(doc.id),
+    },
+    {
+      label: 'Reveal in Files',
+      icon: <LocateFixed />,
+      disabled: !doc,
+      onSelect: () => doc && A.revealInFiles(doc.id),
+    },
+    {
+      label: 'Copy path',
+      icon: <Link2 />,
+      disabled: !doc,
+      submenu: doc ? copyPathSubmenu(doc) : [],
     },
     {
       label: 'Convert or export…',

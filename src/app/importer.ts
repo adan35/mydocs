@@ -28,6 +28,8 @@ export interface ImportItem {
   file: Blob & { name?: string };
   /** The file on disk, when the browser gave us a writable handle (File System Access API). */
   handle?: FileSystemFileHandle;
+  /** The folder on disk this file was listed from (a picked or dropped folder, File System Access API). */
+  root?: FileSystemDirectoryHandle;
   /** The browser refused to open the file while listing the folder. */
   unreadable?: boolean;
 }
@@ -309,7 +311,10 @@ type HandleItem = DataTransferItem & {
 };
 
 /** A file from a picked or dropped handle; a file the browser can't open is kept as unreadable. */
-async function itemFromFileHandle(handle: FileSystemFileHandle, path: string): Promise<ImportItem> {
+export async function itemFromFileHandle(
+  handle: FileSystemFileHandle,
+  path: string,
+): Promise<ImportItem> {
   try {
     return { path, file: await handle.getFile(), handle };
   } catch {
@@ -320,16 +325,23 @@ async function itemFromFileHandle(handle: FileSystemFileHandle, path: string): P
 /** Lists a folder picked or dropped as a File System Access handle, recursively. */
 export async function itemsFromHandles(handles: FileSystemHandle[]): Promise<ImportItem[]> {
   const out: ImportItem[] = [];
-  const walk = async (handle: FileSystemHandle, prefix: string): Promise<void> => {
+  const walk = async (
+    handle: FileSystemHandle,
+    prefix: string,
+    root?: FileSystemDirectoryHandle,
+  ): Promise<void> => {
     if (IGNORED_SEGMENTS.has(handle.name)) return;
     if (handle.kind === 'file') {
-      out.push(await itemFromFileHandle(handle as FileSystemFileHandle, prefix + handle.name));
+      out.push({
+        ...(await itemFromFileHandle(handle as FileSystemFileHandle, prefix + handle.name)),
+        root,
+      });
       return;
     }
     const dir = handle as FileSystemDirectoryHandle & {
       values(): AsyncIterable<FileSystemHandle>;
     };
-    for await (const child of dir.values()) await walk(child, `${prefix}${dir.name}/`);
+    for await (const child of dir.values()) await walk(child, `${prefix}${dir.name}/`, root ?? dir);
   };
   for (const h of handles) await walk(h, '');
   return out;

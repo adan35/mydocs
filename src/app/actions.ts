@@ -4,6 +4,7 @@ import {
   baseName,
   extensionOf,
   isMarkdownName,
+  sanitizeName,
   validateName,
 } from '@/domain/names';
 import {
@@ -22,10 +23,11 @@ import { toast, toastError, useToasts } from './toast-store';
 import { useUi } from './ui-store';
 import { useSettings } from './settings-store';
 import { exportFile, exportHtml, exportText, exportZip } from './exporter';
-import { importItems, type ImportItem } from './importer';
+import { UNREADABLE_REASON, importItems, type ImportItem, type ImportResult } from './importer';
 import { canPrint } from '@/platform';
 import { diskLinks } from './disk-links';
-import { resolvePath } from '@/domain/paths';
+import { folderSync } from './folder-sync';
+import { dirname, relativePath, resolvePath } from '@/domain/paths';
 import { NEW_FILE_BODIES, lastNewKind, type NewKindId } from '@/domain/new-document';
 import { prefs } from './prefs';
 import { quickNote } from './notes';
@@ -65,6 +67,67 @@ export async function openEntry(id: EntryId, anchor?: string) {
   const opening = editorActions.open(id);
   navigate({ name: 'doc', id, anchor });
   await opening;
+}
+
+/** Shows an entry in the Files panel: opens the panel (drawer on small screens), expands its folders, scrolls to it. */
+export function revealInFiles(id: EntryId) {
+  if (!ws().get(id)) return;
+  const ui = useUi.getState();
+  if (matchMedia('(max-width: 1099px)').matches) ui.setDrawer(true);
+  else if (!ui.sidebarOpen) ui.setSidebar(true);
+  appActions.reveal(id);
+  ui.requestReveal(id);
+}
+
+export type CopyPathKind = 'workspace' | 'absolute' | 'relative' | 'name' | 'wiki';
+
+/** The open document, when it is a different entry from `id` (what a relative path starts from). */
+export function relativeBase(id: EntryId): EntryId | undefined {
+  const active = useEditor.getState().activeId;
+  return active && active !== id && ws().get(active) ? active : undefined;
+}
+
+/**
+ * Copies an entry's path in one of several forms. Browsers never reveal where a file lives on
+ * disk, so "absolute" is the path inside My Doc from its root.
+ */
+export async function copyPath(id: EntryId, kind: CopyPathKind) {
+  const tree = ws().tree;
+  const e = tree.get(id);
+  if (!e) return;
+  const path = tree.pathOf(id);
+  let text = path;
+  let what = 'path';
+  if (kind === 'absolute') {
+    text = `/${path}`;
+    what = 'full path';
+  } else if (kind === 'name') {
+    text = e.name;
+    what = 'file name';
+  } else if (kind === 'relative') {
+    const from = relativeBase(id);
+    if (!from) return;
+    text = relativePath(dirname(tree.pathOf(from)), path);
+    what = 'relative path';
+  } else if (kind === 'wiki') {
+    const base = baseName(e.name);
+    const clash = tree.liveEntries().some((o) => o.id !== id && baseName(o.name) === base);
+    text = `[[${clash ? path.replace(/\.md$/i, '') : base}]]`;
+    what = 'wiki link';
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    toast({
+      message: `Copied ${what}.`,
+      detail:
+        kind === 'absolute'
+          ? `${text}. Browsers can't read the real location on disk, so this is the path inside My Doc.`
+          : text,
+      tone: 'success',
+    });
+  } catch (err) {
+    toastError('Unable to copy to the clipboard.', err);
+  }
 }
 
 async function guard<T>(message: string, fn: () => Promise<T>): Promise<T | undefined> {
@@ -553,6 +616,7 @@ export async function runImport(items: ImportItem[], targetId: EntryId | null = 
       await diskLinks.link(id, handle, { binary });
     // Ask for write access while the picker's click still counts as a user gesture.
     void diskLinks.requestAll(result.diskLinks.map((l) => l.id));
+    await linkImportedFolders(items, targetId, result.skipped);
     if (targetId) appActions.setExpanded(targetId, true);
     const parts = [`${result.files} file${result.files === 1 ? '' : 's'}`];
     if (result.folders) parts.push(`${result.folders} folder${result.folders === 1 ? '' : 's'}`);
@@ -581,6 +645,33 @@ export async function runImport(items: ImportItem[], targetId: EntryId | null = 
     toastError('The import stopped before finishing. Files imported so far were kept.', err);
   }
 }
+
+/** Keeps a handle to each folder imported from disk, so files added there later can be imported. */
+async function linkImportedFolders(
+  items: ImportItem[],
+  targetId: EntryId | null,
+  skipped: ImportResult['skipped'],
+) {
+  const unread = new Set(skipped.filter((s) => s.reason === UNREADABLE_REASON).map((s) => s.path));
+  const roots = new Map<FileSystemDirectoryHandle, string[]>();
+  for (const { root, path } of items) {
+    if (!root || unread.has(path)) continue;
+    roots.set(root, [...(roots.get(root) ?? []), path.slice(root.name.length + 1)]);
+  }
+  for (const [root, seen] of roots) {
+    const name = sanitizeName(root.name).toLowerCase();
+    const folder = ws()
+      .tree.childrenOf(targetId)
+      .find((e) => e.kind === 'folder' && e.name.toLowerCase() === name);
+    if (folder) await folderSync.link(folder.id, root, seen);
+  }
+}
+
+/** "Sync folder with disk" on a linked folder (runs from a click, so it can ask for permission). */
+export const syncFolder = (id: EntryId) => folderSync.syncNow(id);
+
+/** Links an already imported folder to its folder on disk and imports the files it is missing. */
+export const linkFolderToDisk = (id: EntryId) => folderSync.pickAndLink(id);
 
 function dismissToast(id: number) {
   useToasts.getState().dismiss(id);

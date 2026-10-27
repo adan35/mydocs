@@ -522,6 +522,10 @@ export const diskLinks = {
     return handles.has(id);
   },
 
+  linkedIds(): EntryId[] {
+    return [...handles.keys()];
+  },
+
   /** Writes a document's saved text to its file on disk, if it has one. */
   write(id: EntryId, text: string): Promise<void> {
     if (!handles.has(id) || binaries.has(id)) return Promise.resolve();

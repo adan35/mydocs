@@ -29,6 +29,7 @@ import {
   Table2,
   FileText,
   AlertCircle,
+  LocateFixed,
 } from 'lucide-react';
 import type { Entry, EntryId } from '@/domain/types';
 import { isMarkdownName } from '@/domain/names';
@@ -58,7 +59,7 @@ import { ScrollSync } from './scroll-sync';
 import type { RichFocus } from './rich-editing';
 import { openMenuAt, type MenuEntry } from '../components/Menu';
 import { formatShortcut, useLayout, useTree } from '../hooks';
-import { exportSubmenu } from '../entry-menu';
+import { copyPathSubmenu, exportSubmenu } from '../entry-menu';
 import { sendDocCommand } from '../doc-commands';
 import { Preview, type PreviewHandle } from './Preview';
 import { RightPanel } from './RightPanel';
@@ -785,6 +786,13 @@ function DocHeader({
   );
 
   const menu: MenuEntry[] = [
+    {
+      label: 'Reveal in Files',
+      icon: <LocateFixed />,
+      onSelect: () => A.revealInFiles(entry.id),
+    },
+    { label: 'Copy path', icon: <Link2 />, submenu: copyPathSubmenu(entry) },
+    'separator',
     { label: 'Rename…', icon: <PencilLine />, onSelect: () => void A.renameEntry(entry.id) },
     { label: 'Move to…', icon: <FolderInput />, onSelect: () => void A.moveEntries([entry.id]) },
     { label: 'Duplicate', icon: <Copy />, onSelect: () => void A.duplicateEntry(entry.id) },

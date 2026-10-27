@@ -44,6 +44,8 @@ import {
   StickyNote,
   ListChecks,
   Sparkles,
+  LocateFixed,
+  Link2,
 } from 'lucide-react';
 import * as A from '@/app/actions';
 import { openAonFile, toggleAon, useAon } from '@/app/aon/chat';
@@ -421,6 +423,30 @@ export function getCommands(): Command[] {
         group: 'Document',
         icon: <PencilLine />,
         run: () => void A.renameEntry(doc.id),
+      },
+      {
+        id: 'reveal',
+        title: 'Reveal in Files',
+        group: 'Document',
+        icon: <LocateFixed />,
+        keywords: 'locate show tree sidebar explorer folder',
+        run: () => A.revealInFiles(doc.id),
+      },
+      {
+        id: 'copy-path',
+        title: 'Copy path',
+        group: 'Document',
+        icon: <Link2 />,
+        keywords: 'file path location clipboard absolute full',
+        run: () => void A.copyPath(doc.id, 'workspace'),
+      },
+      {
+        id: 'copy-wiki-link',
+        title: 'Copy wiki link',
+        group: 'Document',
+        icon: <Link2 />,
+        keywords: 'reference link clipboard',
+        run: () => void A.copyPath(doc.id, 'wiki'),
       },
       {
         id: 'move',
