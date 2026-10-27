@@ -11,6 +11,7 @@ import { AiError, aiSource, complete } from '../ai';
 import { docIdFacet, docModel } from '../doc-model';
 import { ws } from '../app-store';
 import { navigate } from '../router';
+import { offerReminders } from './chat';
 import { instructionsFor, isPrivate } from './memory';
 import {
   MARKER,
@@ -18,6 +19,7 @@ import {
   findAonRequest,
   inlineSystem,
   inlineUser,
+  needsBreak,
   windowAround,
 } from './protocol';
 
@@ -37,6 +39,8 @@ export interface Suggestion {
   status: 'working' | 'ready' | 'error';
   text: string;
   error?: string;
+  /** What to offer once the text is accepted. */
+  followUp?: 'reminders';
   /** The error is about setup, so the suggestion offers the settings. */
   setup?: boolean;
 }
@@ -84,7 +88,13 @@ function isDocType(id: EntryId) {
 /** Starts a request: asks the model and streams the answer into the suggestion. */
 export function startInline(
   view: EditorView,
-  opts: { from: number; to: number; request: string; kind: Suggestion['kind'] },
+  opts: {
+    from: number;
+    to: number;
+    request: string;
+    kind: Suggestion['kind'];
+    followUp?: Suggestion['followUp'];
+  },
 ) {
   const docId = docOf(view.state);
   if (!docId || view.state.readOnly) return;
@@ -194,21 +204,33 @@ export function acceptSuggestion(view: EditorView): boolean {
     });
     return true;
   }
+  const lead =
+    s.from === s.to &&
+    needsBreak(view.state.doc.sliceString(Math.max(0, s.from - 1), s.from), s.text)
+      ? '\n\n'
+      : '';
   view.dispatch({
-    changes: { from: s.from, to: s.to, insert: s.text },
-    selection: { anchor: s.from + s.text.length },
+    changes: { from: s.from, to: s.to, insert: lead + s.text },
+    selection: { anchor: s.from + lead.length + s.text.length },
     effects: set.of(null),
     userEvent: 'input.aon',
     scrollIntoView: true,
   });
   view.focus();
+  if (s.followUp === 'reminders') offerReminders(docOf(view.state));
   return true;
 }
 
 export function retrySuggestion(view: EditorView): boolean {
   const s = current(view);
   if (!s || s.status === 'working') return false;
-  startInline(view, { from: s.from, to: s.to, request: s.request, kind: s.kind });
+  startInline(view, {
+    from: s.from,
+    to: s.to,
+    request: s.request,
+    kind: s.kind,
+    followUp: s.followUp,
+  });
   return true;
 }
 

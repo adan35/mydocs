@@ -8,7 +8,7 @@ import {
   Clock,
   Search,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import type { Entry } from '@/domain/types';
 import { useApp } from '@/app/app-store';
 import { useUi } from '@/app/ui-store';
@@ -25,6 +25,8 @@ import { importSubmenu } from '../entry-menu';
 import { pickImport } from '../import-pickers';
 import { useEntryDrop } from '../layout/FileTree';
 import { formatShortcut, relativeTime, useLayout, useTree } from '../hooks';
+
+const AonHome = lazy(() => import('../aon/AonHome'));
 
 function greeting() {
   const h = new Date().getHours();
@@ -114,6 +116,10 @@ export function HomeView() {
       </section>
 
       {!phone && <DropZone />}
+
+      <Suspense fallback={null}>
+        <AonHome />
+      </Suspense>
 
       {continueDoc && (
         <section className="mb-8">

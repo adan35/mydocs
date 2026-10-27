@@ -1,4 +1,13 @@
+import { stripFrontMatter } from '@/domain/frontmatter';
+
 /** Pure pieces of AON: recognizing a request in a document, tool calls and prompts. */
+
+/** Open `- [ ]` items from recently edited documents. */
+export function openTasks(text: string): string[] {
+  return [...stripFrontMatter(text).body.matchAll(/^\s*[-*] \[ \] (.+)$/gm)].map((m) =>
+    m[1]!.trim(),
+  );
+}
 
 export interface AonRequest {
   /** Offset of the `@aon` in the line. */
@@ -133,6 +142,8 @@ export const CHAT_TOOLS = `Tools. To use one, reply with ONLY one line: TOOL: {"
 - recent {"limit"?: number}: recently changed documents.
 - tags {}: all tags with counts.
 - reminders {}: notes that have a reminder set.
+- tasks {}: open checklist items (- [ ]) across documents, newest documents first.
+- orphans {}: Markdown documents with no links to or from other documents.
 - create_note {"title": string, "text"?: string, "items"?: string[], "reminder"?: "YYYY-MM-DDTHH:MM" (local time), "labels"?: string[]}: creates a Keep-style note; "items" makes it a checklist.
 After a tool runs you get its result in <tool_result>. Use as few tools as you need, then answer.`;
 
@@ -149,3 +160,20 @@ export function chatSystem(opts: { now: Date; instructions: string; current?: st
     .filter(Boolean)
     .join('\n\n');
 }
+
+export const MINUTES_PROMPT = `Write meeting minutes from the notes or transcript, in Markdown, with these sections and nothing else:
+## Summary
+(2-3 lines)
+## Decisions
+(bullets)
+## Action items
+(a checklist, one per line: "- [ ] task — owner — due YYYY-MM-DD"; write "?" where the owner or the date is not stated, and never guess; turn relative dates like "Friday" into dates using today's date)
+## Open questions
+(bullets, or "None")
+Keep names, numbers and dates exactly as written.`;
+
+/** Whether text inserted at the end of a line must start on a new paragraph first. */
+export const needsBreak = (charBefore: string, text: string): boolean =>
+  charBefore !== '' &&
+  charBefore !== '\n' &&
+  (/^(#{1,6} |[-*>] |\d+\. |\|)/.test(text) || text.includes('\n\n'));
