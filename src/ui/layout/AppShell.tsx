@@ -349,12 +349,13 @@ export function AppShell() {
           </main>
           {phone && !immersive && <MobileNav />}
         </div>
+        {/* In the row, beside the document: the menu bar above makes the root a column. */}
+        {aonOpen && (
+          <Suspense fallback={null}>
+            <AonPanel />
+          </Suspense>
+        )}
       </div>
-      {aonOpen && (
-        <Suspense fallback={null}>
-          <AonPanel />
-        </Suspense>
-      )}
       {overlay === 'palette' && <CommandPalette />}
       {overlay === 'quickopen' && <QuickOpen />}
       <NoteHost />
