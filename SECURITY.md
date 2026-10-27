@@ -18,11 +18,12 @@ Production builds include this policy as a meta tag (`vite.config.ts`):
 
 ```
 default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline';
-img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self';
+img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://api.anthropic.com https://api.openai.com
+http://localhost:* http://127.0.0.1:* http://[::1]:*;
 object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'
 ```
 
-No inline or third-party script can run even if sanitizing were bypassed. `'wasm-unsafe-eval'` allows WebAssembly only (not `eval()` of text); the PDF viewer needs it for its JPEG 2000 and color-profile decoders, which ship in this app's build, as do its fonts and character maps. Inline styles are allowed because CodeMirror, KaTeX and Mermaid need them. Remote `https:` images are allowed so documents can embed images by URL; this means opening a document can make a request to the image's host.
+`connect-src` lists the AI providers (used only with a key the user adds) and this computer's own addresses, which Private mode uses to reach a local model server such as Ollama. No inline or third-party script can run even if sanitizing were bypassed. `'wasm-unsafe-eval'` allows WebAssembly only (not `eval()` of text); the PDF viewer needs it for its JPEG 2000 and color-profile decoders, which ship in this app's build, as do its fonts and character maps. Inline styles are allowed because CodeMirror, KaTeX and Mermaid need them. Remote `https:` images are allowed so documents can embed images by URL; this means opening a document can make a request to the image's host.
 
 ## Files and import
 

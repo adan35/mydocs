@@ -58,7 +58,7 @@ export function RelatedAon({ docId }: { docId: EntryId }) {
           type="button"
           className="btn btn-secondary h-8 px-2 text-caption"
           disabled={busy || noKey}
-          title={noKey ? 'Add an API key in Settings first' : undefined}
+          title={noKey ? 'Add an API key or a local model in Settings first' : undefined}
           onClick={() => void ask()}
         >
           {busy ? 'Looking…' : 'Find notes worth linking'}

@@ -129,7 +129,7 @@ async function execute(docId: EntryId, s: Suggestion) {
     return fail(
       source === 'sign-in'
         ? 'Sign in with Google to use the free allowance, or add your own API key in Settings.'
-        : 'Add your own API key in Settings to use AON.',
+        : 'Add your own API key, or choose a local model, in Settings to use AON.',
       true,
     );
   if (s.kind === 'selection' && s.original.length > MAX_SELECTION)

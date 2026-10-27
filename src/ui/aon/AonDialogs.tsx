@@ -8,6 +8,7 @@ import { applyTidy, planTidy, type TidyOp, type TidyResult } from '@/app/aon/tid
 import { MAX_CAPTURE_CHARS, planCapture, saveCapture, type CapturePlan } from '@/app/aon/capture';
 import { officeText, OFFICE_TEXT_EXTENSIONS } from '@/lib/office-text';
 import { toastError } from '@/app/toast-store';
+import { MicButton } from './MicButton';
 
 export function AonDialogs() {
   const kind = useAonDialog((s) => s.kind);
@@ -22,7 +23,7 @@ function NeedsKey() {
   if (source !== 'none' && source !== 'sign-in') return null;
   return (
     <p className="rounded-lg border border-hairline bg-surface p-3 text-caption text-steel">
-      AON needs an API key.{' '}
+      AON needs an API key or a local model.{' '}
       <button
         type="button"
         className="font-medium text-primary underline"
@@ -283,6 +284,10 @@ function CaptureDialog() {
             onChange={(e) => setRaw(e.target.value)}
           />
           <div className="flex flex-wrap items-center gap-3 text-caption text-steel">
+            <MicButton
+              className="btn btn-secondary px-2"
+              onText={(t) => setRaw((r) => (r ? `${r} ${t}` : t))}
+            />
             <label className="btn btn-secondary cursor-pointer">
               Add a file
               <input
