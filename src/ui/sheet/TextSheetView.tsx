@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Filter as FilterIcon, Table2, X } from 'lucide-react';
 import type { EntryId } from '@/domain/types';
 import { extensionOf } from '@/domain/names';
@@ -40,6 +40,12 @@ import {
 import { SheetGrid, selectionRange, type RowAction, type Selection } from './SheetGrid';
 import { SheetRibbon, type SheetCommand } from './SheetRibbon';
 import { publishOutline } from '@/app/outline-store';
+import { aonCanSee } from '@/app/aon/tools';
+import type { SheetContext, SheetEdit } from '@/app/aon/sheet';
+
+const SheetAskDialog = lazy(() =>
+  import('../aon/SheetAskDialog').then((m) => ({ default: m.SheetAskDialog })),
+);
 
 /** Replaces the document text with one minimal change, so undo and other views stay exact. */
 function applyText(id: EntryId, prev: string, next: string) {
@@ -99,6 +105,7 @@ export function TextSheetView({
   const [filters, setFilters] = useState<Filter[]>([]);
   const [filterOpen, setFilterOpen] = useState(false);
   const [freeze, setFreeze] = useState({ rows: 0, cols: 0 });
+  const [asking, setAsking] = useState(false);
 
   const dialect = useMemo(
     () => (markdown ? null : detectDialect(text, ext)),
@@ -314,6 +321,33 @@ export function TextSheetView({
     else toast({ message: `Nothing to fill ${dir === 'down' ? 'down' : 'right'} from.` });
   };
 
+  /** What AON sees: the table the cursor is in, and the selected cells when they are inside it. */
+  const aonContext = (): { ctx: SheetContext; t: number } => {
+    const [a, b, c, d] = selectionRange(selection);
+    const first = locate(a);
+    const last = locate(c);
+    const t = first ? first.t : only;
+    const rows = parts[t]?.rows ?? [];
+    const inside = !!first && !!last && first.k === last.k;
+    const ctx: SheetContext = {
+      name: markdown ? `Table ${t + 1}` : name,
+      rowCount: rows.length,
+      colCount: Math.max(0, ...rows.map((r) => r.length)),
+      cell: (r, col) => rows[r]?.[col] ?? '',
+      formulas: markdown,
+      selection: inside ? [first.r, b, last.r, d] : undefined,
+    };
+    return { ctx, t };
+  };
+  const applyAon = (t: number, edits: SheetEdit[]) => {
+    let rows = parts[t]!.rows;
+    for (const e of edits) rows = setCellText(rows, e.r, e.c, e.value);
+    write(t, rows);
+    toast({
+      message: `AON changed ${edits.length} cell${edits.length === 1 ? '' : 's'}. Ctrl+Z undoes it.`,
+    });
+  };
+
   const run = (cmd: SheetCommand) => {
     if (cmd === 'undo') return void docModel.undo(docId);
     if (cmd === 'redo') return void docModel.redo(docId);
@@ -501,6 +535,7 @@ export function TextSheetView({
     <div className="flex h-full min-h-0 flex-col" onKeyDown={onKeyDown}>
       <SheetRibbon
         run={run}
+        onAsk={() => setAsking(true)}
         groups={groups}
         pressed={{
           filter: filterOpen,
@@ -590,6 +625,17 @@ export function TextSheetView({
             align={markdown ? alignAt : undefined}
           />
         </div>
+      )}
+      {asking && (
+        <Suspense fallback={null}>
+          <SheetAskDialog
+            ctx={aonContext().ctx}
+            allowed={aonCanSee(docId)}
+            canApply
+            onApply={(edits) => applyAon(aonContext().t, edits)}
+            onClose={() => setAsking(false)}
+          />
+        </Suspense>
       )}
     </div>
   );

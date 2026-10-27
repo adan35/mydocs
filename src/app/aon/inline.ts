@@ -129,7 +129,7 @@ async function execute(docId: EntryId, s: Suggestion) {
     return fail(
       source === 'sign-in'
         ? 'Sign in with Google to use the free allowance, or add your own API key in Settings.'
-        : 'Add your own API key in Settings to use AON.',
+        : 'Add your own API key, or choose a local model, in Settings to use AON.',
       true,
     );
   if (s.kind === 'selection' && s.original.length > MAX_SELECTION)
@@ -376,8 +376,14 @@ export function aonExtension(): Extension {
       keymap.of([
         { key: 'Enter', run: onEnter },
         { key: 'Mod-Enter', run: acceptSuggestion },
-        { key: 'Escape', run: discardSuggestion },
       ]),
+    ),
+    // A key handler, not a keymap entry: the autocomplete keymap comes first in a keymap and
+    // swallows Escape whenever a completion is open or still being computed.
+    Prec.highest(
+      EditorView.domEventHandlers({
+        keydown: (e, view) => e.key === 'Escape' && discardSuggestion(view),
+      }),
     ),
   ];
 }

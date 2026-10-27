@@ -62,7 +62,8 @@ export function AiSection() {
   const [show, setShow] = useState(false);
   const [test, setTest] = useState<{ ok: boolean; text: string } | null>(null);
   const [testing, setTesting] = useState(false);
-  const hasOwn = !!ai.key.trim();
+  const local = ai.provider === 'local';
+  const hasOwn = !local && !!ai.key.trim();
 
   const runTest = async () => {
     setTesting(true);
@@ -72,7 +73,7 @@ export function AiSection() {
         messages: [{ role: 'user', content: 'Reply with the single word: ok' }],
         maxTokens: 8,
       });
-      setTest({ ok: true, text: 'The key works.' });
+      setTest({ ok: true, text: local ? 'The model answered.' : 'The key works.' });
     } catch (e) {
       setTest({
         ok: false,
@@ -86,7 +87,11 @@ export function AiSection() {
   return (
     <Section
       title="AI"
-      description="Bring your own API key. It stays on this device and is sent only to the provider you pick."
+      description={
+        local
+          ? 'Private mode: AON talks only to a model running on your own computer. Nothing is sent to the internet.'
+          : 'Bring your own API key. It stays on this device and is sent only to the provider you pick.'
+      }
     >
       <Row label="Provider" htmlFor="ai-provider">
         <select
@@ -102,34 +107,55 @@ export function AiSection() {
           ))}
         </select>
       </Row>
-      <Row
-        label="API key"
-        htmlFor="ai-key"
-        hint="Stored unencrypted in this browser's local storage."
-      >
-        <div className="flex gap-2">
+      {!local && (
+        <Row
+          label="API key"
+          htmlFor="ai-key"
+          hint="Stored unencrypted in this browser's local storage."
+        >
+          <div className="flex gap-2">
+            <input
+              id="ai-key"
+              className="input w-56"
+              type={show ? 'text' : 'password'}
+              autoComplete="off"
+              spellCheck={false}
+              placeholder={ai.provider === 'anthropic' ? 'sk-ant-…' : 'sk-…'}
+              value={ai.key}
+              onChange={(e) => {
+                setTest(null);
+                ai.update({ key: e.target.value });
+              }}
+            />
+            <button type="button" className="btn btn-secondary" onClick={() => setShow((v) => !v)}>
+              {show ? 'Hide' : 'Show'}
+            </button>
+          </div>
+        </Row>
+      )}
+      {local && (
+        <Row
+          label="Server address"
+          htmlFor="ai-url"
+          hint="Ollama, LM Studio or llama.cpp on this computer. Start Ollama with OLLAMA_ORIGINS set to this site."
+        >
           <input
-            id="ai-key"
+            id="ai-url"
             className="input w-56"
-            type={show ? 'text' : 'password'}
-            autoComplete="off"
+            value={ai.baseUrl}
             spellCheck={false}
-            placeholder={ai.provider === 'anthropic' ? 'sk-ant-…' : 'sk-…'}
-            value={ai.key}
-            onChange={(e) => {
-              setTest(null);
-              ai.update({ key: e.target.value });
-            }}
+            onChange={(e) => ai.update({ baseUrl: e.target.value })}
           />
-          <button type="button" className="btn btn-secondary" onClick={() => setShow((v) => !v)}>
-            {show ? 'Hide' : 'Show'}
-          </button>
-        </div>
-      </Row>
+        </Row>
+      )}
       <Row
         label="Model"
         htmlFor="ai-model"
-        hint={`Leave empty to use ${AI_PROVIDERS[ai.provider].model}.`}
+        hint={
+          local
+            ? 'The model your server has, for example llama3.2 (see ollama list).'
+            : `Leave empty to use ${AI_PROVIDERS[ai.provider].model}.`
+        }
       >
         <input
           id="ai-model"
@@ -140,17 +166,19 @@ export function AiSection() {
         />
       </Row>
       <Row
-        label={hasOwn ? 'Using your own key' : 'No key added'}
+        label={local ? 'Private mode' : hasOwn ? 'Using your own key' : 'No key added'}
         hint={
-          hasOwn
-            ? 'AI requests go straight to your provider and use your own account.'
-            : !cloudAvailable
-              ? 'Add a key to use AI features.'
-              : user
-                ? usage?.defaultKey
-                  ? `Free allowance: ${Math.max(0, usage.limit - usage.used).toLocaleString()} of ${usage.limit.toLocaleString()} tokens left this month.`
-                  : 'There is no free allowance on this site. Add your own key to use AI.'
-                : 'Sign in with Google to use a limited free allowance, or add your own key.'
+          local
+            ? 'AI requests go only to the address above, never to a provider or this site. Voice typing is off.'
+            : hasOwn
+              ? 'AI requests go straight to your provider and use your own account.'
+              : !cloudAvailable
+                ? 'Add a key to use AI features.'
+                : user
+                  ? usage?.defaultKey
+                    ? `Free allowance: ${Math.max(0, usage.limit - usage.used).toLocaleString()} of ${usage.limit.toLocaleString()} tokens left this month.`
+                    : 'There is no free allowance on this site. Add your own key to use AI.'
+                  : 'Sign in with Google to use a limited free allowance, or add your own key.'
         }
       >
         <div className="flex items-center gap-2">

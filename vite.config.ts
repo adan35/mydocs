@@ -31,7 +31,7 @@ const csp = (env: Record<string, string>) => {
     "font-src 'self' data:",
     // The desktop app talks to its native side over Tauri's IPC protocol. The AI providers are
     // called directly (with the user's own key) only when the user adds one in Settings.
-    `connect-src 'self'${process.env.TAURI_ENV_PLATFORM ? ' ipc: http://ipc.localhost' : ''} https://api.anthropic.com https://api.openai.com${api ? ` ${api.origin} ${api.origin.replace(/^http/, 'ws')} ${google}` : ''}`,
+    `connect-src 'self'${process.env.TAURI_ENV_PLATFORM ? ' ipc: http://ipc.localhost' : ''} https://api.anthropic.com https://api.openai.com http://localhost:* http://127.0.0.1:* http://[::1]:*${api ? ` ${api.origin} ${api.origin.replace(/^http/, 'ws')} ${google}` : ''}`,
     "object-src 'none'",
     `frame-src ${api ? google : "'none'"}`,
     "base-uri 'none'",

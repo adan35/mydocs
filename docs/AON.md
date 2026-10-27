@@ -19,6 +19,20 @@ AON helps you find, write and organize inside your own documents. It uses the AI
 - **Daily brief** (Home). "Get my brief" writes a short summary of what is due, which tasks are open and what changed in the last days. It is written when you ask and kept for the day.
 - In chat, AON can also list open checklist items (`tasks`) and documents with no links (`orphans`).
 
+## Sheets, voice and private mode
+
+**Ask AON in sheets.** The sheet toolbar (Excel workbooks, CSV and TSV files, and Markdown tables) has an **Ask AON** button. Ask it to explain a formula, write one from a sentence, clean up a column, or categorize rows into a new column. AON sees the column letters and up to 120 rows (the header and your selection when the sheet is longer, up to 40 columns, 100 characters per cell) and answers with a short explanation plus a list of cell changes. You see each change as "before → after" and nothing is written until **Apply**. Applying is one undo step (Ctrl + Z). AON may only change cells in the rows it was shown, or add up to five rows under the data. CSV and TSV files hold values, so a proposed formula is left out and counted. There is deliberately no `=AON()` cell function: it would recalculate unpredictably and could spend your allowance without you noticing.
+
+**Voice.** A microphone button in the AON chat, the new note box, the capture dialog and the sheet dialog types what you say, using the speech recognition built into your browser (Chrome, Edge and Safari have it; Firefox does not, and the button is then hidden). The first use says that some browsers send the audio to their maker's servers. My Doc itself never receives audio. Dictated text is only typed into the box, so you read it before anything happens.
+
+**Private mode.** In Settings, AI, choose "Private: a model on this computer". AON then talks only to a model server on your own computer and nothing leaves it: no provider, no shared allowance, no saved key (the key you saved for a cloud provider is never sent). Voice typing is turned off in this mode because browsers may send audio away.
+
+- Run any server that speaks the OpenAI chat format. For Ollama (default address `http://localhost:11434/v1`): install it, run `ollama pull llama3.2`, and start it so it accepts this site: `OLLAMA_ORIGINS=https://your-site ollama serve` (for local development `OLLAMA_ORIGINS=http://localhost:*`). LM Studio and llama.cpp have a similar "allow origin" or CORS option.
+- Enter the model's name in Settings and press Test.
+- Safari blocks a secure page from calling an `http://localhost` address, and Chrome may ask once to allow access to devices on your network. The address must be this computer (`localhost` or `127.0.0.1`): My Doc's security policy does not allow other addresses.
+- Small local models are slower and weaker than cloud models, especially at choosing tools in chat, long documents and strict JSON (tidy-up and sheets). They fail more often; the chat panel says so, and nothing is applied without your review either way. Models that print their reasoning in `<think>` tags are handled: the thinking is not shown.
+- A model that runs inside the browser itself (no server) is not included: it needs a large download and a capable GPU.
+
 ## What AON can change
 
 | Action                                  | How                             |
@@ -31,14 +45,16 @@ AON helps you find, write and organize inside your own documents. It uses the AI
 
 ## What is sent where
 
-Only the text a request needs goes to the AI provider (for tidy-up, capture, links and the brief that means file names, the start of documents, and the text you give it): the surrounding part of the open document for `@aon` (up to about 24,000 characters), the selection for a rewrite (up to 20,000), and for chat your question, the last few messages, and the search results and documents AON asked for. With your own key, requests go straight from your browser to your provider. With the shared key they pass through the Worker, which counts tokens but does not store text. Text inside your documents is passed to the model as data, never as instructions, and AON cannot edit documents on its own, which limits what a hostile document could do.
+In Private mode requests go only to the address you set (your own computer). Otherwise only the text a request needs goes to the AI provider (for tidy-up, capture, links and the brief that means file names, the start of documents, and the text you give it): the surrounding part of the open document for `@aon` (up to about 24,000 characters), the selection for a rewrite (up to 20,000), and for chat your question, the last few messages, and the search results and documents AON asked for. With your own key, requests go straight from your browser to your provider. With the shared key they pass through the Worker, which counts tokens but does not store text. Text inside your documents is passed to the model as data, never as instructions, and AON cannot edit documents on its own, which limits what a hostile document could do.
 
 ## Limits
 
 - Capture reads text, PowerPoint and OpenDocument files; photos and PDFs are not supported (the AI call carries text only).
 - Tidy-up looks at up to 120 of your most recently changed documents, and proposes at most 30 changes.
 - "What changed since I last opened this" is not included yet.
-- Only the source editor supports `@aon` and the ribbon menu. Rich view, the notes composer and sheets do not yet.
+- Only the source editor supports `@aon` and the ribbon menu. Rich view and the notes composer do not yet; sheets have their own Ask AON button.
+- Sheet helper: one request covers up to 120 rows and 40 columns, so it will not clean a column of thousands of rows in one go; select the part you mean.
+- Voice depends on the browser: no Firefox, and some browsers use their maker's servers.
 - Streaming works with your own key. The shared key returns the whole answer at once.
 - Reminders AON creates behave like any note reminder: they show while My Doc is open.
 - AON reads saved text. A document you just changed is read as of its last save (about a second after typing).

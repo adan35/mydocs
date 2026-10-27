@@ -42,6 +42,7 @@ import { openMenuAt, type MenuEntry } from '../components/Menu';
 import { restoreFocus } from '../focus';
 import { relativeTime } from '../hooks';
 import { lockBackground } from '../modal';
+import { MicButton } from '../aon/MicButton';
 import { NoteImage } from './NoteImage';
 import { ReminderDialog } from './ReminderDialog';
 import { REPEAT_NAMES, colorMenu, formatReminder, reminderPresets } from './format';
@@ -541,6 +542,13 @@ export function NoteForm({ id, initial, variant, focus = 'body', editedAt, onClo
         </div>
       )}
       <div className="flex flex-wrap items-center gap-0.5 px-2 pt-1 pb-2">
+        {!items && (
+          <MicButton
+            onText={(t) =>
+              set({ text: d.text && !/\s$/.test(d.text) ? `${d.text} ${t}` : d.text + t })
+            }
+          />
+        )}
         <button
           type="button"
           className="icon-btn"

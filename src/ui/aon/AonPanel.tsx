@@ -13,6 +13,7 @@ import {
 import { navigate } from '@/app/router';
 import { renderMarkdown } from '@/lib/markdown/render';
 import { useLayout } from '../hooks';
+import { MicButton } from './MicButton';
 
 const IDEAS = [
   'What is due this week?',
@@ -135,7 +136,7 @@ export function AonPanel() {
           <div className="rounded-lg border border-hairline bg-surface p-3 text-caption text-steel">
             {source === 'sign-in'
               ? 'Sign in with Google to use the free allowance, or add your own API key.'
-              : 'AON needs an API key.'}{' '}
+              : 'AON needs an API key or a local model.'}{' '}
             <button
               type="button"
               className="font-medium text-primary underline"
@@ -217,6 +218,10 @@ export function AonPanel() {
             }
           }}
         />
+        <MicButton
+          className="icon-btn mb-1"
+          onText={(t) => setDraft((d) => (d && !/\s$/.test(d) ? `${d} ${t}` : d + t))}
+        />
         {busy ? (
           <button type="button" className="btn btn-secondary" aria-label="Stop" onClick={stopAon}>
             <Square size={14} />
@@ -232,6 +237,12 @@ export function AonPanel() {
           </button>
         )}
       </form>
+      {source === 'local' && (
+        <p className="px-3 pb-3 text-caption text-steel" data-testid="aon-private-note">
+          Private mode: answers come from the model on your computer and nothing is sent to the
+          internet. Small models can be slower and less careful.
+        </p>
+      )}
     </aside>
   );
 }

@@ -41,7 +41,7 @@ export default function AonHome() {
         ) : (
           <p className="text-steel">
             {noKey
-              ? 'Add an API key in Settings to let AON write your daily brief, file captures and tidy your workspace.'
+              ? 'Add an API key or a local model in Settings to let AON write your daily brief, file captures and tidy your workspace.'
               : 'Get a short brief of what is due, what is open and what changed lately.'}
           </p>
         )}

@@ -23,6 +23,7 @@ import {
   Filter,
   PanelTop,
   PanelLeft,
+  Sparkles,
 } from 'lucide-react';
 import { formatShortcut } from '../hooks';
 import { RowHeightButton } from '../row-height';
@@ -187,6 +188,7 @@ export function SheetRibbon({
   pressed = {},
   groups: wanted = DEFAULT_GROUPS,
   readOnly,
+  onAsk,
   children,
 }: {
   run(cmd: SheetCommand): void;
@@ -196,6 +198,8 @@ export function SheetRibbon({
   /** Which buttons to show, in groups. */
   groups?: SheetCommand[][];
   readOnly?: boolean;
+  /** Shows "Ask AON" and runs this when it is pressed. */
+  onAsk?(): void;
   /** Extra controls at the start (table picker, sheet info). */
   children?: ReactNode;
 }) {
@@ -243,6 +247,17 @@ export function SheetRibbon({
         </div>
       ))}
       <span className="flex-1" />
+      {onAsk && (
+        <button
+          type="button"
+          className="btn btn-ghost h-8 shrink-0 gap-1.5 px-2 text-caption"
+          data-testid="sheet-ask-aon"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={onAsk}
+        >
+          <Sparkles size={14} aria-hidden /> Ask AON
+        </button>
+      )}
       <span className="mx-1 h-5 w-px bg-hairline" aria-hidden />
       <RowHeightButton />
     </div>

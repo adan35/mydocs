@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Plus } from 'lucide-react';
 import type { Entry } from '@/domain/types';
 import { baseName } from '@/domain/names';
@@ -17,10 +17,22 @@ import {
   insertRows,
   sortRows,
 } from '@/lib/convert/sheet-ops';
-import { parseInput, setCellRaw, type Workbook } from '@/lib/convert/workbook';
-import { SheetGrid, type Selection } from './SheetGrid';
+import {
+  editValue,
+  parseInput,
+  setCellRaw,
+  sheetSize,
+  type Workbook,
+} from '@/lib/convert/workbook';
+import { SheetGrid, selectionRange, type Selection } from './SheetGrid';
 import { SheetRibbon, type SheetCommand } from './SheetRibbon';
 import { publishOutline } from '@/app/outline-store';
+import { aonCanSee } from '@/app/aon/tools';
+import type { SheetContext, SheetEdit } from '@/app/aon/sheet';
+
+const SheetAskDialog = lazy(() =>
+  import('../aon/SheetAskDialog').then((m) => ({ default: m.SheetAskDialog })),
+);
 
 type SaveState = 'saved' | 'saving' | 'error';
 const SAVE_DELAY = 700;
@@ -38,6 +50,7 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
   const [selection, setSelection] = useState<Selection>({ r: 0, c: 0 });
   const [editable, setEditable] = useState(false);
   const [save, setSave] = useState<SaveState>('saved');
+  const [asking, setAsking] = useState(false);
   const undo = useRef<Workbook[]>([]);
   const redo = useRef<Workbook[]>([]);
   const timer = useRef(0);
@@ -208,6 +221,26 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
   const sheet = wb.sheets[Math.min(sheetIndex, wb.sheets.length - 1)]!;
   const warnings = report?.notes.filter((n) => n.severity === 'warning') ?? [];
   const stale = report?.notes.find((n) => /can't calculate/.test(n.message));
+  const aonContext = (): SheetContext => {
+    const size = sheetSize(sheet);
+    return {
+      name: sheet.name,
+      rowCount: size.rows,
+      colCount: size.cols,
+      cell: (r, c) => editValue(sheet.rows[r]?.[c]),
+      formulas: true,
+      selection: selectionRange(selection),
+    };
+  };
+  const applyAon = (edits: SheetEdit[]) => {
+    edit((book) => {
+      const s = book.sheets[sheetIndex]!;
+      for (const e of edits) setCellRaw(s, e.r, e.c, parseInput(e.value, s.rows[e.r]?.[e.c]));
+    });
+    toast({
+      message: `AON changed ${edits.length} cell${edits.length === 1 ? '' : 's'}. Ctrl+Z undoes it.`,
+    });
+  };
 
   return (
     <div
@@ -256,6 +289,7 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
       <SheetRibbon
         run={run}
         readOnly={!editable}
+        onAsk={() => setAsking(true)}
         disabled={{ undo: !undo.current.length, redo: !redo.current.length }}
       >
         <span
@@ -388,6 +422,17 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
           </button>
         )}
       </div>
+      {asking && (
+        <Suspense fallback={null}>
+          <SheetAskDialog
+            ctx={aonContext()}
+            allowed={aonCanSee(entry.id)}
+            canApply={editable}
+            onApply={applyAon}
+            onClose={() => setAsking(false)}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
