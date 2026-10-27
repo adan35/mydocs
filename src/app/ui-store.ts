@@ -21,6 +21,9 @@ interface UiState {
   rightPanelWidth: number;
   setSplitRatio(r: number): void;
   setRightPanelWidth(w: number): void;
+  /** Asks the Files tree to scroll to and highlight an entry. `n` makes repeat requests distinct. */
+  revealRequest: { id: string; n: number; at: number } | null;
+  requestReveal(id: string): void;
   setSidebar(open: boolean): void;
   setDrawer(open: boolean): void;
   setRightPanel(open: boolean, panel?: RightPanel): void;
@@ -64,6 +67,10 @@ export const useUi = create<UiState>((set) => ({
   setRightPanelWidth(rightPanelWidth) {
     set({ rightPanelWidth });
     persist();
+  },
+  revealRequest: null,
+  requestReveal(id) {
+    set((s) => ({ revealRequest: { id, n: (s.revealRequest?.n ?? 0) + 1, at: Date.now() } }));
   },
   setSidebar(open) {
     set({ sidebarOpen: open });

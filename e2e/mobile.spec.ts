@@ -98,3 +98,23 @@ test('phone: split view stacks source over preview and scrolls them together', a
   await page.mouse.wheel(0, 700);
   await expect.poll(scrollTop).toBeGreaterThan(50);
 });
+
+test('phone: Reveal in Files opens the files drawer on the file', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Welcome to My Doc' })).toBeVisible();
+  await page
+    .getByRole('navigation', { name: 'Main' })
+    .getByRole('button', { name: 'Files' })
+    .click();
+  await page.getByRole('main').getByRole('button', { name: 'Guides', exact: true }).click();
+  await page
+    .getByRole('main')
+    .getByRole('button', { name: 'Markdown guide.md', exact: true })
+    .click();
+  await expect(page.locator('.cm-content')).toBeVisible();
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'File' }).click();
+  await page.getByRole('menuitem', { name: 'Reveal in Files' }).click();
+  const drawer = page.getByRole('navigation', { name: 'Workspace' });
+  await expect(drawer.getByRole('treeitem', { name: 'Markdown guide.md' })).toBeVisible();
+});

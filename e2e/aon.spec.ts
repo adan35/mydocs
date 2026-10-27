@@ -5,7 +5,10 @@ import { freshApp, mod, setDoc, sourceText, waitSaved } from './helpers';
 test('@aon + Enter writes a suggestion that is only saved when accepted', async ({ page }) => {
   const calls = await mockProvider(page, () => '- apples\n- pears\n- plums');
   await freshApp(page);
-  await page.getByRole('button', { name: 'New document', exact: true }).first().click();
+  await page
+    .getByRole('button', { name: 'New document', exact: true })
+    .first()
+    .click({ modifiers: ['Shift'] });
   await setDoc(page, 'Shopping\n');
   await page.keyboard.type('@aon add three fruits');
   await page.keyboard.press('Enter');
@@ -30,7 +33,10 @@ test('@aon + Enter writes a suggestion that is only saved when accepted', async 
 test('Escape discards a suggestion and leaves the text alone', async ({ page }) => {
   await mockProvider(page, () => 'Something else');
   await freshApp(page);
-  await page.getByRole('button', { name: 'New document', exact: true }).first().click();
+  await page
+    .getByRole('button', { name: 'New document', exact: true })
+    .first()
+    .click({ modifiers: ['Shift'] });
   await setDoc(page, '@aon rewrite this');
   await page.keyboard.press('Enter');
   const box = page.getByRole('region', { name: 'AON suggestion' });
@@ -43,7 +49,10 @@ test('Escape discards a suggestion and leaves the text alone', async ({ page }) 
 test('a plain Enter and an escaped \\@aon stay ordinary text', async ({ page }) => {
   const calls = await mockProvider(page, () => 'x');
   await freshApp(page);
-  await page.getByRole('button', { name: 'New document', exact: true }).first().click();
+  await page
+    .getByRole('button', { name: 'New document', exact: true })
+    .first()
+    .click({ modifiers: ['Shift'] });
   await setDoc(page, '\\@aon is just text');
   await page.keyboard.press('Enter');
   await page.keyboard.type('second line');
@@ -54,7 +63,10 @@ test('a plain Enter and an escaped \\@aon stay ordinary text', async ({ page }) 
 test('the ribbon rewrites the selection with a preview', async ({ page }) => {
   const calls = await mockProvider(page, () => 'Short.');
   await freshApp(page);
-  await page.getByRole('button', { name: 'New document', exact: true }).first().click();
+  await page
+    .getByRole('button', { name: 'New document', exact: true })
+    .first()
+    .click({ modifiers: ['Shift'] });
   await setDoc(page, 'This is a very long and rambling sentence.');
   await page.keyboard.press(`${mod}+a`);
   await page.getByRole('button', { name: 'Write or rewrite with AON' }).click();
@@ -68,7 +80,10 @@ test('the ribbon rewrites the selection with a preview', async ({ page }) => {
 
 test('without a key the suggestion points to Settings', async ({ page }) => {
   await freshApp(page);
-  await page.getByRole('button', { name: 'New document', exact: true }).first().click();
+  await page
+    .getByRole('button', { name: 'New document', exact: true })
+    .first()
+    .click({ modifiers: ['Shift'] });
   await setDoc(page, '@aon hello');
   await page.keyboard.press('Enter');
   const box = page.getByRole('region', { name: 'AON suggestion' });

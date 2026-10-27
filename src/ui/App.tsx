@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { appActions, useApp } from '@/app/app-store';
 import { editorActions, writeRecoveryDrafts } from '@/app/editor-store';
 import { diskLinks, useDiskLinks } from '@/app/disk-links';
+import { folderSync } from '@/app/folder-sync';
 import { useRouter, navigate } from '@/app/router';
 import { ownership } from '@/app/ownership';
 import { AppShell } from './layout/AppShell';
@@ -44,6 +45,9 @@ function useLifecycle() {
     void diskLinks.load(workspace.id, (id) => !!workspace.get(id));
     // Files changed on disk (in another app) show their new contents here.
     const stopWatching = diskLinks.watch();
+    // Folders imported from disk pick up files added there later.
+    void folderSync.load(workspace.id, (id) => !!workspace.get(id));
+    const stopWatchingFolders = folderSync.watch();
     let stopOpening: (() => void) | undefined;
     void editorActions.restoreSession().then(() => {
       if (cancelled) return;
@@ -74,6 +78,7 @@ function useLifecycle() {
       stopOpening?.();
       unsub();
       stopWatching();
+      stopWatchingFolders();
     };
   }, [session]);
 

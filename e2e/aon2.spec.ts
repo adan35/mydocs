@@ -5,7 +5,10 @@ import { freshApp, mod, setDoc, sourceText } from './helpers';
 const goHome = (page: Page) => page.getByRole('button', { name: 'Home', exact: true }).click();
 
 const newDoc = async (page: Page) => {
-  await page.getByRole('button', { name: 'New document', exact: true }).first().click();
+  await page
+    .getByRole('button', { name: 'New document', exact: true })
+    .first()
+    .click({ modifiers: ['Shift'] });
   await expect(page.locator('.cm-content')).toBeVisible();
 };
 

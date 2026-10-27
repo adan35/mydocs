@@ -13,6 +13,7 @@ import type { Entry, EntryId } from '@/domain/types';
 import { sortEntries } from '@/domain/tree';
 import { appActions, useApp } from '@/app/app-store';
 import { useEditor } from '@/app/editor-store';
+import { useUi } from '@/app/ui-store';
 import { useSettings } from '@/app/settings-store';
 import * as A from '@/app/actions';
 import { itemsFromDataTransfer } from '@/app/importer';
@@ -167,6 +168,27 @@ export function FileTree() {
       el.removeEventListener('scroll', update);
     };
   }, []);
+
+  // "Reveal in Files": scroll to the entry and flash it. A request older than a moment is
+  // stale (the tree mounts after the drawer opens, so it may see a request made just before).
+  const revealRequest = useUi((s) => s.revealRequest);
+  const [flashId, setFlashId] = useState<EntryId | null>(null);
+  const revealed = useRef(0);
+  const flashTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!revealRequest || revealRequest.n === revealed.current || !el) return;
+    if (Date.now() - revealRequest.at > 3000) return;
+    const i = rows.findIndex((r) => r.entry.id === revealRequest.id);
+    if (i < 0) return; // not in the rows yet: runs again when they update
+    revealed.current = revealRequest.n;
+    el.scrollTop = Math.max(0, i * rowHeight - (el.clientHeight - rowHeight) / 2);
+    setFocusId(revealRequest.id);
+    setFlashId(revealRequest.id);
+    clearTimeout(flashTimer.current);
+    flashTimer.current = setTimeout(() => setFlashId(null), 2000);
+  }, [revealRequest, rows, rowHeight]);
+  useEffect(() => () => clearTimeout(flashTimer.current), []);
 
   // Keep the active document visible.
   useEffect(() => {
@@ -408,6 +430,7 @@ export function FileTree() {
               menuFor={menuFor}
               tabbable={row.entry.id === tabStop}
               dropping={dropTarget === row.entry.id}
+              flash={flashId === row.entry.id}
               onFocus={setFocusId}
               dropProps={
                 row.entry.kind === 'folder'
@@ -430,6 +453,8 @@ interface RowProps {
   selected: boolean;
   tabbable: boolean;
   dropping: boolean;
+  /** Briefly highlighted after "Reveal in Files". */
+  flash: boolean;
   onFocus(id: EntryId): void;
   onRowClick(e: React.MouseEvent, entry: Entry, open: boolean): void;
   /** Ids to drag from this row: the whole selection when the row is part of it. */
@@ -446,6 +471,7 @@ const TreeRow = memo(function TreeRow({
   selected,
   tabbable,
   dropping,
+  flash,
   onFocus,
   onRowClick,
   dragIds,
@@ -473,7 +499,7 @@ const TreeRow = memo(function TreeRow({
           : active
             ? 'bg-active font-medium text-ink'
             : 'text-charcoal hover:bg-hover'
-      } ${dropping ? 'ring-2 ring-[var(--primary)] ring-inset' : ''}`}
+      } ${dropping || flash ? 'ring-2 ring-[var(--primary)] ring-inset' : ''}`}
       style={{ top, height, paddingLeft: 6 + depth * 14 }}
       onFocus={() => onFocus(entry.id)}
       onClick={(e) => onRowClick(e, entry, expanded)}

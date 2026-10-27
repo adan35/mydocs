@@ -2,8 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { Pin, X } from 'lucide-react';
 import { useEditor, editorActions } from '@/app/editor-store';
 import { useRouter } from '@/app/router';
-import { appActions } from '@/app/app-store';
-import { closeAllTabs, closeOtherTabs, closeTab, closeTabsToRight, openEntry } from '@/app/actions';
+import { copyPathSubmenu } from '../entry-menu';
+import {
+  closeAllTabs,
+  closeOtherTabs,
+  closeTab,
+  closeTabsToRight,
+  openEntry,
+  revealInFiles,
+} from '@/app/actions';
 import { SHORTCUTS } from '@/app/shortcuts';
 import { FileIcon } from '../components/FileIcon';
 import { openMenu } from '../components/Menu';
@@ -140,7 +147,8 @@ export function TabBar() {
                     shortcut: SHORTCUTS.reopenTab,
                     onSelect: () => void reopenClosedTab(),
                   },
-                  { label: 'Reveal in sidebar', onSelect: () => appActions.reveal(id) },
+                  { label: 'Reveal in Files', onSelect: () => revealInFiles(id) },
+                  { label: 'Copy path', submenu: copyPathSubmenu(e) },
                 ],
               });
             }}
