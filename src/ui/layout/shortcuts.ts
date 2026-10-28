@@ -21,6 +21,12 @@ function inTextField(target: EventTarget | null) {
   );
 }
 
+/** Focus is in the left panel, or the pointer is over it and no text field has focus. */
+function inSidebar(target: EventTarget | null) {
+  const nav = document.querySelector('nav[aria-label="Workspace"]');
+  return !!nav && (nav.contains(target as Node) || (!inTextField(target) && nav.matches(':hover')));
+}
+
 /** App-wide keyboard shortcuts. Editor-specific ones live in the editor keymap. */
 export function useGlobalShortcuts() {
   useEffect(() => {
@@ -66,6 +72,8 @@ export function useGlobalShortcuts() {
         const id = useEditor.getState().activeId;
         return run(() => void (id ? editorActions.flush(id) : editorActions.flushAll()));
       }
+      if (m(SHORTCUTS.find) && inSidebar(e.target))
+        return run(() => useUi.getState().requestSidebarFind());
       if (onDoc) {
         if (m(SHORTCUTS.toggleMode)) return run(() => sendDocCommand('toggle-mode'));
         if (m(SHORTCUTS.splitView)) return run(() => sendDocCommand('split'));

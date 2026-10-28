@@ -67,6 +67,7 @@ export const SHORTCUT_GROUPS: { title: string; items: [string, string][] }[] = [
     items: [
       ['Save now', SHORTCUTS.save],
       ['Find and replace', SHORTCUTS.find],
+      ['Find a file (pointer or focus in the left panel)', SHORTCUTS.find],
       ['Switch source / read', SHORTCUTS.toggleMode],
       ['Split view', SHORTCUTS.splitView],
       ['Rich editing', SHORTCUTS.richMode],

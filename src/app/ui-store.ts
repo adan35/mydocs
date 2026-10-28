@@ -24,6 +24,9 @@ interface UiState {
   /** Asks the Files tree to scroll to and highlight an entry. `n` makes repeat requests distinct. */
   revealRequest: { id: string; n: number; at: number } | null;
   requestReveal(id: string): void;
+  /** Bumped to open the file search at the top of the Files list. */
+  sidebarFind: number;
+  requestSidebarFind(): void;
   setSidebar(open: boolean): void;
   setDrawer(open: boolean): void;
   setRightPanel(open: boolean, panel?: RightPanel): void;
@@ -71,6 +74,10 @@ export const useUi = create<UiState>((set) => ({
   revealRequest: null,
   requestReveal(id) {
     set((s) => ({ revealRequest: { id, n: (s.revealRequest?.n ?? 0) + 1, at: Date.now() } }));
+  },
+  sidebarFind: 0,
+  requestSidebarFind() {
+    set((s) => ({ sidebarFind: s.sidebarFind + 1 }));
   },
   setSidebar(open) {
     set({ sidebarOpen: open });
