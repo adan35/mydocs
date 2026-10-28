@@ -129,3 +129,17 @@ test('the theme menu switches palettes, the gutter follows, and the choice survi
   await page.getByRole('radio', { name: /Classic/ }).click();
   await expect(html).not.toHaveAttribute('data-palette', /.+/);
 });
+
+test('Settings has a Back button and Ctrl+Alt+Left/Right walk navigation history', async ({
+  page,
+}) => {
+  await freshApp(page);
+  await page.goto('/#/recent');
+  await page.goto('/#/settings');
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page).toHaveURL(/#\/recent$/);
+  await page.keyboard.press('Control+Alt+ArrowRight');
+  await expect(page).toHaveURL(/#\/settings$/);
+  await page.keyboard.press('Control+Alt+ArrowLeft');
+  await expect(page).toHaveURL(/#\/recent$/);
+});

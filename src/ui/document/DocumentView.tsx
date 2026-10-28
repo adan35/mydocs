@@ -43,7 +43,7 @@ import { editorActions, useEditor } from '@/app/editor-store';
 import { useSettings, type ViewMode } from '@/app/settings-store';
 import { useUi } from '@/app/ui-store';
 import { useAon } from '@/app/aon/chat';
-import { navigate } from '@/app/router';
+import { goBack, navigate } from '@/app/router';
 import { SHORTCUTS } from '@/app/shortcuts';
 import { dialogs } from '@/app/dialog-store';
 import * as A from '@/app/actions';
@@ -902,7 +902,7 @@ function DocHeader({
           type="button"
           className="icon-btn"
           aria-label="Back"
-          onClick={() => (history.length > 1 ? history.back() : navigate({ name: 'home' }))}
+          onClick={() => goBack() || navigate({ name: 'home' })}
         >
           <ArrowLeft size={18} />
         </button>

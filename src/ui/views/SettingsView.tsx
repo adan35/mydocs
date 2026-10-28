@@ -11,7 +11,7 @@ import { AccountSection, AiSection } from '../share/AccountSettings';
 import { useEffect, useState } from 'react';
 import { installedVersion, isNativeApp, updateMode } from '@/platform';
 import { checkNow, installUpdate, useUpdates } from '@/app/updates';
-import { navigate } from '@/app/router';
+import { goBack, navigate } from '@/app/router';
 
 function Segmented<T extends string | number>({
   value,
@@ -152,7 +152,11 @@ export function SettingsView() {
   const tree = session?.workspace.tree;
 
   return (
-    <Page title="Settings" icon={<SettingsIcon />}>
+    <Page
+      title="Settings"
+      icon={<SettingsIcon />}
+      back={() => goBack() || navigate({ name: 'home' })}
+    >
       <AccountSection />
       <AiSection />
       <Section

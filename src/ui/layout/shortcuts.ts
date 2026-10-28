@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { matches, SHORTCUTS } from '@/app/shortcuts';
 import { useUi } from '@/app/ui-store';
-import { useRouter, navigate } from '@/app/router';
+import { useRouter, navigate, goBack, goForward } from '@/app/router';
 import { editorActions, useEditor } from '@/app/editor-store';
 import * as A from '@/app/actions';
 import { quickNote, useNotesUi } from '@/app/notes';
@@ -59,6 +59,8 @@ export function useGlobalShortcuts() {
         );
       if (m(SHORTCUTS.togglePanel)) return run(toggleSidePanel);
       if (m(SHORTCUTS.aon)) return run(toggleAon);
+      if (m(SHORTCUTS.back)) return run(() => void goBack());
+      if (m(SHORTCUTS.forward)) return run(goForward);
       if (m(SHORTCUTS.reopenTab)) return run(() => void reopenClosedTab());
       if (m(SHORTCUTS.save)) {
         const id = useEditor.getState().activeId;
