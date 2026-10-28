@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { ArrowLeft, Menu } from 'lucide-react';
 import { useUi } from '@/app/ui-store';
+import { goBack, navigate, useRouter } from '@/app/router';
 import { useLayout } from '../hooks';
 
 /** Consistent page chrome for non-document views. */
@@ -24,34 +25,36 @@ export function Page({
 }) {
   const { phone, tablet } = useLayout();
   const sidebarOpen = useUi((s) => s.sidebarOpen);
+  const onHome = useRouter((s) => s.route.name === 'home');
+  // Every page but Home can step back; a page can override where Back goes.
+  const onBack = back ?? (onHome ? undefined : () => goBack() || navigate({ name: 'home' }));
   return (
     <div className="scroll-area h-full">
       <div
         className={`mx-auto w-full ${wide ? 'max-w-[1400px]' : 'max-w-[960px]'} px-4 pt-4 pb-24 sm:px-8 sm:pt-10`}
       >
         <header className="mb-6 flex flex-wrap items-start gap-2">
-          {back ? (
+          {onBack && (
             <button
               type="button"
               className="icon-btn mt-0.5 -ml-2"
               aria-label="Back"
-              onClick={back}
+              onClick={onBack}
             >
               <ArrowLeft size={18} />
             </button>
-          ) : (
-            (tablet || (!phone && !sidebarOpen)) && (
-              <button
-                type="button"
-                className="icon-btn mt-0.5 -ml-2"
-                aria-label="Open sidebar"
-                onClick={() =>
-                  tablet ? useUi.getState().setDrawer(true) : useUi.getState().setSidebar(true)
-                }
-              >
-                <Menu size={18} />
-              </button>
-            )
+          )}
+          {!back && (tablet || (!phone && !sidebarOpen)) && (
+            <button
+              type="button"
+              className={`icon-btn mt-0.5 ${onBack ? '' : '-ml-2'}`}
+              aria-label="Open sidebar"
+              onClick={() =>
+                tablet ? useUi.getState().setDrawer(true) : useUi.getState().setSidebar(true)
+              }
+            >
+              <Menu size={18} />
+            </button>
           )}
           {/* Actions drop to their own row before the title gets squeezed. */}
           <div className="min-w-0 flex-[1_1_14rem]">

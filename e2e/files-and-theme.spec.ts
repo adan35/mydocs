@@ -142,4 +142,8 @@ test('Settings has a Back button and Ctrl+Alt+Left/Right walk navigation history
   await expect(page).toHaveURL(/#\/settings$/);
   await page.keyboard.press('Control+Alt+ArrowLeft');
   await expect(page).toHaveURL(/#\/recent$/);
+  // Every page but Home has Back, Search included.
+  await page.goto('/#/search');
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page).toHaveURL(/#\/recent$/);
 });
