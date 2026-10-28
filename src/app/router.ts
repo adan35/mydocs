@@ -102,6 +102,10 @@ interface RouterState {
   navigate(r: Route, opts?: { replace?: boolean }): void;
 }
 
+/** Position in this tab's in-app history, kept in history.state so Back never leaves the app. */
+const pos = () => (history.state as { i?: number } | null)?.i ?? 0;
+let last = typeof history !== 'undefined' ? pos() : 0;
+
 export const useRouter = create<RouterState>(() => ({
   route: parseHash(typeof location !== 'undefined' ? location.hash : ''),
   navigate(r, opts) {
@@ -110,20 +114,33 @@ export const useRouter = create<RouterState>(() => ({
       useRouter.setState({ route: r });
       return;
     }
-    if (opts?.replace) history.replaceState(null, '', hash);
-    else history.pushState(null, '', hash);
+    if (opts?.replace) history.replaceState({ i: pos() }, '', hash);
+    else history.pushState({ i: pos() + 1 }, '', hash);
+    last = pos();
     useRouter.setState({ route: r });
   },
 }));
 
 if (typeof window !== 'undefined') {
-  window.addEventListener('popstate', () =>
-    useRouter.setState({ route: parseHash(location.hash) }),
-  );
-  window.addEventListener('hashchange', () =>
-    useRouter.setState({ route: parseHash(location.hash) }),
-  );
+  const sync = () => {
+    // An entry made outside navigate() (typed URL, plain link) has no index yet: it is one step ahead.
+    if (!history.state) history.replaceState({ i: last + 1 }, '');
+    last = pos();
+    useRouter.setState({ route: parseHash(location.hash) });
+  };
+  window.addEventListener('popstate', sync);
+  window.addEventListener('hashchange', sync);
 }
 
 export const navigate = (r: Route, opts?: { replace?: boolean }) =>
   useRouter.getState().navigate(r, opts);
+
+/** Steps back through in-app history; false when there is nowhere to go (never exits the app). */
+export function goBack(): boolean {
+  if (pos() <= 0) return false;
+  history.back();
+  return true;
+}
+
+/** A no-op when there is no forward entry. */
+export const goForward = () => history.forward();

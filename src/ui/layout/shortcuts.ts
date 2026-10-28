@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { matches, SHORTCUTS } from '@/app/shortcuts';
 import { useUi } from '@/app/ui-store';
-import { useRouter, navigate } from '@/app/router';
+import { useRouter, navigate, goBack, goForward } from '@/app/router';
 import { editorActions, useEditor } from '@/app/editor-store';
 import * as A from '@/app/actions';
 import { quickNote, useNotesUi } from '@/app/notes';
@@ -19,6 +19,12 @@ function inTextField(target: EventTarget | null) {
     el.tagName === 'SELECT' ||
     el.isContentEditable
   );
+}
+
+/** Focus is in the left panel, or the pointer is over it and no text field has focus. */
+function inSidebar(target: EventTarget | null) {
+  const nav = document.querySelector('nav[aria-label="Workspace"]');
+  return !!nav && (nav.contains(target as Node) || (!inTextField(target) && nav.matches(':hover')));
 }
 
 /** App-wide keyboard shortcuts. Editor-specific ones live in the editor keymap. */
@@ -59,11 +65,15 @@ export function useGlobalShortcuts() {
         );
       if (m(SHORTCUTS.togglePanel)) return run(toggleSidePanel);
       if (m(SHORTCUTS.aon)) return run(toggleAon);
+      if (m(SHORTCUTS.back)) return run(() => void goBack());
+      if (m(SHORTCUTS.forward)) return run(goForward);
       if (m(SHORTCUTS.reopenTab)) return run(() => void reopenClosedTab());
       if (m(SHORTCUTS.save)) {
         const id = useEditor.getState().activeId;
         return run(() => void (id ? editorActions.flush(id) : editorActions.flushAll()));
       }
+      if (m(SHORTCUTS.find) && inSidebar(e.target))
+        return run(() => useUi.getState().requestSidebarFind());
       if (onDoc) {
         if (m(SHORTCUTS.toggleMode)) return run(() => sendDocCommand('toggle-mode'));
         if (m(SHORTCUTS.splitView)) return run(() => sendDocCommand('split'));

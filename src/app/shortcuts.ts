@@ -19,6 +19,8 @@ export const SHORTCUTS = {
   closeTab: 'Alt+W',
   reopenTab: 'Alt+Shift+T',
   nextTab: 'Ctrl+Tab',
+  back: 'Ctrl+Alt+Left',
+  forward: 'Ctrl+Alt+Right',
   focusMode: 'Mod+Shift+.',
   readingMode: 'Mod+Shift+R',
   rename: 'F2',
@@ -65,6 +67,7 @@ export const SHORTCUT_GROUPS: { title: string; items: [string, string][] }[] = [
     items: [
       ['Save now', SHORTCUTS.save],
       ['Find and replace', SHORTCUTS.find],
+      ['Find a file (pointer or focus in the left panel)', SHORTCUTS.find],
       ['Switch source / read', SHORTCUTS.toggleMode],
       ['Split view', SHORTCUTS.splitView],
       ['Rich editing', SHORTCUTS.richMode],
@@ -73,6 +76,7 @@ export const SHORTCUT_GROUPS: { title: string; items: [string, string][] }[] = [
       ['Close tab', SHORTCUTS.closeTab],
       ['Reopen closed tab', SHORTCUTS.reopenTab],
       ['Next tab', SHORTCUTS.nextTab],
+      ['Go back / forward', `${SHORTCUTS.back} / ${SHORTCUTS.forward}`],
       ['Rename (in the file tree)', SHORTCUTS.rename],
     ],
   },
@@ -109,5 +113,5 @@ export function matches(e: KeyboardEvent, shortcut: string, isMac: boolean): boo
   if (key === '\\') return code === 'backslash';
   if (key === '.') return code === 'period';
   if (key === 'tab') return e.key === 'Tab';
-  return e.key.toLowerCase() === key;
+  return e.key.toLowerCase() === (key === 'left' || key === 'right' ? `arrow${key}` : key);
 }

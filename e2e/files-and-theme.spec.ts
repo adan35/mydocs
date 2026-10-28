@@ -129,3 +129,48 @@ test('the theme menu switches palettes, the gutter follows, and the choice survi
   await page.getByRole('radio', { name: /Classic/ }).click();
   await expect(html).not.toHaveAttribute('data-palette', /.+/);
 });
+
+test('Settings has a Back button and Ctrl+Alt+Left/Right walk navigation history', async ({
+  page,
+}) => {
+  await freshApp(page);
+  await page.goto('/#/recent');
+  await page.goto('/#/settings');
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page).toHaveURL(/#\/recent$/);
+  await page.keyboard.press('Control+Alt+ArrowRight');
+  await expect(page).toHaveURL(/#\/settings$/);
+  await page.keyboard.press('Control+Alt+ArrowLeft');
+  await expect(page).toHaveURL(/#\/recent$/);
+  // Every page but Home has Back, Search included.
+  await page.goto('/#/search');
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page).toHaveURL(/#\/recent$/);
+});
+
+test('the Files list can be made taller, and Ctrl+F in the left panel searches it', async ({
+  page,
+}) => {
+  await freshApp(page);
+  const tree = page.getByRole('tree', { name: 'Files' }).locator('..');
+  const before = (await tree.boundingBox())!.height;
+  const divider = page.getByRole('separator', { name: 'Resize file list' });
+  const box = (await divider.boundingBox())!;
+  await page.mouse.move(box.x + 20, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 20, box.y - 120, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(async () => (await tree.boundingBox())!.height).toBeGreaterThan(before + 60);
+  await divider.dblclick();
+  await expect.poll(async () => (await tree.boundingBox())!.height).toBeLessThan(before + 20);
+
+  await page.getByRole('button', { name: 'Home', exact: true }).focus();
+  await page.keyboard.press('Control+f');
+  const find = page.getByRole('searchbox', { name: 'Find a file' });
+  await expect(find).toBeFocused();
+  await find.fill('welc');
+  await page.getByRole('option', { name: /Welcome to My Doc/ }).click();
+  await expect(page.getByRole('heading', { name: 'Welcome to My Doc' })).toBeVisible();
+  await find.press('Escape');
+  await expect(find).toBeHidden();
+});

@@ -46,13 +46,15 @@ import {
   Sparkles,
   LocateFixed,
   Link2,
+  ArrowLeft,
+  ArrowRight,
 } from 'lucide-react';
 import * as A from '@/app/actions';
 import { openAonFile, toggleAon, useAon } from '@/app/aon/chat';
 import { openCapture, openTidy } from '@/app/aon/dialog';
 import { ws } from '@/app/app-store';
 import { editorActions, useEditor } from '@/app/editor-store';
-import { navigate, useRouter } from '@/app/router';
+import { goBack, goForward, navigate, useRouter } from '@/app/router';
 import { isNativeApp } from '@/platform';
 import { useSettings } from '@/app/settings-store';
 import { PALETTES } from '@/app/themes';
@@ -304,6 +306,24 @@ export function getCommands(): Command[] {
       icon: <Trash2 />,
       keywords: 'deleted restore',
       run: () => navigate({ name: 'trash' }),
+    },
+    {
+      id: 'go-back',
+      title: 'Go back',
+      group: 'Navigate',
+      icon: <ArrowLeft />,
+      keywords: 'previous history',
+      shortcut: SHORTCUTS.back,
+      run: () => void goBack(),
+    },
+    {
+      id: 'go-forward',
+      title: 'Go forward',
+      group: 'Navigate',
+      icon: <ArrowRight />,
+      keywords: 'next history',
+      shortcut: SHORTCUTS.forward,
+      run: goForward,
     },
     {
       id: 'reopen',
