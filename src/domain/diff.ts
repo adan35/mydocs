@@ -104,3 +104,48 @@ export function summarizeChange(before: string, after: string): ChangeSummary {
       : `${verb} blank lines`;
   return { added, removed, message };
 }
+
+export type Row = DiffLine | { type: 'gap'; count: number };
+
+/** Long unchanged runs fold into one gap row, keeping `context` lines around each change. */
+export function hunks(diff: DiffLine[], context = 3): Row[] {
+  const keep = diff.map(() => false);
+  diff.forEach((d, i) => {
+    if (d.type === 'same') return;
+    for (let j = Math.max(0, i - context); j <= Math.min(diff.length - 1, i + context); j++)
+      keep[j] = true;
+  });
+  const rows: Row[] = [];
+  diff.forEach((d, i) => {
+    if (keep[i]) rows.push(d);
+    else if (rows.at(-1)?.type === 'gap') (rows.at(-1) as { count: number }).count++;
+    else rows.push({ type: 'gap', count: 1 });
+  });
+  return rows;
+}
+
+export type SplitRow = { type: 'gap'; count: number } | { left?: DiffLine; right?: DiffLine };
+
+/** Side-by-side layout: removed lines on the left, added on the right, a run of each paired up. */
+export function pairRows(rows: Row[]): SplitRow[] {
+  const out: SplitRow[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i]!;
+    if (r.type === 'gap') out.push(r);
+    else if (r.type === 'same') out.push({ left: r, right: r });
+    else {
+      const del: DiffLine[] = [];
+      const add: DiffLine[] = [];
+      for (; i < rows.length; i++) {
+        const c = rows[i]!;
+        if (c.type === 'del') del.push(c);
+        else if (c.type === 'add') add.push(c);
+        else break;
+      }
+      i--;
+      for (let k = 0; k < Math.max(del.length, add.length); k++)
+        out.push({ left: del[k], right: add[k] });
+    }
+  }
+  return out;
+}
