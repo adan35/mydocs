@@ -74,6 +74,15 @@
 .sheet-cell.is-in-range {
   background: var(--primary-soft);
 }
+/* A cell with its own fill keeps it inside a selection; a tint on top shows the selection. */
+.sheet-cell.is-filled.is-in-range::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--primary);
+  opacity: 0.22;
+  pointer-events: none;
+}
 /* Frozen rows and columns stay put while the rest scrolls, so they need a solid background. */
 .sheet-frozen-rows {
   background: var(--canvas);
@@ -126,6 +135,14 @@
   background: var(--canvas);
   color: var(--ink);
   font: inherit;
+}
+.sheet-tab.is-drop-target {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.sheet-tab:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
 }
 .sheet-tabs button[aria-selected='true'] {
   background: var(--canvas);

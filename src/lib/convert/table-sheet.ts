@@ -209,6 +209,17 @@ export function sortRows(
   dir: 'asc' | 'desc',
   skip: number,
 ): Rows {
+  return sortRowsWithOrder(rows, shown, col, dir, skip).rows;
+}
+
+/** Like `sortRows`, and says where every row came from: `order[newIndex]` is its old index. */
+export function sortRowsWithOrder(
+  rows: Rows,
+  shown: Sheet,
+  col: number,
+  dir: 'asc' | 'desc',
+  skip: number,
+): { rows: Rows; order: number[] } {
   const body = rows.slice(skip).map((row, i) => ({ row, at: i + skip }));
   const key = (at: number) => shown.rows[at]?.[col];
   body.sort((a, b) => {
@@ -228,15 +239,18 @@ export function sortRows(
     else cmp = tx.localeCompare(ty, undefined, { numeric: true, sensitivity: 'base' });
     return dir === 'asc' ? cmp : -cmp;
   });
-  return [
-    ...rows.slice(0, skip),
-    ...body.map(({ row, at }, i) => {
-      const delta = i + skip - at;
-      return delta === 0
-        ? row
-        : row.map((t) => (isFormulaText(t) ? `=${shiftFormula(t.slice(1), delta, 0)}` : t));
-    }),
-  ];
+  return {
+    rows: [
+      ...rows.slice(0, skip),
+      ...body.map(({ row, at }, i) => {
+        const delta = i + skip - at;
+        return delta === 0
+          ? row
+          : row.map((t) => (isFormulaText(t) ? `=${shiftFormula(t.slice(1), delta, 0)}` : t));
+      }),
+    ],
+    order: [...Array.from({ length: skip }, (_, i) => i), ...body.map(({ at }) => at)],
+  };
 }
 
 // ------------------------------------------------------------------ AutoSum

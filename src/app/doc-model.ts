@@ -9,6 +9,7 @@ import {
 } from '@codemirror/state';
 import { history, redo, redoDepth, undo, undoDepth } from '@codemirror/commands';
 import type { EntryId } from '@/domain/types';
+import { formatsExtension, formatsField, setFormats, type DocFormats } from './sheet-format-state';
 
 /**
  * The single source of truth for the text of every open document.
@@ -46,10 +47,13 @@ export interface DocView {
 }
 
 type ChangeListener = (id: EntryId, text: string) => void;
+type FormatListener = (id: EntryId, formats: DocFormats) => void;
 
 const states = new Map<EntryId, EditorState>();
 const views = new Map<EntryId, DocView>();
 const listeners = new Set<ChangeListener>();
+const formatListeners = new Set<FormatListener>();
+const NO_FORMATS: DocFormats = {};
 const syncs = new Map<EntryId, DocSync>();
 /** Documents that can't be edited right now (viewer role, or a shared document that is offline). */
 const locked = new Set<EntryId>();
@@ -60,10 +64,23 @@ function notify(id: EntryId, state: EditorState) {
   for (const fn of listeners) fn(id, text);
 }
 
+/** Tells listeners when a transaction replaced the document's sheet colors (also when undone). */
+function notifyFormats(id: EntryId, trs: readonly Transaction[], state: EditorState) {
+  if (!trs.some((tr) => tr.effects.some((e) => e.is(setFormats)))) return;
+  const formats = state.field(formatsField);
+  for (const fn of formatListeners) fn(id, formats);
+}
+
 function create(id: EntryId, text: string): EditorState {
   return EditorState.create({
     doc: text,
-    extensions: [docIdFacet.of(id), history(), collabComp.of([]), extensionsFor(id)],
+    extensions: [
+      docIdFacet.of(id),
+      history(),
+      formatsExtension,
+      collabComp.of([]),
+      extensionsFor(id),
+    ],
   });
 }
 
@@ -71,6 +88,18 @@ export const docModel = {
   /** Sets the extensions every new document state gets (keymaps, completion…). Called by the UI. */
   configure(fn: (id: EntryId) => Extension) {
     extensionsFor = fn;
+  },
+
+  /** Notified with the document's sheet colors whenever they change, including by undo. */
+  onFormats(fn: FormatListener): () => void {
+    formatListeners.add(fn);
+    return () => formatListeners.delete(fn);
+  },
+
+  /** The sheet colors of an open document. */
+  formats(id: EntryId): DocFormats {
+    const s = views.get(id)?.state ?? states.get(id);
+    return s ? s.field(formatsField) : NO_FORMATS;
   },
 
   /** Notified with the new text after every change, from any mode. */
@@ -112,6 +141,7 @@ export const docModel = {
 
   /** Called by an attached editor after it applied transactions. */
   viewUpdated(id: EntryId, transactions: readonly Transaction[], state: EditorState) {
+    notifyFormats(id, transactions, state);
     if (!transactions.some((tr) => tr.docChanged)) return;
     syncs.get(id)?.local(transactions);
     notify(id, state);
@@ -166,6 +196,7 @@ export const docModel = {
     if (!s) return false;
     const tr = s.update(spec);
     states.set(id, tr.state);
+    notifyFormats(id, [tr], tr.state);
     if (tr.docChanged) {
       syncs.get(id)?.local([tr]);
       notify(id, tr.state);
@@ -228,6 +259,7 @@ function runCommand(
       if (view) view.dispatch(tr);
       else {
         states.set(id, tr.state);
+        notifyFormats(id, [tr], tr.state);
         if (tr.docChanged) {
           syncs.get(id)?.local([tr]);
           notify(id, tr.state);
