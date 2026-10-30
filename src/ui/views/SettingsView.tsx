@@ -239,19 +239,6 @@ export function SettingsView() {
             }}
           />
         </Row>
-        {s.showAon && (
-          <Row
-            label="Show Hudhud"
-            hint="The little hoopoe that shows what AON is doing. Off keeps AON but drops the mascot."
-            htmlFor="show-hudhud"
-          >
-            <Toggle
-              id="show-hudhud"
-              checked={s.showHudhud}
-              onChange={(showHudhud) => set({ showHudhud })}
-            />
-          </Row>
-        )}
       </Section>
       <Section title="Appearance">
         <Row label="Theme">

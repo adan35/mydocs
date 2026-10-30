@@ -11,7 +11,6 @@ import { AiError, aiSource, complete } from '../ai';
 import { docIdFacet, docModel } from '../doc-model';
 import { ws } from '../app-store';
 import { navigate } from '../router';
-import { useSettings } from '../settings-store';
 import { aonEnabled } from './enabled';
 import { hudhudElement } from './hudhud-art';
 import { offerReminders } from './chat';
@@ -310,8 +309,7 @@ class SuggestionWidget extends WidgetType {
     const pose = s.status === 'working' ? 'thinking' : s.status === 'ready' ? 'success' : 'idle';
     // Reuse the bird while streaming, so its fade-in doesn't restart on every chunk.
     const old = el.querySelector<HTMLElement>('.cm-aon-head .hudhud');
-    if (useSettings.getState().showHudhud)
-      head.prepend(old?.dataset.state === pose ? old : hudhudElement(pose));
+    head.prepend(old?.dataset.state === pose ? old : hudhudElement(pose));
     const body = document.createElement('div');
     body.className = 'cm-aon-body';
     if (s.status === 'error') body.classList.add('cm-aon-error');

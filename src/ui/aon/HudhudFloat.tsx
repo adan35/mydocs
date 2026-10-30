@@ -1,5 +1,4 @@
 import { toggleAon } from '@/app/aon/chat';
-import { useSettings } from '@/app/settings-store';
 import { useLayout } from '../hooks';
 import { Hudhud } from './Hudhud';
 import { useHudhud } from './useHudhud';
@@ -14,8 +13,7 @@ const LABEL = {
 export function HudhudFloat() {
   const state = useHudhud();
   const { phone } = useLayout();
-  const shown = useSettings((s) => s.showHudhud);
-  if (!shown || (state !== 'thinking' && state !== 'searching' && state !== 'success')) return null;
+  if (state !== 'thinking' && state !== 'searching' && state !== 'success') return null;
   return (
     <button
       type="button"

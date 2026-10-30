@@ -42,10 +42,8 @@ export interface Settings {
   syncScroll: boolean;
   /** Row height of tables in documents and of spreadsheet grids. */
   tableRowHeight: RowHeight;
-  /** AON, the AI assistant. Off hides it everywhere. */
+  /** AON, the AI assistant, and Hudhud, its mascot. Off hides both everywhere. */
   showAon: boolean;
-  /** Hudhud, AON's animated mascot. */
-  showHudhud: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -71,7 +69,6 @@ export const DEFAULT_SETTINGS: Settings = {
   syncScroll: true,
   tableRowHeight: 'full',
   showAon: true,
-  showHudhud: true,
 };
 
 /** Most lines a cell shows at each row height. */

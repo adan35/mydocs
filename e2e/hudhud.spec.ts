@@ -81,7 +81,7 @@ test('the inline suggestion shows Hudhud while it writes', async ({ page }) => {
   await expect(box.locator('.hudhud')).toHaveAttribute('data-state', 'success');
 });
 
-test('Settings can hide AON everywhere, and Hudhud on his own', async ({ page }) => {
+test('Settings can hide AON and Hudhud everywhere', async ({ page }) => {
   const calls = await mockProvider(page, () => 'x');
   await freshApp(page);
   await expect(page.getByRole('button', { name: /Ask AON/ })).toBeVisible();
@@ -89,15 +89,7 @@ test('Settings can hide AON everywhere, and Hudhud on his own', async ({ page })
   await expect(page.getByRole('region', { name: 'AON' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Settings' }).click();
-  // Hudhud off: AON stays, the mascot goes.
-  await page.getByRole('switch', { name: 'Show Hudhud' }).click();
-  await page.keyboard.press(`${mod}+j`);
-  await expect(page.getByTestId('aon-panel')).toBeVisible();
-  await expect(page.getByTestId('hudhud')).toHaveCount(0);
-  await page.keyboard.press(`${mod}+j`);
-
   await page.getByRole('switch', { name: 'Show AON' }).click();
-  await expect(page.getByRole('switch', { name: 'Show Hudhud' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Ask AON/ })).toHaveCount(0);
   await page.keyboard.press(`${mod}+j`);
   await expect(page.getByTestId('aon-panel')).toHaveCount(0);
