@@ -45,6 +45,7 @@ import {
   ListChecks,
   Sparkles,
   LocateFixed,
+  FolderOpen,
   Link2,
   ArrowLeft,
   ArrowRight,
@@ -452,6 +453,14 @@ export function getCommands(): Command[] {
         icon: <LocateFixed />,
         keywords: 'locate show tree sidebar explorer folder',
         run: () => A.revealInFiles(doc.id),
+      },
+      {
+        id: 'show-in-explorer',
+        title: 'Show in File Explorer',
+        group: 'Document',
+        icon: <FolderOpen />,
+        keywords: 'reveal open folder finder disk location',
+        run: () => void A.showInFileExplorer(doc.id),
       },
       {
         id: 'copy-path',

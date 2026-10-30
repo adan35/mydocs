@@ -10,6 +10,7 @@ import {
   closeTabsToRight,
   openEntry,
   revealInFiles,
+  showInFileExplorer,
 } from '@/app/actions';
 import { SHORTCUTS } from '@/app/shortcuts';
 import { FileIcon } from '../components/FileIcon';
@@ -148,6 +149,7 @@ export function TabBar() {
                     onSelect: () => void reopenClosedTab(),
                   },
                   { label: 'Reveal in Files', onSelect: () => revealInFiles(id) },
+                  { label: 'Show in File Explorer', onSelect: () => void showInFileExplorer(id) },
                   { label: 'Copy path', submenu: copyPathSubmenu(e) },
                 ],
               });

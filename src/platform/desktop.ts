@@ -1,6 +1,6 @@
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeFile } from '@tauri-apps/plugin-fs';
-import { openUrl } from '@tauri-apps/plugin-opener';
+import { openUrl, revealItemInDir } from '@tauri-apps/plugin-opener';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
 /** Desktop (Tauri) implementations behind `platform/index.ts`. */
@@ -18,6 +18,11 @@ export async function saveFile(blob: Blob, filename: string): Promise<boolean> {
 
 export function openExternal(url: string): Promise<void> {
   return openUrl(url);
+}
+
+/** Opens the folder holding `path` in File Explorer / Finder with the file selected. */
+export function revealInFileManager(path: string): Promise<void> {
+  return revealItemInDir(path);
 }
 
 /** Lets `save` finish before the window closes. Returns an unlisten function. */

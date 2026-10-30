@@ -12,14 +12,16 @@ pub struct OpenFiles(Mutex<VecDeque<PathBuf>>);
 #[derive(Serialize)]
 struct Header {
     name: String,
+    /// Where the file lives, so "Show in File Explorer" can find the original again.
+    path: String,
     error: Option<String>,
 }
 
 /// Raw binary reply, so large files don't cross IPC as a JSON number array:
 /// a little-endian u32 header length, the JSON header, then the file bytes.
 /// An empty reply means the queue is empty.
-fn reply(name: String, error: Option<String>, bytes: Vec<u8>) -> Response {
-    let header = serde_json::to_vec(&Header { name, error }).unwrap_or_default();
+fn reply(name: String, path: String, error: Option<String>, bytes: Vec<u8>) -> Response {
+    let header = serde_json::to_vec(&Header { name, path, error }).unwrap_or_default();
     let mut body = Vec::with_capacity(4 + header.len() + bytes.len());
     body.extend_from_slice(&(header.len() as u32).to_le_bytes());
     body.extend_from_slice(&header);
@@ -60,6 +62,7 @@ pub async fn take_open_file(app: tauri::AppHandle) -> Result<Response, String> {
         return Ok(Response::new(Vec::new()));
     };
     tauri::async_runtime::spawn_blocking(move || {
+        let shown = path.to_string_lossy().into_owned();
         let name = path
             .file_name()
             .unwrap_or_default()
@@ -84,8 +87,8 @@ pub async fn take_open_file(app: tauri::AppHandle) -> Result<Response, String> {
             Ok(bytes)
         };
         match read() {
-            Ok(bytes) => reply(name, None, bytes),
-            Err(error) => reply(name, Some(error), Vec::new()),
+            Ok(bytes) => reply(name, shown, None, bytes),
+            Err(error) => reply(name, shown, Some(error), Vec::new()),
         }
     })
     .await

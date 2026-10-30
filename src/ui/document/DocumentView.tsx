@@ -59,7 +59,7 @@ import { ScrollSync } from './scroll-sync';
 import type { RichFocus } from './rich-editing';
 import { openMenuAt, type MenuEntry } from '../components/Menu';
 import { formatShortcut, useLayout, useTree } from '../hooks';
-import { copyPathSubmenu, exportSubmenu } from '../entry-menu';
+import { copyPathSubmenu, exportSubmenu, showInExplorerItem } from '../entry-menu';
 import { sendDocCommand } from '../doc-commands';
 import { Preview, type PreviewHandle } from './Preview';
 import { RightPanel } from './RightPanel';
@@ -791,6 +791,7 @@ function DocHeader({
       icon: <LocateFixed />,
       onSelect: () => A.revealInFiles(entry.id),
     },
+    showInExplorerItem(entry.id),
     { label: 'Copy path', icon: <Link2 />, submenu: copyPathSubmenu(entry) },
     'separator',
     { label: 'Rename…', icon: <PencilLine />, onSelect: () => void A.renameEntry(entry.id) },

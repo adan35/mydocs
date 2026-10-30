@@ -154,6 +154,12 @@ export function appMenus(): AppMenu[] {
       onSelect: () => doc && A.revealInFiles(doc.id),
     },
     {
+      label: 'Show in File Explorer',
+      icon: <FolderOpen />,
+      disabled: !doc,
+      onSelect: () => doc && void A.showInFileExplorer(doc.id),
+    },
+    {
       label: 'Copy path',
       icon: <Link2 />,
       disabled: !doc,
