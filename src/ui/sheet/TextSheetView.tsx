@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Filter as FilterIcon, Table2, X } from 'lucide-react';
+import type { StateEffect } from '@codemirror/state';
 import type { EntryId } from '@/domain/types';
 import { extensionOf } from '@/domain/names';
 import { serializeTable, emptyTable } from '@/domain/table';
@@ -31,14 +32,29 @@ import {
   insertRowsAt,
   setBlock,
   setCellText,
-  sortRows,
+  sortRowsWithOrder,
   toggleEmphasis,
   type Filter,
   type FilterOp,
   type Rows,
 } from '@/lib/convert/table-sheet';
 import { SheetGrid, selectionRange, type RowAction, type Selection } from './SheetGrid';
-import { SheetRibbon, type SheetCommand } from './SheetRibbon';
+import { SheetRibbon, type PaintScope, type SheetCommand } from './SheetRibbon';
+import { SheetTabs } from './SheetTabs';
+import { PAINT_SCOPES, usePaintScope } from './paint';
+import {
+  applyColor,
+  deleteColsFormat,
+  deleteRowsFormat,
+  insertColsFormat,
+  insertRowsFormat,
+  permuteRowsFormat,
+  resolveStyle,
+  targetFor,
+  type SheetFormat,
+} from '@/lib/convert/sheet-format';
+import { setFormats } from '@/app/sheet-format-state';
+import { useDocFormats } from '@/app/sheet-formats';
 import { publishOutline } from '@/app/outline-store';
 import { aonCanSee } from '@/app/aon/tools';
 import type { SheetContext, SheetEdit } from '@/app/aon/sheet';
@@ -48,8 +64,8 @@ const SheetAskDialog = lazy(() =>
 );
 
 /** Replaces the document text with one minimal change, so undo and other views stay exact. */
-function applyText(id: EntryId, prev: string, next: string) {
-  if (prev === next) return;
+function applyText(id: EntryId, prev: string, next: string, effects?: StateEffect<unknown>) {
+  if (prev === next && !effects) return;
   let start = 0;
   while (start < prev.length && start < next.length && prev[start] === next[start]) start++;
   let endPrev = prev.length;
@@ -60,6 +76,7 @@ function applyText(id: EntryId, prev: string, next: string) {
   }
   editorActions.edit(id, {
     changes: { from: start, to: endPrev, insert: next.slice(start, endNext) },
+    effects,
     userEvent: 'input.sheet',
   });
 }
@@ -106,6 +123,9 @@ export function TextSheetView({
   const [filterOpen, setFilterOpen] = useState(false);
   const [freeze, setFreeze] = useState({ rows: 0, cols: 0 });
   const [asking, setAsking] = useState(false);
+  const [lastColors, setLastColors] = useState<{ bg?: string | null; fg?: string | null }>({});
+  const [paintScope, setPaintScope] = usePaintScope(selection);
+  const formats = useDocFormats(docId, text);
 
   const dialect = useMemo(
     () => (markdown ? null : detectDialect(text, ext)),
@@ -234,10 +254,27 @@ export function TextSheetView({
     return true;
   };
 
+  /** Where a sheet's colors are kept: one entry for a CSV file, one per Markdown table. */
+  const fkey = (t: number) => (markdown ? String(t) : '0');
+  /** The change that gives one sheet these colors (none left removes its entry). */
+  const withColors = (t: number, f: SheetFormat | undefined) => {
+    const next = { ...formats };
+    if (f) next[fkey(t)] = f;
+    else delete next[fkey(t)];
+    return setFormats.of(next);
+  };
+
   /** Writes one table (or the CSV file) back to the text. */
-  const write = (t: number, rows: Rows, align?: Align[]) => {
+  const write = (
+    t: number,
+    rows: Rows,
+    align?: Align[],
+    /** Moves the sheet's colors along with the same change (rows or columns moved). */
+    colors?: (f: SheetFormat | undefined) => SheetFormat | undefined,
+  ) => {
+    const effects = colors && withColors(t, colors(formats[fkey(t)]));
     if (dialect) {
-      applyText(docId, text, rewriteDelimited(text, rows, dialect));
+      applyText(docId, text, rewriteDelimited(text, rows, dialect), effects);
       return;
     }
     const tb = tables[t];
@@ -252,6 +289,7 @@ export function TextSheetView({
       docId,
       text,
       [...lines.slice(0, tb.start), serializeTable(out), ...lines.slice(tb.end)].join('\n'),
+      effects,
     );
   };
 
@@ -348,6 +386,38 @@ export function TextSheetView({
     });
   };
 
+  /** Paints the selection (cells, whole rows or whole columns), or clears it with null. */
+  const paint = (prop: 'bg' | 'fg', color: string | null) => {
+    const [r1, c1, r2, c2] = selectionRange(selection);
+    const a = locate(r1);
+    const b = locate(r2);
+    if (!a || !b || a.k !== b.k) return void toast({ message: 'Select cells inside one table.' });
+    // The rows of the table that are on the grid (a filter hides some), as runs of neighbours.
+    const runs: [number, number][] = [];
+    for (let r = r1; r <= r2; r++) {
+      const at = locate(r)?.r;
+      if (at === undefined) continue;
+      const last = runs[runs.length - 1];
+      if (last && last[1] === at - 1) last[1] = at;
+      else runs.push([at, at]);
+    }
+    let f = formats[fkey(a.t)];
+    try {
+      if (paintScope === 'cols') f = applyColor(f, targetFor([0, c1, 0, c2], 'cols'), prop, color);
+      else
+        for (const [from, to] of runs)
+          f = applyColor(f, targetFor([from, c1, to, c2], paintScope), prop, color);
+    } catch (e) {
+      if (!(e instanceof RangeError)) throw e;
+      return void toast({
+        message:
+          'That selection is too large to color cell by cell. Color whole rows or columns instead.',
+      });
+    }
+    editorActions.edit(docId, { effects: withColors(a.t, f), userEvent: 'format.sheet' });
+    setLastColors((l) => ({ ...l, [prop]: color }));
+  };
+
   const run = (cmd: SheetCommand) => {
     if (cmd === 'undo') return void docModel.undo(docId);
     if (cmd === 'redo') return void docModel.redo(docId);
@@ -381,7 +451,9 @@ export function TextSheetView({
         const count = r2 - r1 + 1;
         const to = cmd === 'row-above' ? r1 : r2 + 1;
         if (markdown && to === 0) return;
-        write(sel.t, insertRowsAt(src, Math.min(to, src.length), count));
+        write(sel.t, insertRowsAt(src, Math.min(to, src.length), count), undefined, (f) =>
+          insertRowsFormat(f, Math.min(to, src.length), count),
+        );
         setSelection({ r: sel.row(to), c });
         return;
       }
@@ -389,7 +461,9 @@ export function TextSheetView({
         const first = markdown ? Math.max(1, r1) : r1; // a Markdown table keeps its header
         const last = Math.min(r2, src.length - 1);
         if (last < first) return;
-        write(sel.t, deleteRowsAt(src, first, last - first + 1));
+        write(sel.t, deleteRowsAt(src, first, last - first + 1), undefined, (f) =>
+          deleteRowsFormat(f, first, last - first + 1),
+        );
         setSelection({
           r: sel.row(Math.max(0, Math.min(first, src.length - (last - first + 1) - 1))),
           c,
@@ -401,7 +475,7 @@ export function TextSheetView({
         const count = c2 - c1 + 1;
         const to = cmd === 'col-left' ? c1 : c2 + 1;
         align.splice(to, 0, ...Array.from({ length: count }, () => null));
-        write(sel.t, insertColsAt(src, to, count), align);
+        write(sel.t, insertColsAt(src, to, count), align, (f) => insertColsFormat(f, to, count));
         setSelection({ r: selection.r, c: to });
         return;
       }
@@ -409,14 +483,18 @@ export function TextSheetView({
         const count = Math.min(c2 - c1 + 1, width - 1);
         if (count < 1) return;
         align.splice(c1, count);
-        write(sel.t, deleteColsAt(src, c1, count), align);
+        write(sel.t, deleteColsAt(src, c1, count), align, (f) => deleteColsFormat(f, c1, count));
         setSelection({ r: selection.r, c: Math.max(0, Math.min(c1, width - count - 1)) });
         return;
       }
       case 'sort-asc':
       case 'sort-desc':
         if (blockedByFilter()) return;
-        write(sel.t, sortRows(src, shown, c, cmd === 'sort-asc' ? 'asc' : 'desc', skip));
+        {
+          const out = sortRowsWithOrder(src, shown, c, cmd === 'sort-asc' ? 'asc' : 'desc', skip);
+          // Colors stay with their rows.
+          write(sel.t, out.rows, undefined, (f) => permuteRowsFormat(f, out.order));
+        }
         return;
       case 'autosum': {
         const out = autoSum(src, shown, sel.range);
@@ -458,6 +536,9 @@ export function TextSheetView({
     write(
       loc.t,
       a.kind === 'insert' ? insertRowsAt(rows, row, a.count) : deleteRowsAt(rows, row, a.count),
+      undefined,
+      (f) =>
+        a.kind === 'insert' ? insertRowsFormat(f, row, a.count) : deleteRowsFormat(f, row, a.count),
     );
     if (a.select !== undefined) setSelection({ r: a.select, c: selection.c });
   };
@@ -536,6 +617,16 @@ export function TextSheetView({
       <SheetRibbon
         run={run}
         onAsk={() => setAsking(true)}
+        colors={{
+          last: lastColors,
+          onPick: paint,
+          scopes: PAINT_SCOPES,
+          scope: paintScope as PaintScope,
+          onScope: setPaintScope,
+          note: markdown
+            ? 'Colors are saved in My Doc, not in the Markdown text. Convert to an Excel workbook to keep them in a file.'
+            : `Colors are saved in My Doc, not in the ${ext.toUpperCase()} file. Convert to an Excel workbook to keep them in a file.`,
+        }}
         groups={groups}
         pressed={{
           filter: filterOpen,
@@ -623,8 +714,35 @@ export function TextSheetView({
             pad={{ rows: rowMap ? 0 : 100, cols: 24 }}
             textOnly
             align={markdown ? alignAt : undefined}
+            styleAt={(r, c) => {
+              const loc = locate(r);
+              return loc ? resolveStyle(formats[fkey(loc.t)], loc.r, c) : undefined;
+            }}
           />
         </div>
+      )}
+      {!markdown && (
+        <SheetTabs
+          single
+          editable
+          sheets={[{ name: 'Sheet1' }]}
+          active={0}
+          addHint={`Add sheet: ${ext.toUpperCase()} files hold one sheet`}
+          onSelect={() => {}}
+          onRename={() => {}}
+          onDuplicate={() => {}}
+          onDelete={() => {}}
+          onMove={() => {}}
+          onColor={() => {}}
+          onAdd={async () => {
+            const ok = await dialogs.confirm({
+              title: 'Add a sheet',
+              message: `${ext.toUpperCase()} files hold a single sheet. To add more sheets, make an Excel workbook (.xlsx) from this file. The original stays as it is, and your colors come along.`,
+              confirmLabel: 'Make workbook…',
+            });
+            if (ok) void dialogs.convert(docId, 'xlsx');
+          }}
+        />
       )}
       {asking && (
         <Suspense fallback={null}>

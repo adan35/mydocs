@@ -15,6 +15,7 @@ import {
 } from '@/lib/convert/workbook';
 import { shiftFormula } from '@/lib/convert/formula';
 import { parseEmphasis, rangeStats } from '@/lib/convert/table-sheet';
+import { contrastText, type CellStyle } from '@/lib/convert/sheet-format';
 
 const ROW_H = 28;
 /** Wrapped rows: line height and vertical padding of a cell. */
@@ -31,6 +32,8 @@ export interface Selection {
   r: number;
   c: number;
   to?: { r: number; c: number };
+  /** Set when whole rows, whole columns or the whole sheet were selected (by their headers). */
+  scope?: 'rows' | 'cols' | 'all';
 }
 
 /** The selected range as [firstRow, firstCol, lastRow, lastCol]. */
@@ -68,6 +71,8 @@ export interface SheetGridProps {
   onFill?(dir: 'down' | 'right'): void;
   /** Leading rows and columns that stay in view while scrolling. */
   freeze?: { rows: number; cols: number };
+  /** Fill and text color of a cell, if it has any. */
+  styleAt?(r: number, c: number): CellStyle | undefined;
   /** Numbers to show in the row headers when rows are hidden by a filter. */
   rowLabels?: readonly (number | string)[];
   /** Cell text uses Markdown emphasis (`**bold**`, `*italic*`, `~~strike~~`). */
@@ -118,6 +123,7 @@ export function SheetGrid({
   freeze,
   rowLabels,
   markdownText,
+  styleAt,
 }: SheetGridProps) {
   // Text sheets edit exactly what is written, except formulas, which show as typed.
   const editValue = textOnly
@@ -215,7 +221,16 @@ export function SheetGrid({
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!el) return;
-    const at = selection.to ?? selection;
+    // Selecting whole rows or columns must not scroll to their far end.
+    const t = selection.to ?? selection;
+    const at =
+      selection.scope === 'rows'
+        ? { r: t.r, c: selection.c }
+        : selection.scope === 'cols'
+          ? { r: selection.r, c: t.c }
+          : selection.scope === 'all'
+            ? selection
+            : t;
     const top = rowTop(at.r);
     const bottom = rowTop(at.r + 1);
     // Frozen rows and columns cover the top and left edge; a cell behind them is not in view.
@@ -281,7 +296,8 @@ export function SheetGrid({
         // Shift extends the selection from the active cell.
         const t = selection.to ?? selection;
         onSelect({
-          ...selection,
+          r: selection.r,
+          c: selection.c,
           to: {
             r: mod
               ? dr < 0
@@ -310,6 +326,22 @@ export function SheetGrid({
     if (e.key === 'Tab') {
       e.preventDefault();
       move(0, e.shiftKey ? -1 : 1);
+      return;
+    }
+    // Ctrl+Space selects the column, Shift+Space the row, as in other spreadsheets.
+    if (e.key === ' ' && (e.ctrlKey || e.shiftKey)) {
+      e.preventDefault();
+      if (e.ctrlKey) selectCol(selection.c, false);
+      else selectRow(selection.r, false);
+      return;
+    }
+    if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+      e.preventDefault();
+      const el = scroller.current?.querySelector<HTMLElement>(
+        `[data-cell="${addr(selection.r, selection.c)}"]`,
+      );
+      const box = (el ?? scroller.current)!.getBoundingClientRect();
+      openRowMenu(selection.r, { x: box.left + 8, y: box.bottom });
       return;
     }
     if (mod && e.key.toLowerCase() === 'a') {
@@ -351,7 +383,31 @@ export function SheetGrid({
   };
 
   const selectAll = () =>
-    onSelect({ r: 0, c: 0, to: { r: Math.max(0, dataRows - 1), c: Math.max(0, dataCols - 1) } });
+    onSelect({
+      r: 0,
+      c: 0,
+      to: { r: Math.max(0, dataRows - 1), c: Math.max(0, dataCols - 1) },
+      scope: 'all',
+    });
+
+  /** Selects a whole row (or, with `extend`, everything from the active row to this one). */
+  const selectRow = (r: number, extend: boolean) => {
+    const right = Math.max(0, dataCols - 1);
+    onSelect(
+      extend
+        ? { r: selection.r, c: 0, to: { r, c: right }, scope: 'rows' }
+        : { r, c: 0, to: right > 0 ? { r, c: right } : undefined, scope: 'rows' },
+    );
+  };
+
+  const selectCol = (c: number, extend: boolean) => {
+    const bottom = Math.max(0, dataRows - 1);
+    onSelect(
+      extend
+        ? { r: 0, c: selection.c, to: { r: bottom, c }, scope: 'cols' }
+        : { r: 0, c, to: bottom > 0 ? { r: bottom, c } : undefined, scope: 'cols' },
+    );
+  };
 
   const clearSelection = () => {
     if (!hasRange) {
@@ -439,12 +495,16 @@ export function SheetGrid({
 
   const openRowMenu = (r: number, at: DOMRect | { x: number; y: number }) => {
     if (readOnly || !onRows) return;
-    onSelect({ r, c: selection.c });
+    // Rows already selected (by their numbers) are what the menu acts on; else just this row.
+    const picked = selection.scope === 'rows' && r >= sr1 && r <= sr2;
+    if (!picked) selectRow(r, false);
+    const first = picked ? sr1 : r;
+    const n = picked ? sr2 - sr1 + 1 : 1;
     const insert = async (where: 'above' | 'below', many: boolean) => {
-      const count = many ? await askCount(r, where) : 1;
+      const count = many ? await askCount(r, where) : n;
       if (!count) return;
-      const pos = where === 'above' ? r : r + 1;
-      onRows({ kind: 'insert', at: pos, count, select: where === 'above' ? r : r + 1 });
+      const pos = where === 'above' ? first : first + n;
+      onRows({ kind: 'insert', at: pos, count, select: pos });
     };
     const lockedTop = typeof fixedHeader === 'function' ? fixedHeader(r) : !!fixedHeader && r === 0;
     const items: MenuEntry[] = [
@@ -468,20 +528,25 @@ export function SheetGrid({
       { label: 'Insert rows below…', icon: <Rows3 />, onSelect: () => void insert('below', true) },
       'separator',
       {
-        label: `Delete row ${r + 1}`,
+        label: n > 1 ? `Delete rows ${first + 1}–${first + n}` : `Delete row ${r + 1}`,
         icon: <Trash2 />,
         danger: true,
-        disabled: lockedTop || r >= dataRows,
+        disabled: lockedTop || first >= dataRows,
         onSelect: () =>
           onRows({
             kind: 'delete',
-            at: r,
-            count: 1,
-            select: Math.max(0, Math.min(r, dataRows - 2)),
+            at: first,
+            count: Math.min(n, dataRows - first),
+            select: Math.max(0, Math.min(first, dataRows - n - 1)),
           }),
       },
     ];
-    openMenu({ items, at, label: `Row ${r + 1}`, returnFocus: scroller.current });
+    openMenu({
+      items,
+      at,
+      label: n > 1 ? `Rows ${first + 1}–${first + n}` : `Row ${r + 1}`,
+      returnFocus: scroller.current,
+    });
   };
 
   const totalW = lefts[cols]!;
@@ -530,15 +595,19 @@ export function SheetGrid({
     >
       <div
         role="rowheader"
-        className={`sheet-rownum sticky left-0 z-10 ${r >= sr1 && r <= sr2 ? 'is-active' : ''} ${onRows && !readOnly ? 'is-actionable' : ''}`}
+        className={`sheet-rownum sticky left-0 z-10 is-actionable ${r >= sr1 && r <= sr2 ? 'is-active' : ''}`}
         style={{ width: NUM_W, height: rowH(r) }}
-        title={onRows && !readOnly ? 'Click for row options' : undefined}
-        aria-haspopup={onRows && !readOnly ? 'menu' : undefined}
+        title={
+          onRows && !readOnly ? 'Click to select the row. Right-click for more.' : 'Select row'
+        }
+        aria-selected={selection.scope === 'rows' && r >= sr1 && r <= sr2}
+        data-row-header={r + 1}
         onMouseDown={(e) => {
-          if (!onRows || readOnly) return;
+          if (e.button !== 0) return;
           e.preventDefault();
           if (editing) commit(editing.value);
-          openRowMenu(r, e.currentTarget.getBoundingClientRect());
+          selectRow(r, e.shiftKey);
+          scroller.current?.focus({ preventScroll: true });
         }}
         onContextMenu={(e) => {
           if (!onRows || readOnly) return;
@@ -558,6 +627,7 @@ export function SheetGrid({
             ? parseEmphasis(shown)
             : null;
         const numeric = typeof v?.v === 'number';
+        const st = styleAt?.(r, c);
         return (
           <div
             key={c}
@@ -566,10 +636,13 @@ export function SheetGrid({
             aria-colindex={c + 1}
             data-cell={addr(r, c)}
             title={cellTitle(v) ?? (!wrap && shown.length > 20 ? shown : undefined)}
-            className={`sheet-cell ${wrap ? 'is-wrapped' : ''} ${isActive ? 'is-active' : ''} ${inRange ? 'is-in-range' : ''} ${c < frozenCols ? 'is-frozen' : ''} ${c === frozenCols - 1 ? 'is-frozen-edge' : ''} ${r === frozenRows - 1 ? 'is-frozen-bottom' : ''} ${numeric || alignAt(r, c) === 'right' ? 'text-right' : alignAt(r, c) === 'center' ? 'text-center' : ''} ${v && isError(v.v) ? 'text-danger' : ''} ${v?.stale ? 'is-stale' : ''}`}
+            className={`sheet-cell ${wrap ? 'is-wrapped' : ''} ${isActive ? 'is-active' : ''} ${inRange ? 'is-in-range' : ''} ${c < frozenCols ? 'is-frozen' : ''} ${c === frozenCols - 1 ? 'is-frozen-edge' : ''} ${r === frozenRows - 1 ? 'is-frozen-bottom' : ''} ${numeric || alignAt(r, c) === 'right' ? 'text-right' : alignAt(r, c) === 'center' ? 'text-center' : ''} ${v && isError(v.v) ? 'text-danger' : ''} ${v?.stale ? 'is-stale' : ''} ${st?.bg ? 'is-filled' : ''}`}
             style={{
               width: w,
               height: rowH(r),
+              ...(st?.bg || st?.fg
+                ? { background: st.bg, color: st.fg ?? (st.bg ? contrastText(st.bg) : undefined) }
+                : null),
               ...(c < frozenCols ? { position: 'sticky', left: lefts[c]!, zIndex: 5 } : null),
             }}
             onMouseDown={(e) => {
@@ -717,12 +790,7 @@ export function SheetGrid({
                 onMouseDown={(e) => {
                   e.preventDefault();
                   if (editing) commit(editing.value);
-                  const bottom = Math.max(0, dataRows - 1);
-                  onSelect(
-                    e.shiftKey
-                      ? { r: 0, c: selection.c, to: { r: bottom, c } }
-                      : { r: 0, c, to: bottom > 0 ? { r: bottom, c } : undefined },
-                  );
+                  selectCol(c, e.shiftKey);
                   scroller.current?.focus({ preventScroll: true });
                 }}
               >

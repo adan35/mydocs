@@ -34,6 +34,7 @@ import { serializeTable } from '@/domain/table';
 import { sheetToTable } from '@/lib/convert/delimited';
 import { colName, textValue, type Sheet, type Workbook } from '@/lib/convert/workbook';
 import { ws } from './app-store';
+import { savedFormats } from './sheet-formats';
 import { editorActions } from './editor-store';
 import { ATTACHMENTS_FOLDER } from './attachments';
 import { documentHtml, downloadBlob } from './exporter';
@@ -222,6 +223,11 @@ export async function runConversion(
       const wb = markdownTablesWorkbook(md, report);
       if (!wb.sheets.length)
         throw new Error('This document has no tables to put in a spreadsheet.');
+      // Colors painted in the sheet view come along.
+      const saved = await savedFormats(id);
+      wb.sheets.forEach((sh, i) => {
+        if (saved[String(i)]) sh.format = saved[String(i)];
+      });
       const out = await convert('writeXlsx', { workbook: wb, title: base });
       return result(
         blobOf(out.data, 'xlsx'),
@@ -309,6 +315,8 @@ export async function runConversion(
     } else {
       const text = await currentText(id);
       const { sheet, report: r } = delimitedToSheet(text, detectDialect(text, from), base);
+      const color = (await savedFormats(id))['0'];
+      if (color) sheet.format = color;
       wb = { sheets: [sheet] };
       sourceReport = r.toJSON();
     }

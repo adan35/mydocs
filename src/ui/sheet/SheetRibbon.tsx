@@ -24,9 +24,26 @@ import {
   PanelTop,
   PanelLeft,
   Sparkles,
+  PaintBucket,
+  Baseline,
 } from 'lucide-react';
 import { formatShortcut } from '../hooks';
 import { RowHeightButton } from '../row-height';
+import { ColorButton, type ColorScope } from './ColorPicker';
+
+export type PaintScope = 'cells' | 'rows' | 'cols';
+
+/** Fill and text color controls: what they paint, and where the choice is remembered. */
+export interface SheetColors {
+  /** The colors last applied, shown under the icons. */
+  last: { bg?: string | null; fg?: string | null };
+  onPick(prop: 'bg' | 'fg', color: string | null): void;
+  scopes: ColorScope<PaintScope>[];
+  scope: PaintScope;
+  onScope(scope: PaintScope): void;
+  /** Fine print for formats that keep colors outside the file. */
+  note?: string;
+}
 
 export interface SheetAction {
   id: string;
@@ -189,6 +206,7 @@ export function SheetRibbon({
   groups: wanted = DEFAULT_GROUPS,
   readOnly,
   onAsk,
+  colors,
   children,
 }: {
   run(cmd: SheetCommand): void;
@@ -200,6 +218,8 @@ export function SheetRibbon({
   readOnly?: boolean;
   /** Shows "Ask AON" and runs this when it is pressed. */
   onAsk?(): void;
+  /** Fill and text color buttons. */
+  colors?: SheetColors;
   /** Extra controls at the start (table picker, sheet info). */
   children?: ReactNode;
 }) {
@@ -246,6 +266,35 @@ export function SheetRibbon({
           })}
         </div>
       ))}
+      {colors && !readOnly && (
+        <div role="group" aria-label="Colors" className="flex shrink-0 items-center gap-0.5">
+          <span className="mx-1 h-5 w-px bg-hairline" aria-hidden />
+          <ColorButton
+            testId="fill-color"
+            label="Fill color"
+            noneLabel="No fill"
+            icon={<PaintBucket />}
+            last={colors.last.bg}
+            scopes={colors.scopes}
+            scope={colors.scope}
+            onScope={colors.onScope}
+            note={colors.note}
+            onPick={(c) => colors.onPick('bg', c)}
+          />
+          <ColorButton
+            testId="text-color"
+            label="Text color"
+            noneLabel="Default text color"
+            icon={<Baseline />}
+            last={colors.last.fg}
+            scopes={colors.scopes}
+            scope={colors.scope}
+            onScope={colors.onScope}
+            note={colors.note}
+            onPick={(c) => colors.onPick('fg', c)}
+          />
+        </div>
+      )}
       <span className="flex-1" />
       {onAsk && (
         <button

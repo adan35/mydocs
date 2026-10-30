@@ -22,6 +22,7 @@ import {
 import { convert } from '@/lib/convert/client';
 import { Dialog } from '../components/Dialog';
 import { SheetGrid } from '../sheet/SheetGrid';
+import { resolveStyle } from '@/lib/convert/sheet-format';
 import { StaticMarkdown } from './StaticMarkdown';
 import { ReportList } from './ReportList';
 import { PdfPreview } from './PdfPreview';
@@ -284,17 +285,22 @@ export function ConvertDialog({
                         </div>
                       )}
                       <div className="min-h-0 flex-1">
-                        <SheetGrid
-                          sheet={
+                        {(() => {
+                          const shown =
                             result.preview.workbook.sheets[previewSheet] ??
-                            result.preview.workbook.sheets[0]!
-                          }
-                          readOnly
-                          headerRow={from !== 'unl'}
-                          label="Preview"
-                          selection={{ r: 0, c: 0 }}
-                          onSelect={() => undefined}
-                        />
+                            result.preview.workbook.sheets[0]!;
+                          return (
+                            <SheetGrid
+                              sheet={shown}
+                              styleAt={(r, c) => resolveStyle(shown.format, r, c)}
+                              readOnly
+                              headerRow={from !== 'unl'}
+                              label="Preview"
+                              selection={{ r: 0, c: 0 }}
+                              onSelect={() => undefined}
+                            />
+                          );
+                        })()}
                       </div>
                     </div>
                   )}

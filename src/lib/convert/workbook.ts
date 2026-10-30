@@ -6,6 +6,8 @@
  * text. Nothing here guesses: a value only becomes a number when it is written as one.
  */
 
+import type { SheetFormat } from './sheet-format';
+
 export type ErrorValue = { error: string };
 export type CellValue = number | string | boolean | ErrorValue | null;
 
@@ -25,6 +27,10 @@ export interface Sheet {
   rows: (Cell | undefined)[][];
   /** Column widths in characters, when the source had them. */
   widths?: number[];
+  /** Fill and text colors (see `sheet-format.ts`). */
+  format?: SheetFormat;
+  /** Color of the sheet's tab, `#rrggbb`. */
+  tabColor?: string;
 }
 
 export interface Workbook {

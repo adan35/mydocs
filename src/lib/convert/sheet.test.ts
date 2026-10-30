@@ -308,3 +308,87 @@ describe('unl files', () => {
     expect(parseDelimited('a,"b,c",d\n', d.delimiter, d).rows).toEqual([['a', 'b,c', 'd']]);
   });
 });
+
+describe('cell colors in xlsx', () => {
+  const painted = (): Workbook => {
+    const sheet: Sheet = {
+      name: 'Plan',
+      rows: [
+        [parseInput('Item'), parseInput('Cost')],
+        [parseInput('Rent'), parseInput('1200')],
+      ],
+      tabColor: '#ff9900',
+      format: {
+        cells: { '1,1': { bg: '#ffff00', fg: '#0000ff' }, '5,0': { bg: '#d9ead3' } },
+        rows: { '0': { bg: '#073763', fg: '#ffffff' } },
+        cols: { '3': { bg: '#f4cccc' } },
+      },
+    };
+    return { sheets: [sheet, { name: 'Other', rows: [[parseInput('x')]] }] };
+  };
+
+  it('round-trips fills, text colors, painted rows and columns, and tab colors', () => {
+    const { data } = workbookToXlsx(painted());
+    const { workbook: back } = xlsxToWorkbook(data);
+    const s = back.sheets[0]!;
+    expect(s.tabColor).toBe('#ff9900');
+    expect(s.format?.cells?.['1,1']).toEqual({ bg: '#ffff00', fg: '#0000ff' });
+    // A styled cell with no value keeps its color.
+    expect(s.format?.cells?.['5,0']).toEqual({ bg: '#d9ead3' });
+    expect(s.format?.rows?.['0']).toEqual({ bg: '#073763', fg: '#ffffff' });
+    expect(s.format?.cols?.['3']).toEqual({ bg: '#f4cccc' });
+    expect(cell(back, 0, 'B2')!.v).toBe(1200);
+    expect(back.sheets[1]!.format).toBeUndefined();
+    expect(back.sheets[1]!.tabColor).toBeUndefined();
+  });
+
+  it('shows no color where a cell says so over a painted row', () => {
+    const wb: Workbook = {
+      sheets: [
+        {
+          name: 'S',
+          rows: [[parseInput('a'), parseInput('b')]],
+          format: { rows: { '0': { bg: '#ff0000' } }, cells: { '0,1': { bg: '' } } },
+        },
+      ],
+    };
+    const { workbook: back } = xlsxToWorkbook(workbookToXlsx(wb).data);
+    expect(back.sheets[0]!.format).toEqual(wb.sheets[0]!.format);
+  });
+
+  it('reads the sample workbook without inventing colors', () => {
+    const { workbook } = xlsxToWorkbook(fixture('sales-libreoffice.xlsx'));
+    for (const s of workbook.sheets)
+      for (const c of Object.values(s.format?.cells ?? {})) expect(c.fg).not.toBe('#000000');
+  });
+});
+
+describe('theme colors in xlsx', () => {
+  it('applies a theme tint like Excel (accent 1 lightened 40%)', async () => {
+    const { writePackage } = await import('./package');
+    const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+    const parts: Record<string, string> = {
+      '[Content_Types].xml':
+        '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/></Types>',
+      'xl/workbook.xml': `<workbook xmlns="${NS}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="S" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+      'xl/_rels/workbook.xml.rels':
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="x/worksheet" Target="worksheets/sheet1.xml"/></Relationships>',
+      'xl/theme/theme1.xml':
+        '<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:themeElements><a:clrScheme name="x"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="44546A"/></a:dk2><a:lt2><a:srgbClr val="E7E6E6"/></a:lt2><a:accent1><a:srgbClr val="4472C4"/></a:accent1></a:clrScheme></a:themeElements></a:theme>',
+      'xl/styles.xml': `<styleSheet xmlns="${NS}"><fonts count="2"><font><color theme="1"/></font><font><color theme="0"/></font></fonts><fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor theme="4" tint="0.39997558519241921"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFFF00"/></patternFill></fill></fills><cellXfs count="3"><xf fillId="0" fontId="0"/><xf fillId="2" fontId="1"/><xf fillId="3" fontId="0"/></cellXfs></styleSheet>`,
+      'xl/worksheets/sheet1.xml': `<worksheet xmlns="${NS}"><sheetData><row r="1"><c r="A1" s="1"><v>1</v></c><c r="B1" s="2"/></row></sheetData></worksheet>`,
+    };
+    // The fill element above is deliberately unclosed-safe: fix the markup for the strict parser.
+    parts['xl/styles.xml'] = parts['xl/styles.xml']!.replace(
+      '<fgColor theme="4" tint="0.39997558519241921"/></fill>',
+      '<fgColor theme="4" tint="0.39997558519241921"/></patternFill></fill>',
+    );
+    const { workbook } = xlsxToWorkbook(writePackage(parts));
+    const f = workbook.sheets[0]!.format!;
+    // Excel shows accent 1 + 40% lighter as #8faadc.
+    expect(f.cells!['0,0']!.bg).toBe('#8faadc');
+    // White text (theme 0) is kept; the default black text is not.
+    expect(f.cells!['0,0']!.fg).toBe('#ffffff');
+    expect(f.cells!['0,1']).toEqual({ bg: '#ffff00' });
+  });
+});

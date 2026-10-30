@@ -384,18 +384,18 @@ test('PDFs that need character maps and PDFs with hundreds of pages open', async
   await expect(page.getByTestId('pdf-toolbar')).toContainText('1 of');
 });
 
-test('clicking a row number inserts one or several rows above or below', async ({ page }) => {
+test('right-clicking a row number inserts one or several rows above or below', async ({ page }) => {
   await freshApp(page);
   await importFile(page, 'inventory.csv', 'text/csv');
   const grid = page.getByTestId('sheet-grid');
   await expect(grid.locator('[data-cell="A3"]')).toHaveText('Cup, large');
   // One row above row 3.
-  await grid.getByRole('rowheader', { name: '3', exact: true }).click();
+  await grid.getByRole('rowheader', { name: '3', exact: true }).click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Insert row above' }).click();
   await expect(grid.locator('[data-cell="A3"]')).toHaveText('');
   await expect(grid.locator('[data-cell="A4"]')).toHaveText('Cup, large');
   // Three rows below row 1.
-  await grid.getByRole('rowheader', { name: '1', exact: true }).click();
+  await grid.getByRole('rowheader', { name: '1', exact: true }).click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Insert rows below…' }).click();
   await page.getByRole('dialog').getByRole('textbox').fill('3');
   await page.getByRole('dialog').getByRole('button', { name: 'Insert' }).click();

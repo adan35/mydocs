@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Plus } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import type { Entry } from '@/domain/types';
 import { baseName } from '@/domain/names';
 import { ws } from '@/app/app-store';
@@ -8,15 +8,20 @@ import { dialogs } from '@/app/dialog-store';
 import { convert } from '@/lib/convert/client';
 import type { ReportData } from '@/lib/convert/doc-ast';
 import { recalculate } from '@/lib/convert/formula';
-import { cleanSheetName } from '@/lib/convert/xlsx';
 import {
+  addSheet,
   cloneWorkbook,
   deleteCols,
   deleteRows,
+  deleteSheet,
+  duplicateSheet,
   insertCols,
   insertRows,
+  moveSheet,
+  renameSheet,
   sortRows,
 } from '@/lib/convert/sheet-ops';
+import { applyColor, resolveStyle, targetFor } from '@/lib/convert/sheet-format';
 import {
   editValue,
   parseInput,
@@ -25,7 +30,9 @@ import {
   type Workbook,
 } from '@/lib/convert/workbook';
 import { SheetGrid, selectionRange, type Selection } from './SheetGrid';
-import { SheetRibbon, type SheetCommand } from './SheetRibbon';
+import { SheetRibbon, type PaintScope, type SheetCommand } from './SheetRibbon';
+import { SheetTabs } from './SheetTabs';
+import { PAINT_SCOPES, usePaintScope } from './paint';
 import { publishOutline } from '@/app/outline-store';
 import { aonCanSee } from '@/app/aon/tools';
 import type { SheetContext, SheetEdit } from '@/app/aon/sheet';
@@ -51,6 +58,8 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
   const [editable, setEditable] = useState(false);
   const [save, setSave] = useState<SaveState>('saved');
   const [asking, setAsking] = useState(false);
+  const [lastColors, setLastColors] = useState<{ bg?: string | null; fg?: string | null }>({});
+  const [paintScope, setPaintScope] = usePaintScope(selection);
   const undo = useRef<Workbook[]>([]);
   const redo = useRef<Workbook[]>([]);
   const timer = useRef(0);
@@ -138,6 +147,9 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
   }, [wb, sheetIndex, entry.id]);
   useEffect(() => () => publishOutline(entry.id, null), [entry.id]);
 
+  // The sheet on screen. A version restore or undo can leave fewer sheets than the index says.
+  const si = wb ? Math.max(0, Math.min(sheetIndex, wb.sheets.length - 1)) : 0;
+
   const commit = (next: Workbook) => {
     if (!wb) return;
     undo.current.push(wb);
@@ -177,24 +189,24 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
     edit((book) => {
       switch (cmd) {
         case 'row-above':
-          return insertRows(book, sheetIndex, r);
+          return insertRows(book, si, r);
         case 'row-below':
-          insertRows(book, sheetIndex, r + 1);
+          insertRows(book, si, r + 1);
           setSelection({ r: r + 1, c });
           return;
         case 'delete-row':
-          return deleteRows(book, sheetIndex, r);
+          return deleteRows(book, si, r);
         case 'col-left':
-          return insertCols(book, sheetIndex, c);
+          return insertCols(book, si, c);
         case 'col-right':
-          insertCols(book, sheetIndex, c + 1);
+          insertCols(book, si, c + 1);
           setSelection({ r, c: c + 1 });
           return;
         case 'delete-col':
-          return deleteCols(book, sheetIndex, c);
+          return deleteCols(book, si, c);
         case 'sort-asc':
         case 'sort-desc': {
-          const { ok } = sortRows(book.sheets[sheetIndex]!, c, cmd === 'sort-asc' ? 'asc' : 'desc');
+          const { ok } = sortRows(book.sheets[si]!, c, cmd === 'sort-asc' ? 'asc' : 'desc');
           if (!ok) {
             toast({
               message:
@@ -205,6 +217,29 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
         }
       }
     });
+  };
+
+  const switchTo = (i: number) => {
+    setSheetIndex(i);
+    setSelection({ r: 0, c: 0 });
+  };
+
+  /** Paints the selection (cells, whole rows or whole columns), or clears it with null. */
+  const paint = (prop: 'bg' | 'fg', color: string | null) => {
+    const target = targetFor(selectionRange(selection), paintScope);
+    try {
+      edit((book) => {
+        const s = book.sheets[si]!;
+        s.format = applyColor(s.format, target, prop, color);
+      });
+      setLastColors((l) => ({ ...l, [prop]: color }));
+    } catch (e) {
+      if (!(e instanceof RangeError)) throw e;
+      toast({
+        message:
+          'That selection is too large to color cell by cell. Color whole rows or columns instead.',
+      });
+    }
   };
 
   if (error)
@@ -218,7 +253,7 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
   if (!wb)
     return <div className="skeleton m-6 h-60" aria-busy="true" aria-label="Loading workbook" />;
 
-  const sheet = wb.sheets[Math.min(sheetIndex, wb.sheets.length - 1)]!;
+  const sheet = wb.sheets[si]!;
   const warnings = report?.notes.filter((n) => n.severity === 'warning') ?? [];
   const stale = report?.notes.find((n) => /can't calculate/.test(n.message));
   const aonContext = (): SheetContext => {
@@ -234,7 +269,7 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
   };
   const applyAon = (edits: SheetEdit[]) => {
     edit((book) => {
-      const s = book.sheets[sheetIndex]!;
+      const s = book.sheets[si]!;
       for (const e of edits) setCellRaw(s, e.r, e.c, parseInput(e.value, s.rows[e.r]?.[e.c]));
     });
     toast({
@@ -290,6 +325,13 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
         run={run}
         readOnly={!editable}
         onAsk={() => setAsking(true)}
+        colors={{
+          last: lastColors,
+          onPick: paint,
+          scopes: PAINT_SCOPES,
+          scope: paintScope as PaintScope,
+          onScope: setPaintScope,
+        }}
         disabled={{ undo: !undo.current.length, redo: !redo.current.length }}
       >
         <span
@@ -318,37 +360,32 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
         <SheetGrid
           sheet={sheet}
           label={`${sheet.name} cells`}
+          styleAt={(r, c) => resolveStyle(sheet.format, r, c)}
           readOnly={!editable}
           selection={selection}
           onSelect={setSelection}
           onEdit={(r, c, input) =>
             edit((book) =>
-              setCellRaw(
-                book.sheets[sheetIndex]!,
-                r,
-                c,
-                parseInput(input, book.sheets[sheetIndex]!.rows[r]?.[c]),
-              ),
+              setCellRaw(book.sheets[si]!, r, c, parseInput(input, book.sheets[si]!.rows[r]?.[c])),
             )
           }
           onRows={(a) => {
             edit((book) => {
-              if (a.kind === 'insert') insertRows(book, sheetIndex, a.at, a.count);
-              else deleteRows(book, sheetIndex, a.at, a.count);
+              if (a.kind === 'insert') insertRows(book, si, a.at, a.count);
+              else deleteRows(book, si, a.at, a.count);
             });
             if (a.select !== undefined) setSelection({ r: a.select, c: selection.c });
           }}
-          onClear={(r, c) => edit((book) => setCellRaw(book.sheets[sheetIndex]!, r, c, undefined))}
+          onClear={(r, c) => edit((book) => setCellRaw(book.sheets[si]!, r, c, undefined))}
           onClearRange={([r1, c1, r2, c2]) =>
             edit((book) => {
               for (let r = r1; r <= r2; r++)
-                for (let c = c1; c <= c2; c++)
-                  setCellRaw(book.sheets[sheetIndex]!, r, c, undefined);
+                for (let c = c1; c <= c2; c++) setCellRaw(book.sheets[si]!, r, c, undefined);
             })
           }
           onPaste={(r, c, block) =>
             edit((book) => {
-              const s = book.sheets[sheetIndex]!;
+              const s = book.sheets[si]!;
               block.forEach((line, i) =>
                 line.forEach((v, j) => setCellRaw(s, r + i, c + j, parseInput(v))),
               );
@@ -356,72 +393,62 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
           }
         />
       </div>
-      <div
-        className="sheet-tabs flex shrink-0 items-center gap-1 overflow-x-auto border-t border-hairline bg-surface-soft px-2 py-1"
-        role="tablist"
-        aria-label="Sheets"
-      >
-        {wb.sheets.map((s, i) => (
-          <button
-            key={i}
-            type="button"
-            role="tab"
-            aria-selected={i === sheetIndex}
-            className="shrink-0 rounded-md border border-transparent px-3 py-1 text-caption text-steel hover:bg-hover"
-            onClick={() => {
-              setSheetIndex(i);
-              setSelection({ r: 0, c: 0 });
-            }}
-            onDoubleClick={async () => {
-              if (!editable) return;
-              const name = await dialogs.prompt({
-                title: 'Rename sheet',
-                label: 'Sheet name',
-                initial: s.name,
-              });
-              if (!name || name === s.name) return;
-              edit((book) => {
-                const taken = new Set(
-                  book.sheets.filter((_, k) => k !== i).map((x) => x.name.toLowerCase()),
-                );
-                const clean = cleanSheetName(name, taken);
-                const old = book.sheets[i]!.name;
-                book.sheets[i]!.name = clean;
-                // Formulas that name the sheet follow the rename.
-                const quote = (n: string) =>
-                  /^[A-Za-z_][\w.]*$/.test(n) ? n : `'${n.replace(/'/g, "''")}'`;
-                for (const sh of book.sheets)
-                  for (const row of sh.rows)
-                    for (const cell of row ?? [])
-                      if (cell?.f) cell.f = cell.f.split(`${quote(old)}!`).join(`${quote(clean)}!`);
-              });
-            }}
-            title={editable ? 'Double-click to rename' : undefined}
-          >
-            {s.name}
-          </button>
-        ))}
-        {editable && (
-          <button
-            type="button"
-            className="icon-btn size-7"
-            aria-label="Add sheet"
-            title="Add sheet"
-            onClick={() =>
-              edit((book) => {
-                const taken = new Set(book.sheets.map((x) => x.name.toLowerCase()));
-                book.sheets.push({
-                  name: cleanSheetName(`Sheet${book.sheets.length + 1}`, taken),
-                  rows: [],
-                });
-                setSheetIndex(book.sheets.length - 1);
-              })
-            }
-          >
-            <Plus size={14} />
-          </button>
-        )}
-      </div>
+      <SheetTabs
+        sheets={wb.sheets.map((x) => ({ name: x.name, color: x.tabColor }))}
+        active={si}
+        editable={editable}
+        onSelect={switchTo}
+        onAdd={() =>
+          edit((book) => {
+            setSheetIndex(addSheet(book, si));
+            setSelection({ r: 0, c: 0 });
+          })
+        }
+        onRename={(i, name) => edit((book) => void renameSheet(book, i, name))}
+        onDuplicate={(i) =>
+          edit((book) => {
+            setSheetIndex(duplicateSheet(book, i));
+            setSelection({ r: 0, c: 0 });
+          })
+        }
+        onDelete={async (i) => {
+          const name = wb.sheets[i]!.name;
+          const ok = await dialogs.confirm({
+            title: `Delete “${name}”?`,
+            message:
+              'The sheet and everything on it are removed. Formulas on other sheets that use it will show #REF!. You can undo this with Ctrl+Z.',
+            confirmLabel: 'Delete sheet',
+            danger: true,
+          });
+          if (!ok) return;
+          edit((book) => {
+            if (!deleteSheet(book, i)) return false;
+            setSheetIndex(Math.max(0, Math.min(i, book.sheets.length - 1)));
+            setSelection({ r: 0, c: 0 });
+          });
+        }}
+        onMove={(from, to) =>
+          edit((book) => {
+            if (!moveSheet(book, from, to)) return false;
+            // The sheet on screen stays on screen, wherever it moved to.
+            setSheetIndex(
+              si === from
+                ? to
+                : si > from && si <= to
+                  ? si - 1
+                  : si < from && si >= to
+                    ? si + 1
+                    : si,
+            );
+          })
+        }
+        onColor={(i, color) =>
+          edit((book) => {
+            if (color) book.sheets[i]!.tabColor = color;
+            else delete book.sheets[i]!.tabColor;
+          })
+        }
+      />
       {asking && (
         <Suspense fallback={null}>
           <SheetAskDialog
