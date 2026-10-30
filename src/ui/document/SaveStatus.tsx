@@ -13,6 +13,7 @@ import { openMenuAt } from '../components/Menu';
 import { useEditor } from '@/app/editor-store';
 import { editorActions } from '@/app/editor-store';
 import { diskLinks, useDiskLinks } from '@/app/disk-links';
+import { diskRemoved } from '@/app/disk-removed';
 import { ws } from '@/app/app-store';
 import type { EntryId } from '@/domain/types';
 import { useOnline } from '../hooks';
@@ -125,6 +126,20 @@ export function DiskStatus({ id }: { id: EntryId }) {
         }
       >
         <AlertTriangle size={13} aria-hidden /> Changed on disk
+      </button>
+    );
+  }
+  if (link.state === 'missing') {
+    return (
+      <button
+        type="button"
+        className="status-pill"
+        data-tone="danger"
+        title={`"${link.fileName}" was deleted from your computer. Your document is still saved in My Doc. Click to choose whether to delete it here too.`}
+        data-testid="disk-missing"
+        onClick={() => void diskRemoved.ask([id])}
+      >
+        <AlertCircle size={13} aria-hidden /> Deleted from disk
       </button>
     );
   }

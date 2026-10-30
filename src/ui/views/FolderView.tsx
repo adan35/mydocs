@@ -23,6 +23,7 @@ import * as A from '@/app/actions';
 import { itemsFromDataTransfer } from '@/app/importer';
 import { Page, EmptyState } from '../components/Page';
 import { EntryList } from '../components/EntryList';
+import { FolderSyncStatus } from '../components/FolderSyncStatus';
 import { openMenuAt, type MenuEntry } from '../components/Menu';
 import { entryMenu, importSubmenu } from '../entry-menu';
 import { useLayout, useTree } from '../hooks';
@@ -248,6 +249,7 @@ export function FolderView({ id }: { id: EntryId | null }) {
             <option value="images">Images</option>
             <option value="other">Other files</option>
           </select>
+          {id && <FolderSyncStatus id={id} />}
           <span className="flex-1" />
           <button
             type="button"

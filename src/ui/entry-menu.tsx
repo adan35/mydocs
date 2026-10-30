@@ -143,7 +143,7 @@ export function copyPathSubmenu(e: Entry): MenuEntry[] {
 }
 
 /** Keeping a folder in step with the folder on disk it was imported from. */
-function folderSyncItems(id: string): MenuEntry[] {
+export function folderSyncItems(id: string): MenuEntry[] {
   const link = useFolderLinks.getState().links[id];
   if (!link) {
     return canWatchFolders()
@@ -163,8 +163,14 @@ function folderSyncItems(id: string): MenuEntry[] {
       onSelect: () => void A.syncFolder(id),
     },
     {
+      label: 'Sync folder in real time',
+      checked: folderSync.isLive(id),
+      onSelect: () => void folderSync.setLive(id, !folderSync.isLive(id)),
+    },
+    {
       label: 'Watch folder for new files',
-      checked: link.watch,
+      checked: link.watch || folderSync.isLive(id),
+      disabled: folderSync.isLive(id),
       onSelect: () => void folderSync.setWatch(id, !link.watch),
     },
     { label: 'Stop syncing with disk', onSelect: () => void folderSync.unlink(id) },

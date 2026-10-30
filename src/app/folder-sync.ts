@@ -3,7 +3,8 @@ import { create } from 'zustand';
 import type { EntryId } from '@/domain/types';
 import { sanitizeName } from '@/domain/names';
 import { useApp } from './app-store';
-import { diskLinks } from './disk-links';
+import { confirmGone, diskLinks, isGone } from './disk-links';
+import { useSettings } from './settings-store';
 import {
   IGNORED_SEGMENTS,
   UNREADABLE_REASON,
@@ -17,20 +18,32 @@ import { toast, toastError } from './toast-store';
  * Links between workspace folders and the folders on the user's computer they were
  * imported from (File System Access API: Chrome, Edge, the Windows desktop app). A linked
  * folder is rescanned when the window regains focus and every minute while it is open;
- * files that appeared on disk since are imported into the folder. Nothing is ever
- * deleted: files removed on disk, or deleted or moved in My Doc, stay as they are.
+ * files that appeared on disk since are imported into the folder. Files removed on disk are
+ * never deleted silently: `disk-links` marks them missing and `disk-removed` asks.
  * Changes to files that are already imported are handled by `disk-links`.
+ *
+ * A folder with "Sync folder in real time" on (per folder, or the global default in
+ * Settings) is rescanned every few seconds instead, and as soon as the browser reports a
+ * change where `FileSystemObserver` exists. A scan that takes long is repeated less often.
  *
  * Elsewhere (no folder handles) there is no link; import the folder again to add files.
  */
 
-export type FolderLinkState = 'idle' | 'syncing' | 'needs-permission' | 'error';
+export type FolderLinkState =
+  | 'idle'
+  | 'syncing'
+  | 'needs-permission'
+  | 'error'
+  /** The folder was deleted (or moved away) on disk; the person decides what happens to it. */
+  | 'missing';
 
 export interface FolderLink {
   /** Folder name on disk. */
   name: string;
   /** Rescan automatically (on focus and every minute). "Sync now" always works. */
   watch: boolean;
+  /** Real-time sync chosen for this folder; undefined follows the global default. */
+  live?: boolean;
   state: FolderLinkState;
   error?: string;
   lastSync?: number;
@@ -55,6 +68,7 @@ interface DirHandle extends FileSystemDirectoryHandle {
 interface Record_ {
   handle: DirHandle;
   watch: boolean;
+  live?: boolean;
   /** Paths (relative to the folder) already looked at: a file deleted in My Doc isn't re-added. */
   seen: string[];
   lastSync?: number;
@@ -63,10 +77,23 @@ interface Record_ {
 const DB = 'mydoc-folder-links';
 const STORE = 'links';
 export const FOLDER_POLL_MS = 60_000;
+/** Rescan interval of a live folder, and while a change observer watches it. */
+export const LIVE_POLL_MS = 5_000;
+const OBSERVED_POLL_MS = 30_000;
 const FOCUS_MS = 10_000;
 
 const records = new Map<EntryId, Record_>();
 const running = new Set<EntryId>();
+/** How long the last scan of each folder took, to space out scans of big folders. */
+const cost = new Map<EntryId, number>();
+const tried = new Map<EntryId, number>();
+
+interface Observer {
+  observe(h: FileSystemDirectoryHandle, o?: { recursive?: boolean }): Promise<void>;
+  disconnect(): void;
+}
+const observers = new Map<EntryId, Observer>();
+const changed = new Map<EntryId, ReturnType<typeof setTimeout>>();
 let workspaceId: string | null = null;
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -151,6 +178,8 @@ async function sync(id: EntryId, ask: boolean): Promise<FolderSyncResult | null>
   if (!rec || !ws || running.has(id)) return null;
   if (!ws.get(id) || ws.tree.isTrashed(id)) return null;
   running.add(id);
+  const started = Date.now();
+  tried.set(id, started);
   patch(id, { state: 'syncing', error: undefined });
   try {
     if (!(await granted(rec.handle, ask))) {
@@ -195,14 +224,18 @@ async function sync(id: EntryId, ask: boolean): Promise<FolderSyncResult | null>
     rec.seen = listing.map((f) => f.path).filter((p) => !retry.has(p));
     rec.lastSync = Date.now();
     void persist(id);
+    cost.set(id, Date.now() - started);
     patch(id, { state: 'idle', lastSync: rec.lastSync });
+    void observe(id);
     return {
       added: result.files,
       updated,
       skipped: result.skipped.filter((s) => s.reason !== 'Already exists.').length,
     };
   } catch (err) {
-    patch(id, { state: 'error', error: describe(err) });
+    if (isGone(err) && (await confirmGone(() => rec.handle.values().next())))
+      patch(id, { state: 'missing', error: describe(err) });
+    else patch(id, { state: 'error', error: describe(err) });
     return null;
   } finally {
     running.delete(id);
@@ -236,11 +269,26 @@ function report(id: EntryId, r: FolderSyncResult | null, quiet: boolean) {
 let timer: ReturnType<typeof setInterval> | null = null;
 let lastFocusSweep = 0;
 
-async function sweep() {
+/** Whether a folder mirrors the folder on disk in real time. */
+export function isLive(id: EntryId): boolean {
+  const rec = records.get(id);
+  return !!rec && (rec.live ?? useSettings.getState().liveFolderSync);
+}
+
+/** Folders due for a scan: all of them (focus, start), or those whose interval has passed. */
+async function sweep(all = true) {
   if (typeof document !== 'undefined' && document.hidden) return;
   for (const [id, rec] of records) {
-    if (!rec.watch) continue;
-    // Quiet: only a folder that gained files says anything.
+    const live = isLive(id);
+    if (!rec.watch && !live) continue;
+    // A folder deleted on disk isn't scanned again while the person decides ("Sync now" works).
+    if (useFolderLinks.getState().links[id]?.state === 'missing') continue;
+    if (!all) {
+      const every = live ? (observers.has(id) ? OBSERVED_POLL_MS : LIVE_POLL_MS) : FOLDER_POLL_MS;
+      if (Date.now() - (tried.get(id) ?? 0) < Math.max(every, (cost.get(id) ?? 0) * 10) - 500)
+        continue;
+    }
+    // Quiet: only a folder that changed says anything.
     report(id, await sync(id, false), true);
   }
 }
@@ -251,10 +299,47 @@ function onFocus() {
   void sweep();
 }
 
+/** Rescans soon after the browser reports a change in a live folder (where it can). */
+async function observe(id: EntryId) {
+  const Observer = (globalThis as { FileSystemObserver?: new (cb: () => void) => Observer })
+    .FileSystemObserver;
+  const rec = records.get(id);
+  if (!rec) return;
+  if (!Observer || !isLive(id)) {
+    stopObserving(id);
+    return;
+  }
+  if (observers.has(id)) return;
+  try {
+    const o = new Observer(() => {
+      clearTimeout(changed.get(id));
+      changed.set(
+        id,
+        setTimeout(() => {
+          changed.delete(id);
+          void sync(id, false).then((r) => report(id, r, true));
+        }, 400),
+      );
+    });
+    await o.observe(rec.handle, { recursive: true });
+    observers.set(id, o);
+  } catch {
+    // Not supported for this folder: the polling covers it.
+  }
+}
+
+function stopObserving(id: EntryId) {
+  observers.get(id)?.disconnect();
+  observers.delete(id);
+  clearTimeout(changed.get(id));
+  changed.delete(id);
+}
+
 export const folderSync = {
   /** Loads the folder links of a workspace (called when a workspace opens). */
   async load(wsId: string, liveIds: (id: EntryId) => boolean): Promise<void> {
     workspaceId = wsId;
+    for (const id of [...observers.keys()]) stopObserving(id);
     records.clear();
     useFolderLinks.setState({ links: {} });
     if (!canWatchFolders()) return;
@@ -271,6 +356,7 @@ export const folderSync = {
         links[id] = {
           name: rec.handle.name,
           watch: rec.watch,
+          live: rec.live,
           state: 'idle',
           lastSync: rec.lastSync,
         };
@@ -287,10 +373,21 @@ export const folderSync = {
   /** Rescans linked folders on focus and every minute. Returns a stop function. */
   watch(): () => void {
     if (!canWatchFolders() || timer) return () => {};
-    timer = setInterval(() => void sweep(), FOLDER_POLL_MS);
+    // Live folders are due every few seconds; the rest keep their own, longer interval.
+    timer = setInterval(() => void sweep(false), LIVE_POLL_MS);
     addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onFocus);
+    // Turning the global default on or off starts or stops watching the folders that follow it.
+    let was = useSettings.getState().liveFolderSync;
+    const unsub = useSettings.subscribe((st) => {
+      if (st.liveFolderSync === was) return;
+      was = st.liveFolderSync;
+      for (const id of records.keys()) void observe(id);
+      void sweep();
+    });
     return () => {
+      unsub();
+      for (const id of [...observers.keys()]) stopObserving(id);
       if (timer) clearInterval(timer);
       timer = null;
       removeEventListener('focus', onFocus);
@@ -327,6 +424,17 @@ export const folderSync = {
     await folderSync.syncNow(id);
   },
 
+  /** "Sync folder in real time" for one folder, overriding the global default. */
+  async setLive(id: EntryId, live: boolean): Promise<void> {
+    const rec = records.get(id);
+    if (!rec) return;
+    rec.live = live;
+    patch(id, { live });
+    await persist(id);
+    void observe(id);
+    if (live) report(id, await sync(id, false), true);
+  },
+
   async setWatch(id: EntryId, watch: boolean): Promise<void> {
     const rec = records.get(id);
     if (!rec) return;
@@ -335,7 +443,29 @@ export const folderSync = {
     await persist(id);
   },
 
+  /**
+   * Whether a linked folder still exists on disk; marks it missing if not. Used before
+   * trusting that a single missing file was deleted (and not its whole drive or folder).
+   */
+  async reachable(id: EntryId): Promise<boolean> {
+    const rec = records.get(id);
+    if (!rec) return true;
+    try {
+      await rec.handle.values().next();
+      return true;
+    } catch (err) {
+      if (isGone(err) && (await confirmGone(() => rec.handle.values().next()))) {
+        patch(id, { state: 'missing', error: describe(err) });
+        return false;
+      }
+      return true;
+    }
+  },
+
   async unlink(id: EntryId): Promise<void> {
+    stopObserving(id);
+    cost.delete(id);
+    tried.delete(id);
     if (!records.delete(id)) return;
     setLink(id, null);
     try {
@@ -346,4 +476,5 @@ export const folderSync = {
   },
 
   isLinked: (id: EntryId) => records.has(id),
+  isLive,
 };

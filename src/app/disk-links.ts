@@ -37,7 +37,9 @@ export type DiskLinkState =
   | 'needs-permission'
   | 'error'
   /** The file changed on disk while the document had edits that aren't on disk. */
-  | 'conflict';
+  | 'conflict'
+  /** The file was deleted (or moved away) on disk; the person decides what happens to the document. */
+  | 'missing';
 
 export interface DiskLink {
   /** File name on disk (it can differ from the document name after a rename). */
@@ -82,6 +84,8 @@ const STORE = 'links';
 export const POLL_MS = 2000;
 /** A full check of every link runs at most this often (on window focus). */
 const SWEEP_MS = 10_000;
+/** Wait before a "not found" counts as a deletion: editors save by deleting and renaming. */
+export const MISSING_RECHECK_MS = 300;
 const handles = new Map<EntryId, PermissionHandle>();
 const binaries = new Set<EntryId>();
 const stamps = new Map<EntryId, Stamp>();
@@ -156,6 +160,21 @@ async function permission(
   }
 }
 
+export function isGone(err: unknown): boolean {
+  return err instanceof DOMException && err.name === 'NotFoundError';
+}
+
+/** Whether `probe` still reports "not found" after a short wait (a real deletion). */
+export async function confirmGone(probe: () => Promise<unknown>): Promise<boolean> {
+  await new Promise((r) => setTimeout(r, MISSING_RECHECK_MS));
+  try {
+    await probe();
+    return false;
+  } catch (err) {
+    return isGone(err);
+  }
+}
+
 function describe(err: unknown): string {
   const name = err instanceof DOMException ? err.name : '';
   if (name === 'NotFoundError') return 'The original file was moved or deleted.';
@@ -186,8 +205,9 @@ async function writeNow(id: EntryId): Promise<void> {
   for (;;) {
     const text = pendingText.get(id);
     if (text === undefined) return;
-    // Never write over a change made on disk that the person hasn't seen yet.
-    if (stateOf(id) === 'conflict') return;
+    // Never write over a change made on disk that the person hasn't seen yet, and don't
+    // keep retrying a file that no longer exists.
+    if (stateOf(id) === 'conflict' || stateOf(id) === 'missing') return;
     // The file already holds this text (it was just read from disk, or nothing changed).
     if (stamps.get(id)?.hash === textHash(text)) {
       pendingText.delete(id);
@@ -214,6 +234,10 @@ async function writeNow(id: EntryId): Promise<void> {
     } catch (err) {
       // Keep the text so Retry writes the latest version.
       if (!pendingText.has(id)) pendingText.set(id, text);
+      if (isGone(err) && (await confirmGone(() => h.getFile()))) {
+        patch(id, { state: 'missing', error: describe(err) });
+        return;
+      }
       patch(id, { state: 'error', error: describe(err) });
       return;
     }
@@ -263,13 +287,9 @@ async function applyText(id: EntryId, text: string) {
   const ws = workspace();
   if (!ws?.get(id)) return;
   const b = useEditor.getState().buffers[id];
-  if (b && b.status !== 'loading' && b.text !== b.savedText) {
-    // Local edits are being dropped on purpose (conflict resolved for the disk side).
-    editorActions.replaceText(id, text);
-    await editorActions.flush(id);
-  } else {
-    await ws.replaceContent(id, text);
-  }
+  // Local edits are saved first, so the replaced text stays in the document's history.
+  if (b && b.status !== 'loading' && b.text !== b.savedText) await editorActions.flush(id);
+  await ws.replaceContent(id, text);
 }
 
 async function applyBlob(id: EntryId, blob: Blob): Promise<number | undefined> {
@@ -289,7 +309,8 @@ async function check(id: EntryId): Promise<boolean> {
   if (!h || !ws || !entry || checking.has(id) || writing.has(id)) return false;
   // The browser may have granted access since (a persistent permission): carry on quietly.
   if (stateOf(id) === 'needs-permission' && !(await recover(id))) return false;
-  if (pendingText.has(id)) return false;
+  // A missing file is still looked at (it may come back) even with a save waiting.
+  if (pendingText.has(id) && stateOf(id) !== 'missing') return false;
   const state = stateOf(id);
   if (state === 'needs-permission' || state === 'writing') return false;
   checking.add(id);
@@ -302,8 +323,16 @@ async function check(id: EntryId): Promise<boolean> {
     try {
       file = await h.getFile();
     } catch (err) {
-      patch(id, { state: 'error', error: describe(err) });
+      // Not found twice in a row is a deletion; a file that came back is read next round.
+      if (!isGone(err)) patch(id, { state: 'error', error: describe(err) });
+      else if (await confirmGone(() => h.getFile()))
+        patch(id, { state: 'missing', error: describe(err) });
       return false;
+    }
+    if (state === 'missing') {
+      // The file is back (restored, or an editor finished replacing it).
+      patch(id, { state: 'synced', error: undefined });
+      if (pendingText.has(id)) await schedule(id);
     }
     const known = stamps.get(id);
     if (known && known.lastModified === file.lastModified && known.size === file.size) {
@@ -551,6 +580,13 @@ export const diskLinks = {
     }
   },
 
+  /** Linked documents whose file was deleted on disk. */
+  missingIds(): EntryId[] {
+    return Object.entries(useDiskLinks.getState().links)
+      .filter(([, l]) => l.state === 'missing')
+      .map(([id]) => id);
+  },
+
   isLinked(id: EntryId): boolean {
     return handles.has(id);
   },
@@ -625,6 +661,7 @@ export const diskLinks = {
       } else if (c.text !== undefined) {
         stamps.set(id, { ...c.stamp });
         await applyText(id, c.text);
+        pendingText.delete(id);
       }
       void persist(id);
       patch(id, { state: 'synced', error: undefined, refreshedAt: Date.now() });

@@ -42,6 +42,10 @@ export interface Settings {
   syncScroll: boolean;
   /** Row height of tables in documents and of spreadsheet grids. */
   tableRowHeight: RowHeight;
+  /** New and unconfigured linked folders mirror the folder on disk in real time. */
+  liveFolderSync: boolean;
+  /** In a live-synced folder: ask before removing files deleted on disk, or move them to Trash. */
+  diskDeleteAction: 'ask' | 'remove';
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -66,6 +70,8 @@ export const DEFAULT_SETTINGS: Settings = {
   dailyFolder: 'Daily notes',
   syncScroll: true,
   tableRowHeight: 'full',
+  liveFolderSync: false,
+  diskDeleteAction: 'ask',
 };
 
 /** Most lines a cell shows at each row height. */
