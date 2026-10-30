@@ -12,6 +12,10 @@ interface Props {
   children?: ReactNode;
   footer?: ReactNode;
   size?: 'sm' | 'md' | 'lg';
+  /** Fill the window instead of floating. */
+  fullscreen?: boolean;
+  /** Buttons shown in the header, before Close. */
+  actions?: ReactNode;
   /** Element to focus first; defaults to the first focusable. */
   initialFocus?: React.RefObject<HTMLElement | null>;
 }
@@ -31,6 +35,8 @@ export function Dialog({
   children,
   footer,
   size = 'sm',
+  fullscreen,
+  actions,
   initialFocus,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
@@ -85,7 +91,9 @@ export function Dialog({
 
   const width = { sm: 'sm:max-w-[420px]', md: 'sm:max-w-[560px]', lg: 'sm:max-w-[760px]' }[size];
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-start sm:pt-[12vh]">
+    <div
+      className={`fixed inset-0 z-50 flex justify-center ${fullscreen ? '' : 'items-end sm:items-start sm:pt-[12vh]'}`}
+    >
       <div
         className="absolute inset-0 bg-[var(--scrim)]"
         aria-hidden
@@ -98,7 +106,11 @@ export function Dialog({
         aria-labelledby={titleId}
         aria-describedby={description ? descId : undefined}
         tabIndex={-1}
-        className={`popover animate-in safe-bottom relative flex max-h-[90dvh] w-full flex-col rounded-b-none sm:max-h-[calc(88vh-24px)] sm:rounded-b-xl ${width} sm:mx-4`}
+        className={`popover animate-in safe-bottom relative flex w-full flex-col ${
+          fullscreen
+            ? 'h-dvh rounded-none'
+            : `max-h-[90dvh] rounded-b-none sm:max-h-[calc(88vh-24px)] sm:rounded-b-xl ${width} sm:mx-4`
+        }`}
       >
         <div className="flex items-start gap-3 px-5 pt-5 pb-2">
           <div className="min-w-0 flex-1">
@@ -111,6 +123,7 @@ export function Dialog({
               </div>
             )}
           </div>
+          {actions}
           <button
             type="button"
             className="icon-btn -mt-1 -mr-2"

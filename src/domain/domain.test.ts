@@ -7,7 +7,7 @@ import { extractExternalLinks, extractLinks, rewriteLinks } from './links';
 import { Tree, sortEntries } from './tree';
 import type { Entry } from './types';
 import { expandTemplate } from './templates';
-import { summarizeChange } from './diff';
+import { diffLines, hunks, pairRows, summarizeChange } from './diff';
 
 const entry = (
   id: string,
@@ -217,5 +217,32 @@ describe('summarizeChange', () => {
     });
     expect(summarizeChange('', 'a\nb').message).toBe('Created');
     expect(summarizeChange('a', 'a').message).toBe('No text changes');
+  });
+});
+
+describe('history diff layout', () => {
+  const diff = diffLines('a\nb\nc\nd\ne\nf\ng\nh\ni\nj', 'a\nb\nc\nd\nE\nF\nX\ng\nh\ni\nj');
+
+  it('folds long unchanged runs into gaps', () => {
+    expect(hunks(diff, 1).map((r) => r.type)).toEqual([
+      'gap',
+      'same',
+      'del',
+      'del',
+      'add',
+      'add',
+      'add',
+      'same',
+      'gap',
+    ]);
+    expect(hunks(diffLines('a', 'a'))).toEqual([{ type: 'gap', count: 1 }]);
+  });
+
+  it('pairs removed and added runs side by side', () => {
+    const rows = pairRows(hunks(diff, 1));
+    expect(rows).toHaveLength(7);
+    expect(rows[2]).toMatchObject({ left: { text: 'e' }, right: { text: 'E' } });
+    expect(rows[3]).toMatchObject({ left: { text: 'f' }, right: { text: 'F' } });
+    expect(rows[4]).toEqual({ left: undefined, right: { type: 'add', text: 'X' } });
   });
 });
