@@ -76,18 +76,19 @@ export async function mode(page: Page, name: 'Source' | 'Split' | 'Rich' | 'Read
 
 /**
  * Stands in for the File System Access API: the picker returns one fake file whose
- * writes land in `window.__disk`. With `prompt`, the first permission request (made right
- * after import) is dismissed and the next one is granted. `changeDisk` edits the file as
- * another app would.
+ * writes land in `window.__disk`. With `prompt`, the first `dismissals` permission requests
+ * (one right after import, one when the document is first clicked) are dismissed and the
+ * next one is granted. `changeDisk` edits the file as another app would.
  */
 export async function fakeDisk(
   page: Page,
   name: string,
   text: string,
   permission: PermissionState,
+  dismissals = 2,
 ) {
   await page.addInitScript(
-    ({ name, text, permission }) => {
+    ({ name, text, permission, dismissals }) => {
       const w = window as unknown as Record<string, unknown>;
       w.__disk = text;
       w.__diskTime = 1_700_000_000_000;
@@ -112,13 +113,13 @@ export async function fakeDisk(
         queryPermission: async () => state,
         // The first request is the one right after import; model the user dismissing it.
         requestPermission: async () => {
-          if (asked++) state = 'granted';
+          if (asked++ >= dismissals) state = 'granted';
           return state;
         },
       };
       w.showOpenFilePicker = async () => [handle];
     },
-    { name, text, permission },
+    { name, text, permission, dismissals },
   );
 }
 
