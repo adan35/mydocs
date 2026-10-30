@@ -225,8 +225,8 @@ export function SettingsView() {
         description="AON is the built-in assistant. Hide it and it disappears from the sidebar, Home, the editor, spreadsheets and the command palette."
       >
         <Row
-          label="Show AON"
-          hint="Turn this off if you don't want AI help in My Doc."
+          label="Ask AON"
+          hint="Turn this off to hide AON everywhere: sidebar, Home, editor and shortcuts."
           htmlFor="show-aon"
         >
           <Toggle
@@ -239,6 +239,19 @@ export function SettingsView() {
             }}
           />
         </Row>
+        {s.showAon && (
+          <Row
+            label="Show AON"
+            hint="The little hoopoe character that shows what AON is doing. Off keeps Ask AON but hides the character."
+            htmlFor="show-hudhud"
+          >
+            <Toggle
+              id="show-hudhud"
+              checked={s.showHudhud}
+              onChange={(showHudhud) => set({ showHudhud })}
+            />
+          </Row>
+        )}
       </Section>
       <Section title="Appearance">
         <Row label="Theme">

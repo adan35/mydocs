@@ -1,11 +1,14 @@
 import type { HudhudState } from '@/app/aon/hudhud';
 import { HUDHUD_ART } from '@/app/aon/hudhud-art';
+import { useSettings } from '@/app/settings-store';
 
 /**
  * AON's mascot. Decorative: what AON is doing is always also said in words nearby.
  * The animation lives in CSS (`.hudhud`) and stops under reduced motion.
  */
 export function Hudhud({ state, size = 32 }: { state: HudhudState; size?: number }) {
+  const shown = useSettings((s) => s.showHudhud);
+  if (!shown) return null;
   return (
     <span
       className="hudhud"
