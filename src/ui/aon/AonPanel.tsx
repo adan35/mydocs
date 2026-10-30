@@ -11,9 +11,20 @@ import {
   type ChatMessage,
 } from '@/app/aon/chat';
 import { navigate } from '@/app/router';
+import { useSettings } from '@/app/settings-store';
 import { renderMarkdown } from '@/lib/markdown/render';
 import { useLayout } from '../hooks';
+import { Hudhud } from './Hudhud';
 import { MicButton } from './MicButton';
+import { useHudhud } from './useHudhud';
+
+const MOOD: Record<string, string> = {
+  listening: 'Listening…',
+  thinking: 'Thinking…',
+  searching: 'Searching your documents…',
+  success: 'Done',
+  sleeping: 'Resting. Ask me anything.',
+};
 
 const IDEAS = [
   'What is due this week?',
@@ -78,6 +89,8 @@ export function AonPanel() {
   const log = useRef<HTMLDivElement>(null);
   const source = aiSource();
   const setup = source === 'none' || source === 'sign-in';
+  const showHudhud = useSettings((s) => s.showHudhud);
+  const mood = useHudhud(draft.trim() !== '');
 
   useEffect(() => input.current?.focus(), []);
   useEffect(() => {
@@ -103,8 +116,15 @@ export function AonPanel() {
       onKeyDown={(e) => e.key === 'Escape' && useAon.getState().setOpen(false)}
     >
       <header className="flex items-center gap-2 border-b border-hairline px-3 py-2">
-        <Sparkles size={16} className="text-primary" aria-hidden />
-        <h2 className="flex-1 text-[15px] font-semibold text-ink">AON</h2>
+        {showHudhud ? (
+          <Hudhud state={mood} size={32} />
+        ) : (
+          <Sparkles size={16} className="text-primary" aria-hidden />
+        )}
+        <h2 className="text-[15px] font-semibold text-ink">AON</h2>
+        <span className="flex-1 truncate text-caption text-steel" data-testid="hudhud-mood">
+          {MOOD[mood] ?? ''}
+        </span>
         {messages.length > 0 && (
           <button
             type="button"
@@ -148,6 +168,15 @@ export function AonPanel() {
         )}
         {messages.length === 0 && (
           <div className="flex flex-col gap-3 text-steel">
+            {showHudhud && (
+              <div className="flex items-end gap-3">
+                <Hudhud state={mood} size={88} />
+                <p className="pb-1 text-caption">
+                  Hi, I&rsquo;m <span className="font-semibold text-ink">Hudhud</span>, AON&rsquo;s
+                  helper.
+                </p>
+              </div>
+            )}
             <p className="text-ink">
               Ask me to find something, answer from your notes, or set a reminder. I read only the
               documents I need for each question.

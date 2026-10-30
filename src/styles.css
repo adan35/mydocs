@@ -211,6 +211,175 @@
 }
 
 @layer components {
+  /* Hudhud, AON's mascot: poses are images, motion is CSS. */
+  .hudhud {
+    --hudhud-size: 32px;
+    position: relative;
+    display: inline-block;
+    flex: none;
+    width: var(--hudhud-size);
+    height: var(--hudhud-size);
+    vertical-align: middle;
+  }
+  .hudhud > img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    object-position: center bottom;
+    transform-origin: 50% 95%;
+    animation:
+      hudhud-in 0.25s ease-out both,
+      hudhud-idle 3.6s ease-in-out 0.25s infinite;
+    filter: drop-shadow(0 1px 1.5px rgb(0 0 0 / 0.18));
+    user-select: none;
+  }
+  .hudhud[data-state='listening'] > img {
+    transform-origin: 55% 30%;
+    animation:
+      hudhud-in 0.25s ease-out both,
+      hudhud-listen 1.1s ease-in-out 0.25s infinite;
+  }
+  .hudhud[data-state='thinking'] > img {
+    transform-origin: 50% 90%;
+    animation:
+      hudhud-in 0.25s ease-out both,
+      hudhud-think 2.4s ease-in-out 0.25s infinite;
+  }
+  .hudhud[data-state='searching'] > img {
+    animation:
+      hudhud-in 0.25s ease-out both,
+      hudhud-flap 0.55s ease-in-out 0.25s infinite;
+  }
+  .hudhud[data-state='success'] > img {
+    animation:
+      hudhud-in 0.25s ease-out both,
+      hudhud-hop 0.7s ease-out 0.25s 4;
+  }
+  .hudhud[data-state='sleeping'] > img {
+    animation:
+      hudhud-in 0.25s ease-out both,
+      hudhud-sleep 4.5s ease-in-out 0.25s infinite;
+  }
+  .hudhud-dots {
+    position: absolute;
+    top: 6%;
+    right: -2%;
+    display: flex;
+    gap: 8%;
+  }
+  .hudhud-dots i {
+    width: calc(var(--hudhud-size) * 0.09);
+    height: calc(var(--hudhud-size) * 0.09);
+    border-radius: 9999px;
+    background: var(--primary);
+    animation: hudhud-dot 1.2s ease-in-out infinite;
+  }
+  .hudhud-dots i:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+  .hudhud-dots i:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+  .hudhud-z {
+    position: absolute;
+    top: 0;
+    right: 4%;
+    font-size: calc(var(--hudhud-size) * 0.26);
+    font-weight: 600;
+    line-height: 1;
+    color: var(--steel);
+    animation: hudhud-z 3.2s ease-in-out infinite;
+  }
+  @keyframes hudhud-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes hudhud-idle {
+    50% {
+      transform: translateY(-4%) scaleY(1.015);
+    }
+  }
+  @keyframes hudhud-listen {
+    0%,
+    100% {
+      transform: rotate(-3deg);
+    }
+    50% {
+      transform: rotate(3deg) translateY(-2%);
+    }
+  }
+  @keyframes hudhud-think {
+    0%,
+    100% {
+      transform: rotate(-2deg);
+    }
+    50% {
+      transform: rotate(2deg);
+    }
+  }
+  @keyframes hudhud-flap {
+    0%,
+    100% {
+      transform: translateY(2%) scale(1, 0.94);
+    }
+    50% {
+      transform: translateY(-6%) scale(1, 1.04);
+    }
+  }
+  @keyframes hudhud-hop {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    40% {
+      transform: translateY(-14%) rotate(-4deg);
+    }
+    70% {
+      transform: translateY(0) scale(1.03, 0.96);
+    }
+  }
+  @keyframes hudhud-sleep {
+    50% {
+      transform: scale(1.035, 1.05);
+    }
+  }
+  @keyframes hudhud-dot {
+    0%,
+    100% {
+      opacity: 0.25;
+    }
+    40% {
+      opacity: 1;
+    }
+  }
+  @keyframes hudhud-z {
+    0% {
+      opacity: 0;
+      transform: translate(0, 20%);
+    }
+    40% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+      transform: translate(30%, -60%);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hudhud > img,
+    .hudhud-dots i,
+    .hudhud-z {
+      animation: none;
+    }
+    .hudhud-dots i {
+      opacity: 1;
+    }
+    .hudhud-z {
+      opacity: 1;
+    }
+  }
+
   /* Tabs that don't fit fade out at the edge, so it's clear there are more. */
   .tab-strip[data-overflow-right] {
     mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);

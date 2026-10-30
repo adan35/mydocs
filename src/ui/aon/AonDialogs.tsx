@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Hudhud } from './Hudhud';
 import { Dialog } from '../components/Dialog';
 import { aiSource } from '@/app/ai';
 import { useApp } from '@/app/app-store';
@@ -128,7 +129,8 @@ function TidyDialog() {
       {noKey ? (
         <NeedsKey />
       ) : phase === 'working' || phase === 'applying' ? (
-        <p role="status" className="text-steel">
+        <p role="status" className="flex items-center gap-2 text-steel">
+          <Hudhud state={phase === 'working' ? 'searching' : 'thinking'} size={36} />
           {phase === 'working' ? 'AON is looking through your documents…' : 'Applying…'}
         </p>
       ) : phase === 'error' ? (
