@@ -34,6 +34,20 @@ test('asks for permission before writing to disk', async ({ page }) => {
   await expect.poll(() => disk(page)).toBe('# Todo\n- [ ] call Sam');
 });
 
+test('the first click in a document restores disk permission without a button', async ({
+  page,
+}) => {
+  await fakeDisk(page, 'todo.md', '# Todo\n', 'prompt', 1);
+  await freshApp(page);
+  await importViaPicker(page, 'todo.md');
+  await page.locator('.cm-content').click();
+  await expect(page.getByTestId('disk-status')).toBeVisible();
+  await page.keyboard.press('Control+End');
+  await page.keyboard.type('- [ ] call Sam');
+  await waitSaved(page);
+  await expect.poll(() => disk(page)).toBe('# Todo\n- [ ] call Sam');
+});
+
 test('dotfiles and unfamiliar text files open in the editor', async ({ page }) => {
   await withoutFileSystemAccess(page);
   await freshApp(page);

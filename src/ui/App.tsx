@@ -1,3 +1,4 @@
+import { DiskPermissionBanner } from './components/DiskPermissionBanner';
 import { useEffect } from 'react';
 import { appActions, useApp } from '@/app/app-store';
 import { editorActions, writeRecoveryDrafts } from '@/app/editor-store';
@@ -227,6 +228,7 @@ export function App() {
       <DialogHost />
       <MenuHost />
       <UpdatePrompt />
+      <DiskPermissionBanner />
       <Toaster />
     </>
   );

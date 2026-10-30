@@ -5,6 +5,7 @@ import { useApp } from './app-store';
 import { editorActions, useEditor } from './editor-store';
 import { textFromBytes } from './importer';
 import { useRouter } from './router';
+import { toast } from './toast-store';
 
 /**
  * Links between workspace documents and the files on the user's computer they were
@@ -25,7 +26,9 @@ import { useRouter } from './router';
  *
  * Handles are kept in their own IndexedDB database, keyed by workspace and entry, so the
  * link survives reloads. The browser may ask again for permission after a restart; until
- * then the document shows an "Allow saving to disk" button (permission needs a click).
+ * then the file is restored silently where the browser already allows it. Otherwise the
+ * document shows an "Allow saving to disk" button, a banner restores all files at once, and
+ * the first click or key press in a document asks for it (permission needs a user gesture).
  */
 
 export type DiskLinkState =
@@ -127,6 +130,7 @@ function patch(id: EntryId, p: Partial<DiskLink>) {
 }
 
 const stateOf = (id: EntryId) => useDiskLinks.getState().links[id]?.state;
+const modeOf = (id: EntryId) => (binaries.has(id) ? 'read' : 'readwrite');
 
 function workspace() {
   return useApp.getState().session?.workspace ?? null;
@@ -176,7 +180,7 @@ function setStamp(id: EntryId, file: File, extra: Pick<Stamp, 'hash' | 'syncedAt
   void persist(id);
 }
 
-async function writeNow(id: EntryId, ask: boolean): Promise<void> {
+async function writeNow(id: EntryId): Promise<void> {
   const h = handles.get(id);
   if (!h) return;
   for (;;) {
@@ -189,7 +193,7 @@ async function writeNow(id: EntryId, ask: boolean): Promise<void> {
       pendingText.delete(id);
       continue;
     }
-    if ((await permission(h, ask)) !== 'granted') {
+    if ((await permission(h, false, modeOf(id))) !== 'granted') {
       patch(id, { state: 'needs-permission', error: undefined });
       return;
     }
@@ -239,9 +243,9 @@ async function changedOnDisk(id: EntryId, h: PermissionHandle, text: string): Pr
   }
 }
 
-function schedule(id: EntryId, ask: boolean): Promise<void> {
+function schedule(id: EntryId): Promise<void> {
   const prev = writing.get(id) ?? Promise.resolve();
-  const next = prev.then(() => writeNow(id, ask));
+  const next = prev.then(() => writeNow(id));
   writing.set(id, next);
   void next.finally(() => writing.get(id) === next && writing.delete(id));
   return next;
@@ -282,8 +286,10 @@ async function check(id: EntryId): Promise<boolean> {
   const h = handles.get(id);
   const ws = workspace();
   const entry = ws?.get(id);
-  if (!h || !ws || !entry || checking.has(id) || writing.has(id) || pendingText.has(id))
-    return false;
+  if (!h || !ws || !entry || checking.has(id) || writing.has(id)) return false;
+  // The browser may have granted access since (a persistent permission): carry on quietly.
+  if (stateOf(id) === 'needs-permission' && !(await recover(id))) return false;
+  if (pendingText.has(id)) return false;
   const state = stateOf(id);
   if (state === 'needs-permission' || state === 'writing') return false;
   checking.add(id);
@@ -369,6 +375,15 @@ async function check(id: EntryId): Promise<boolean> {
   }
 }
 
+/** Back to normal if the browser already allows access; saves that were waiting go out now. */
+async function recover(id: EntryId): Promise<boolean> {
+  const h = handles.get(id);
+  if (!h || (await permission(h, false, modeOf(id))) !== 'granted') return false;
+  patch(id, { state: 'synced', error: undefined });
+  if (pendingText.has(id)) await schedule(id);
+  return stateOf(id) === 'synced';
+}
+
 function stampOf(file: File): Stamp {
   return { lastModified: file.lastModified, size: file.size };
 }
@@ -432,6 +447,21 @@ function onFocus() {
   else void round(false);
 }
 
+/** Documents already asked on a gesture this session, so a refusal isn't nagged about. */
+const askedOnGesture = new Set<EntryId>();
+/** Permission prompts currently open, so a click can't stack a second one. */
+const asking = new Set<EntryId>();
+
+/** After a restart the first click or key press in a document asks for its permission. */
+function onGesture() {
+  const route = useRouter.getState().route;
+  if (route.name !== 'doc' || stateOf(route.id) !== 'needs-permission') return;
+  if (askedOnGesture.has(route.id)) return;
+  askedOnGesture.add(route.id);
+  const text = binaries.has(route.id) ? undefined : workspace()?.allTexts().get(route.id);
+  void diskLinks.allow(route.id, text);
+}
+
 export const diskLinks = {
   /** Loads the links of a workspace (called when a workspace opens). */
   async load(wsId: string, liveIds: (id: EntryId) => boolean): Promise<void> {
@@ -461,8 +491,7 @@ export const diskLinks = {
       if (workspaceId !== wsId) return;
       useDiskLinks.setState({ links });
       for (const [id, h] of handles) {
-        const mode = binaries.has(id) ? 'read' : 'readwrite';
-        if ((await permission(h, false, mode)) !== 'granted')
+        if ((await permission(h, false, modeOf(id))) !== 'granted')
           patch(id, { state: 'needs-permission' });
       }
       // Files changed while My Doc was closed show their new contents right away.
@@ -478,7 +507,11 @@ export const diskLinks = {
     timer = setInterval(() => void round(false), POLL_MS);
     addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onFocus);
+    document.addEventListener('pointerdown', onGesture, true);
+    document.addEventListener('keydown', onGesture, true);
     return () => {
+      document.removeEventListener('pointerdown', onGesture, true);
+      document.removeEventListener('keydown', onGesture, true);
       if (timer) clearInterval(timer);
       timer = null;
       removeEventListener('focus', onFocus);
@@ -530,27 +563,50 @@ export const diskLinks = {
   write(id: EntryId, text: string): Promise<void> {
     if (!handles.has(id) || binaries.has(id)) return Promise.resolve();
     pendingText.set(id, text);
-    return schedule(id, false);
+    return schedule(id);
   },
 
   /**
-   * Asks for permission (must run from a click) and writes the latest text, if any.
-   * Returns whether the file is now in sync.
+   * Asks for permission (must run from a click or key press), then writes the latest text
+   * if there is any. Returns whether the file is now in sync; a refusal shows a message.
    */
   async allow(id: EntryId, text?: string): Promise<boolean> {
     const h = handles.get(id);
     if (!h) return false;
-    if (binaries.has(id) || text === undefined) {
-      const ok = (await permission(h, true, binaries.has(id) ? 'read' : 'readwrite')) === 'granted';
-      if (ok) {
-        patch(id, { state: 'synced', error: undefined });
-        await check(id);
-      }
-      return ok;
+    if (asking.has(id)) return false;
+    asking.add(id);
+    // Ask before anything else: awaiting first would let the user gesture expire.
+    const state = await permission(h, true, modeOf(id)).finally(() => asking.delete(id));
+    if (state !== 'granted') {
+      toast({
+        tone: 'error',
+        message: `Couldn't get permission to save to "${h.name}".`,
+        detail:
+          'Click "Allow saving to disk" again and choose "Allow" or "Edit file". Your edits are still saved in My Doc.',
+      });
+      return false;
     }
-    pendingText.set(id, text);
-    await schedule(id, true);
+    patch(id, { state: 'synced', error: undefined });
+    if (binaries.has(id) || text === undefined) await check(id);
+    else {
+      pendingText.set(id, text);
+      await schedule(id);
+    }
     return stateOf(id) === 'synced';
+  },
+
+  /** The "Allow all" banner: asks for every file that lost permission, stopping at a refusal. */
+  async allowAll(): Promise<void> {
+    for (const id of diskLinks.needingPermission()) {
+      const text = binaries.has(id) ? undefined : workspace()?.allTexts().get(id);
+      if (!(await diskLinks.allow(id, text))) return;
+    }
+  },
+
+  needingPermission(): EntryId[] {
+    return Object.entries(useDiskLinks.getState().links)
+      .filter(([, l]) => l.state === 'needs-permission')
+      .map(([id]) => id);
   },
 
   /** Ends a "Changed on disk" conflict: take the disk version, or keep My Doc's. */
@@ -599,8 +655,7 @@ export const diskLinks = {
     for (const [i, id] of ids.entries()) {
       const h = handles.get(id);
       if (!h) continue;
-      const mode = binaries.has(id) ? 'read' : 'readwrite';
-      const state = await permission(h, i < MAX_PROMPTS, mode);
+      const state = await permission(h, i < MAX_PROMPTS, modeOf(id));
       if (state !== 'granted') {
         for (const rest of ids.slice(i)) {
           if (handles.has(rest)) patch(rest, { state: 'needs-permission' });
