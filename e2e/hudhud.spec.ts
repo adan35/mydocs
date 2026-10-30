@@ -80,3 +80,48 @@ test('the inline suggestion shows Hudhud while it writes', async ({ page }) => {
   await expect(box.locator('.hudhud')).toHaveAttribute('data-state', 'thinking');
   await expect(box.locator('.hudhud')).toHaveAttribute('data-state', 'success');
 });
+
+test('Settings can hide AON everywhere, and Hudhud on his own', async ({ page }) => {
+  const calls = await mockProvider(page, () => 'x');
+  await freshApp(page);
+  await expect(page.getByRole('button', { name: /Ask AON/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'AON' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Settings' }).click();
+  // Hudhud off: AON stays, the mascot goes.
+  await page.getByRole('switch', { name: 'Show Hudhud' }).click();
+  await page.keyboard.press(`${mod}+j`);
+  await expect(page.getByTestId('aon-panel')).toBeVisible();
+  await expect(page.getByTestId('hudhud')).toHaveCount(0);
+  await page.keyboard.press(`${mod}+j`);
+
+  await page.getByRole('switch', { name: 'Show AON' }).click();
+  await expect(page.getByRole('switch', { name: 'Show Hudhud' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Ask AON/ })).toHaveCount(0);
+  await page.keyboard.press(`${mod}+j`);
+  await expect(page.getByTestId('aon-panel')).toHaveCount(0);
+  await page.keyboard.press(`${mod}+k`);
+  await page.getByRole('combobox', { name: 'Command palette' }).fill('AON');
+  await expect(page.getByRole('option', { name: /AON/ })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'AON' })).toHaveCount(0);
+
+  // In a document, @aon is ordinary text and Enter is an ordinary new line.
+  await page
+    .getByRole('button', { name: 'New document', exact: true })
+    .first()
+    .click({ modifiers: ['Shift'] });
+  await setDoc(page, '@aon hello');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('region', { name: 'AON suggestion' })).toHaveCount(0);
+  expect(calls).toHaveLength(0);
+
+  // Still off after a reload; switching it back on brings everything back.
+  await page.reload();
+  await expect(page.getByRole('button', { name: /Ask AON/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('switch', { name: 'Show AON' }).click();
+  await expect(page.getByRole('button', { name: /Ask AON/ })).toBeVisible();
+});

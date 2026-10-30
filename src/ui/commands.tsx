@@ -52,6 +52,7 @@ import {
 import * as A from '@/app/actions';
 import { openAonFile, toggleAon, useAon } from '@/app/aon/chat';
 import { openCapture, openTidy } from '@/app/aon/dialog';
+import { aonEnabled } from '@/app/aon/enabled';
 import { ws } from '@/app/app-store';
 import { editorActions, useEditor } from '@/app/editor-store';
 import { goBack, goForward, navigate, useRouter } from '@/app/router';
@@ -755,5 +756,5 @@ export function getCommands(): Command[] {
       );
     }
   }
-  return cmds;
+  return aonEnabled() ? cmds : cmds.filter((c) => !/aon/i.test(c.id));
 }

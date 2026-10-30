@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { lazy, Suspense, useMemo, useState } from 'react';
 import type { Entry } from '@/domain/types';
+import { useAonEnabled } from '@/app/aon/enabled';
 import { useApp } from '@/app/app-store';
 import { useUi } from '@/app/ui-store';
 import { navigate } from '@/app/router';
@@ -40,6 +41,7 @@ function greeting() {
 }
 
 export function HomeView() {
+  const aonOn = useAonEnabled();
   const tree = useTree()!;
   const recents = useApp((s) => s.recents);
   const wsName = useApp((s) => s.session?.workspace.name);
@@ -117,9 +119,11 @@ export function HomeView() {
 
       {!phone && <DropZone />}
 
-      <Suspense fallback={null}>
-        <AonHome />
-      </Suspense>
+      {aonOn && (
+        <Suspense fallback={null}>
+          <AonHome />
+        </Suspense>
+      )}
 
       {continueDoc && (
         <section className="mb-8">

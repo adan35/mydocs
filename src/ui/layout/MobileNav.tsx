@@ -5,6 +5,7 @@ import { useUi } from '@/app/ui-store';
 import { openMenuAt } from '../components/Menu';
 import * as A from '@/app/actions';
 import { toggleAon } from '@/app/aon/chat';
+import { aonEnabled } from '@/app/aon/enabled';
 import {
   Clock,
   Star,
@@ -96,7 +97,9 @@ export function MobileNav() {
               },
               { label: 'New folder', icon: <FolderPlus />, onSelect: () => void A.newFolder() },
               { label: 'Import', icon: <Upload />, submenu: importSubmenu(null) },
-              { label: 'Ask AON', icon: <Sparkles />, onSelect: toggleAon },
+              ...(aonEnabled()
+                ? [{ label: 'Ask AON', icon: <Sparkles />, onSelect: toggleAon }]
+                : []),
               {
                 label: "Today's note",
                 icon: <CalendarDays />,

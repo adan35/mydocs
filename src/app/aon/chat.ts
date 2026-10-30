@@ -5,6 +5,7 @@ import { complete, AiError } from '../ai';
 import * as A from '../actions';
 import { session, ws } from '../app-store';
 import { editorActions, useEditor } from '../editor-store';
+import { aonEnabled } from './enabled';
 import { AON_FILE, STARTER, instructionsFor } from './memory';
 import { chatSystem, mightBeToolCall, parseToolCall } from './protocol';
 import { aonCanSee, runTool } from './tools';
@@ -40,7 +41,7 @@ export const useAon = create<ChatState>((set) => ({
   open: false,
   busy: false,
   messages: [],
-  setOpen: (open) => set({ open }),
+  setOpen: (open) => set({ open: open && aonEnabled() }),
   clear() {
     controller?.abort();
     set({ messages: [], busy: false });

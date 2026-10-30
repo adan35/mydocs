@@ -1,6 +1,7 @@
 import { Settings as SettingsIcon, Download, Keyboard } from 'lucide-react';
 import { useSettings, type Settings } from '@/app/settings-store';
 import { useApp } from '@/app/app-store';
+import { useAon } from '@/app/aon/chat';
 import { dialogs } from '@/app/dialog-store';
 import * as A from '@/app/actions';
 import { formatBytes } from '@/domain/names';
@@ -219,6 +220,39 @@ export function SettingsView() {
         </Row>
       </Section>
 
+      <Section
+        title="AON"
+        description="AON is the built-in assistant. Hide it and it disappears from the sidebar, Home, the editor, spreadsheets and the command palette."
+      >
+        <Row
+          label="Show AON"
+          hint="Turn this off if you don't want AI help in My Doc."
+          htmlFor="show-aon"
+        >
+          <Toggle
+            id="show-aon"
+            checked={s.showAon}
+            onChange={(showAon) => {
+              set({ showAon });
+              if (!showAon) useAon.getState().clear();
+              if (!showAon) useAon.getState().setOpen(false);
+            }}
+          />
+        </Row>
+        {s.showAon && (
+          <Row
+            label="Show Hudhud"
+            hint="The little hoopoe that shows what AON is doing. Off keeps AON but drops the mascot."
+            htmlFor="show-hudhud"
+          >
+            <Toggle
+              id="show-hudhud"
+              checked={s.showHudhud}
+              onChange={(showHudhud) => set({ showHudhud })}
+            />
+          </Row>
+        )}
+      </Section>
       <Section title="Appearance">
         <Row label="Theme">
           <Segmented

@@ -23,6 +23,7 @@ import { NotesView } from '../notes/NotesView';
 import { NoteHost } from '../notes/NoteHost';
 import { useNoteReminders } from '@/app/notes';
 import { useAon } from '@/app/aon/chat';
+import { useAonEnabled } from '@/app/aon/enabled';
 import { useAonDialog } from '@/app/aon/dialog';
 import { useLayout } from '../hooks';
 import { TREE_DRAG_TYPE } from './FileTree';
@@ -160,9 +161,10 @@ export function AppShell() {
   const focusMode = useUi((s) => s.focusMode);
   const readingMode = useUi((s) => s.readingMode);
   const route = useRouter((s) => s.route);
-  const aonOpen = useAon((s) => s.open);
+  const aonOn = useAonEnabled();
+  const aonOpen = useAon((s) => s.open) && aonOn;
   const aonStarted = useAon((s) => s.messages.length > 0);
-  const aonDialog = useAonDialog((s) => s.kind !== null);
+  const aonDialog = useAonDialog((s) => s.kind !== null) && aonOn;
   const hasTabs = useEditor((s) => s.tabs.length > 0);
   const density = useSettings((s) => s.density);
   const [width, setWidth] = useState(() => Number(localStorage.getItem(SIDEBAR_KEY)) || 264);
@@ -360,7 +362,7 @@ export function AppShell() {
             <AonPanel />
           </Suspense>
         )}
-        {!aonOpen && aonStarted && (
+        {aonOn && !aonOpen && aonStarted && (
           <Suspense fallback={null}>
             <HudhudFloat />
           </Suspense>

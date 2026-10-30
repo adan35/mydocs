@@ -33,6 +33,7 @@ import { SHORTCUTS } from '@/app/shortcuts';
 import { dialogs } from '@/app/dialog-store';
 import * as A from '@/app/actions';
 import { toggleAon } from '@/app/aon/chat';
+import { useAonEnabled } from '@/app/aon/enabled';
 import { openMenuAt, type MenuEntry } from '../components/Menu';
 import { FileIcon } from '../components/FileIcon';
 import { formatShortcut, useTree } from '../hooks';
@@ -45,6 +46,7 @@ import { ThemeMenuButton } from '../components/ThemePicker';
 export function Sidebar({ onClose, drawer }: { onClose?: () => void; drawer?: boolean }) {
   const tree = useTree()!;
   const route = useRouter((s) => s.route);
+  const aonOn = useAonEnabled();
   const trashCount = tree.trashedRoots().length;
   const favorites = tree
     .liveEntries()
@@ -185,20 +187,22 @@ export function Sidebar({ onClose, drawer }: { onClose?: () => void; drawer?: bo
             </span>
             <span className="flex-1">Templates</span>
           </button>
-          <button
-            type="button"
-            className="nav-item flex h-[30px] w-full items-center gap-2 rounded-md px-2 text-left text-[14px] hover:bg-hover"
-            onClick={() => {
-              useUi.getState().setDrawer(false);
-              toggleAon();
-            }}
-          >
-            <span className="text-steel" aria-hidden>
-              <Sparkles size={16} />
-            </span>
-            <span className="flex-1">Ask AON</span>
-            <kbd className="kbd hidden md:inline-flex">{formatShortcut(SHORTCUTS.aon)}</kbd>
-          </button>
+          {aonOn && (
+            <button
+              type="button"
+              className="nav-item flex h-[30px] w-full items-center gap-2 rounded-md px-2 text-left text-[14px] hover:bg-hover"
+              onClick={() => {
+                useUi.getState().setDrawer(false);
+                toggleAon();
+              }}
+            >
+              <span className="text-steel" aria-hidden>
+                <Sparkles size={16} />
+              </span>
+              <span className="flex-1">Ask AON</span>
+              <kbd className="kbd hidden md:inline-flex">{formatShortcut(SHORTCUTS.aon)}</kbd>
+            </button>
+          )}
           <button
             type="button"
             className="nav-item flex h-[30px] w-full items-center gap-2 rounded-md px-2 text-left text-[14px] hover:bg-hover"

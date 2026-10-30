@@ -25,6 +25,7 @@ import {
   PanelLeft,
   Sparkles,
 } from 'lucide-react';
+import { useAonEnabled } from '@/app/aon/enabled';
 import { formatShortcut } from '../hooks';
 import { RowHeightButton } from '../row-height';
 
@@ -203,6 +204,7 @@ export function SheetRibbon({
   /** Extra controls at the start (table picker, sheet info). */
   children?: ReactNode;
 }) {
+  const aonOn = useAonEnabled();
   const groups: SheetCommand[][] = readOnly ? [] : wanted;
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     const items = [...e.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled)')];
@@ -247,7 +249,7 @@ export function SheetRibbon({
         </div>
       ))}
       <span className="flex-1" />
-      {onAsk && (
+      {onAsk && aonOn && (
         <button
           type="button"
           className="btn btn-ghost h-8 shrink-0 gap-1.5 px-2 text-caption"
