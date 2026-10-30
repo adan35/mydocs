@@ -3,6 +3,7 @@ import {
   Download,
   FilePlus2,
   FolderInput,
+  FolderOpen,
   FolderPlus,
   History,
   Link2,
@@ -31,6 +32,15 @@ import { pickImport } from './import-pickers';
 import { cloudAvailable } from '@/app/cloud';
 import { canWatchFolders, folderSync, useFolderLinks } from '@/app/folder-sync';
 import { ws } from '@/app/app-store';
+
+/** Opens the file's folder in File Explorer (desktop app); elsewhere explains why it can't. */
+export function showInExplorerItem(id: string): MenuEntry {
+  return {
+    label: 'Show in File Explorer',
+    icon: <FolderOpen />,
+    onSelect: () => void A.showInFileExplorer(id),
+  };
+}
 
 /** The context menu for a multi-selection in the tree. */
 export function bulkMenu(entries: Entry[]): MenuEntry[] {
@@ -62,6 +72,7 @@ export function entryMenu(e: Entry): MenuEntry[] {
       icon: <LocateFixed />,
       onSelect: () => A.revealInFiles(e.id),
     },
+    ...(e.kind === 'file' ? [showInExplorerItem(e.id)] : []),
     'separator',
   ];
   if (e.kind === 'folder') {

@@ -53,7 +53,7 @@ import { conversionsFrom, formatOf } from '@/lib/convert/capabilities';
 import { isNativeApp } from '@/platform';
 import { openMenuAt, useMenuOpen, type MenuEntry } from '../components/Menu';
 import { themeMenuItems } from '../components/ThemePicker';
-import { copyPathSubmenu, exportSubmenu, importSubmenu } from '../entry-menu';
+import { copyPathSubmenu, exportSubmenu, importSubmenu, showInExplorerItem } from '../entry-menu';
 import { reopenClosedTab, sendDocCommand, toggleSidePanel } from '../doc-commands';
 
 export interface AppMenu {
@@ -153,6 +153,7 @@ export function appMenus(): AppMenu[] {
       disabled: !doc,
       onSelect: () => doc && A.revealInFiles(doc.id),
     },
+    { ...showInExplorerItem(doc?.id ?? ''), disabled: !doc },
     {
       label: 'Copy path',
       icon: <Link2 />,

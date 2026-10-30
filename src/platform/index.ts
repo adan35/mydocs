@@ -61,6 +61,14 @@ export async function openExternal(url: string): Promise<void> {
   window.open(url, '_blank', 'noopener');
 }
 
+/** Whether the app can open the computer's file manager (the desktop app only). */
+export const canRevealInFileManager = platform === 'desktop';
+
+/** Shows a file on disk in File Explorer / Finder. Desktop only. */
+export async function revealInFileManager(path: string): Promise<void> {
+  if (platform === 'desktop') await (await import('./desktop')).revealInFileManager(path);
+}
+
 /**
  * Runs `save` before a desktop window closes, so pending edits reach storage
  * first. Browsers and mobile apps already fire `pagehide`/`visibilitychange`.

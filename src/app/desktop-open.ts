@@ -1,10 +1,12 @@
 import { platform } from '@/platform';
 import { mimeOf } from '@/domain/names';
 import { runImport } from './actions';
+import { sourcePaths } from './source-paths';
 import { toast, toastError } from './toast-store';
 
 interface OpenedFile {
   name: string;
+  path: string;
   bytes: Uint8Array<ArrayBuffer>;
   error: string | null;
 }
@@ -15,6 +17,7 @@ export function decodeOpenedFile(reply: ArrayBuffer): OpenedFile | null {
   const length = new DataView(reply).getUint32(0, true);
   const header = JSON.parse(new TextDecoder().decode(new Uint8Array(reply, 4, length))) as {
     name: string;
+    path: string;
     error: string | null;
   };
   return { ...header, bytes: new Uint8Array(reply, 4 + length) };
@@ -42,7 +45,7 @@ export function watchDesktopFiles(): () => void {
               toast({ message: `Unable to open ${file.name}.`, detail: file.error, tone: 'error' });
               continue;
             }
-            await runImport(
+            const id = await runImport(
               [
                 {
                   path: file.name,
@@ -53,6 +56,7 @@ export function watchDesktopFiles(): () => void {
               ],
               null,
             );
+            if (id) sourcePaths.set(id, file.path);
           }
         })
         .catch((error: unknown) => {
