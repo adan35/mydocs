@@ -11,6 +11,7 @@ import { AiError, aiSource, complete } from '../ai';
 import { docIdFacet, docModel } from '../doc-model';
 import { ws } from '../app-store';
 import { navigate } from '../router';
+import { hudhudElement } from './hudhud-art';
 import { offerReminders } from './chat';
 import { instructionsFor, isPrivate } from './memory';
 import {
@@ -303,6 +304,10 @@ class SuggestionWidget extends WidgetType {
         : s.status === 'ready'
           ? 'AON suggests'
           : 'AON could not do that';
+    const pose = s.status === 'working' ? 'thinking' : s.status === 'ready' ? 'success' : 'idle';
+    // Reuse the bird while streaming, so its fade-in doesn't restart on every chunk.
+    const old = el.querySelector<HTMLElement>('.cm-aon-head .hudhud');
+    head.prepend(old?.dataset.state === pose ? old : hudhudElement(pose));
     const body = document.createElement('div');
     body.className = 'cm-aon-body';
     if (s.status === 'error') body.classList.add('cm-aon-error');
@@ -349,7 +354,16 @@ const theme = EditorView.baseTheme({
     fontSize: '14px',
     lineHeight: '1.5',
   },
-  '.cm-aon-head': { fontSize: '12px', fontWeight: '600', marginBottom: '4px', opacity: '0.85' },
+  '.cm-aon-head': {
+    fontSize: '12px',
+    fontWeight: '600',
+    marginBottom: '4px',
+    opacity: '0.85',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+  },
+  '.cm-aon-head .hudhud': { '--hudhud-size': '22px' },
   '.cm-aon-body': {
     whiteSpace: 'pre-wrap',
     wordBreak: 'break-word',

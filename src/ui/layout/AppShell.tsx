@@ -34,6 +34,10 @@ const DocumentView = lazy(() =>
   import('../document/DocumentView').then((m) => ({ default: m.DocumentView })),
 );
 
+const HudhudFloat = lazy(() =>
+  import('../aon/HudhudFloat').then((m) => ({ default: m.HudhudFloat })),
+);
+
 const AonPanel = lazy(() => import('../aon/AonPanel').then((m) => ({ default: m.AonPanel })));
 
 const AonDialogs = lazy(() => import('../aon/AonDialogs').then((m) => ({ default: m.AonDialogs })));
@@ -157,6 +161,7 @@ export function AppShell() {
   const readingMode = useUi((s) => s.readingMode);
   const route = useRouter((s) => s.route);
   const aonOpen = useAon((s) => s.open);
+  const aonStarted = useAon((s) => s.messages.length > 0);
   const aonDialog = useAonDialog((s) => s.kind !== null);
   const hasTabs = useEditor((s) => s.tabs.length > 0);
   const density = useSettings((s) => s.density);
@@ -353,6 +358,11 @@ export function AppShell() {
         {aonOpen && (
           <Suspense fallback={null}>
             <AonPanel />
+          </Suspense>
+        )}
+        {!aonOpen && aonStarted && (
+          <Suspense fallback={null}>
+            <HudhudFloat />
           </Suspense>
         )}
       </div>
