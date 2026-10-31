@@ -11,6 +11,9 @@ import { AiError, aiSource, complete } from '../ai';
 import { docIdFacet, docModel } from '../doc-model';
 import { ws } from '../app-store';
 import { navigate } from '../router';
+import { useSettings } from '../settings-store';
+import { aonEnabled } from './enabled';
+import { hudhudElement } from './hudhud-art';
 import { offerReminders } from './chat';
 import { instructionsFor, isPrivate } from './memory';
 import {
@@ -97,7 +100,7 @@ export function startInline(
   },
 ) {
   const docId = docOf(view.state);
-  if (!docId || view.state.readOnly) return;
+  if (!docId || view.state.readOnly || !aonEnabled()) return;
   const s: Suggestion = {
     run: ++runs,
     ...opts,
@@ -239,6 +242,7 @@ function onEnter(view: EditorView): boolean {
   const docId = docOf(view.state);
   const sel = view.state.selection.main;
   if (
+    !aonEnabled() ||
     !sel.empty ||
     view.composing ||
     view.state.readOnly ||
@@ -303,6 +307,11 @@ class SuggestionWidget extends WidgetType {
         : s.status === 'ready'
           ? 'AON suggests'
           : 'AON could not do that';
+    const pose = s.status === 'working' ? 'thinking' : s.status === 'ready' ? 'success' : 'idle';
+    // Reuse the bird while streaming, so its fade-in doesn't restart on every chunk.
+    const old = el.querySelector<HTMLElement>('.cm-aon-head .hudhud');
+    if (useSettings.getState().showHudhud)
+      head.prepend(old?.dataset.state === pose ? old : hudhudElement(pose));
     const body = document.createElement('div');
     body.className = 'cm-aon-body';
     if (s.status === 'error') body.classList.add('cm-aon-error');
@@ -327,7 +336,7 @@ class SuggestionWidget extends WidgetType {
 /** Typing `@a` offers `@aon`, so the feature can be found without knowing about it. */
 export function aonCompletion(ctx: CompletionContext): CompletionResult | null {
   const m = ctx.matchBefore(/@a\w*/);
-  if (!m || !isDocType(docOf(ctx.state))) return null;
+  if (!aonEnabled() || !m || !isDocType(docOf(ctx.state))) return null;
   const before = m.from > 0 ? ctx.state.doc.sliceString(m.from - 1, m.from) : '';
   if (/[\\\w@]/.test(before)) return null;
   return {
@@ -349,7 +358,16 @@ const theme = EditorView.baseTheme({
     fontSize: '14px',
     lineHeight: '1.5',
   },
-  '.cm-aon-head': { fontSize: '12px', fontWeight: '600', marginBottom: '4px', opacity: '0.85' },
+  '.cm-aon-head': {
+    fontSize: '12px',
+    fontWeight: '600',
+    marginBottom: '4px',
+    opacity: '0.85',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+  },
+  '.cm-aon-head .hudhud': { '--hudhud-size': '22px' },
   '.cm-aon-body': {
     whiteSpace: 'pre-wrap',
     wordBreak: 'break-word',

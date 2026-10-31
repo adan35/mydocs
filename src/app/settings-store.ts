@@ -46,6 +46,10 @@ export interface Settings {
   liveFolderSync: boolean;
   /** In a live-synced folder: ask before removing files deleted on disk, or move them to Trash. */
   diskDeleteAction: 'ask' | 'remove';
+  /** AON, the AI assistant. Off hides it everywhere. */
+  showAon: boolean;
+  /** Hudhud, AON's animated mascot. */
+  showHudhud: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -72,6 +76,8 @@ export const DEFAULT_SETTINGS: Settings = {
   tableRowHeight: 'full',
   liveFolderSync: false,
   diskDeleteAction: 'ask',
+  showAon: true,
+  showHudhud: true,
 };
 
 /** Most lines a cell shows at each row height. */

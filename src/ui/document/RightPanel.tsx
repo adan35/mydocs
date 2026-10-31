@@ -32,6 +32,7 @@ import { dialogs } from '@/app/dialog-store';
 import { navigate } from '@/app/router';
 import { FileIcon } from '../components/FileIcon';
 import { relativeTime, useIndexVersion, useTree } from '../hooks';
+import { useAonEnabled } from '@/app/aon/enabled';
 import { RelatedAon } from '../aon/RelatedAon';
 
 interface Props {
@@ -250,6 +251,7 @@ export function Outline({ outline }: { outline: DocOutline }) {
 }
 
 function Links({ docId, text }: { docId: EntryId; text?: string }) {
+  const aonOn = useAonEnabled();
   const tree = useTree()!;
   useIndexVersion();
   const s = session();
@@ -310,7 +312,7 @@ function Links({ docId, text }: { docId: EntryId; text?: string }) {
         {!total && <p className="px-1 text-caption text-steel">None.</p>}
       </section>
       <UnlinkedMentions docId={docId} />
-      <RelatedAon docId={docId} />
+      {aonOn && <RelatedAon docId={docId} />}
       {related.length > 0 && (
         <section>
           <h3 className="section-label mb-1.5 px-1">Related · {related.length}</h3>

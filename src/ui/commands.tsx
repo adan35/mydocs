@@ -45,6 +45,7 @@ import {
   ListChecks,
   Sparkles,
   LocateFixed,
+  FolderOpen,
   Link2,
   ArrowLeft,
   ArrowRight,
@@ -52,6 +53,7 @@ import {
 import * as A from '@/app/actions';
 import { openAonFile, toggleAon, useAon } from '@/app/aon/chat';
 import { openCapture, openTidy } from '@/app/aon/dialog';
+import { aonEnabled } from '@/app/aon/enabled';
 import { ws } from '@/app/app-store';
 import { editorActions, useEditor } from '@/app/editor-store';
 import { goBack, goForward, navigate, useRouter } from '@/app/router';
@@ -453,6 +455,14 @@ export function getCommands(): Command[] {
         run: () => A.revealInFiles(doc.id),
       },
       {
+        id: 'show-in-explorer',
+        title: 'Show in File Explorer',
+        group: 'Document',
+        icon: <FolderOpen />,
+        keywords: 'reveal open folder finder disk location',
+        run: () => void A.showInFileExplorer(doc.id),
+      },
+      {
         id: 'copy-path',
         title: 'Copy path',
         group: 'Document',
@@ -755,5 +765,5 @@ export function getCommands(): Command[] {
       );
     }
   }
-  return cmds;
+  return aonEnabled() ? cmds : cmds.filter((c) => !/aon/i.test(c.id));
 }

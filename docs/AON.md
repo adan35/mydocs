@@ -33,6 +33,10 @@ AON helps you find, write and organize inside your own documents. It uses the AI
 - Small local models are slower and weaker than cloud models, especially at choosing tools in chat, long documents and strict JSON (tidy-up and sheets). They fail more often; the chat panel says so, and nothing is applied without your review either way. Models that print their reasoning in `<think>` tags are handled: the thinking is not shown.
 - A model that runs inside the browser itself (no server) is not included: it needs a large download and a capable GPU.
 
+## Hudhud
+
+Hudhud, the hoopoe, is AON's mascot. One pose per state (`src/app/aon/sprites/`): idle, listening (you are typing a request), thinking (a request is in flight), searching (AON is using a tool), success (an answer just arrived, for 2.5 seconds) and sleeping (nothing for two minutes). `hudhudState()` in `src/app/aon/hudhud.ts` maps what AON is doing to a pose; `<Hudhud>` shows it, and the motion is plain CSS (`.hudhud` in `styles.css`). It appears in the chat header and empty state, in the inline suggestion box, in the tidy-up and sheet dialogs, and as a small button in the corner when the panel is closed while AON works. Under reduced motion the poses stay still. Settings has an **Ask AON** switch that hides AON everywhere (sidebar, Home, command palette, `@aon`, the editor and sheet buttons, the panel) and a **Show AON** switch that keeps AON but hides the Hudhud character. The poses are decorative (`aria-hidden`); the status is also written in words.
+
 ## What AON can change
 
 | Action                                  | How                             |

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Hudhud } from './Hudhud';
 import { Dialog } from '../components/Dialog';
 import { aiSource } from '@/app/ai';
 import { navigate } from '@/app/router';
@@ -70,7 +71,15 @@ export function SheetAskDialog({
         disabled={!request.trim() || busy || setup || !allowed}
         onClick={() => void ask()}
       >
-        {busy ? 'Working…' : result ? 'Ask again' : 'Ask'}
+        {busy ? (
+          <>
+            <Hudhud state="thinking" size={20} /> Working…
+          </>
+        ) : result ? (
+          'Ask again'
+        ) : (
+          'Ask'
+        )}
       </button>
       {edits.length > 0 && canApply && (
         <button

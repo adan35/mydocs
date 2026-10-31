@@ -62,3 +62,15 @@ test('copy path options put the path, name and wiki link on the clipboard', asyn
   await page.getByRole('menuitem', { name: 'Relative to open document' }).click();
   expect(await clipboard(page)).toBe('./Keyboard shortcuts.md');
 });
+
+test('Show in File Explorer explains the browser limit and offers a copy', async ({ page }) => {
+  await openGuide(page);
+  await page.getByRole('menuitem', { name: 'File' }).click();
+  await page.getByRole('menuitem', { name: 'Show in File Explorer' }).click();
+  await expect(page.getByText("Browsers can't open File Explorer.")).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Download a copy' })).toBeVisible();
+
+  await page.keyboard.press('Control+k');
+  await page.getByRole('combobox', { name: 'Command palette' }).fill('Show in File Explorer');
+  await expect(page.getByRole('option', { name: /Show in File Explorer/ })).toBeVisible();
+});

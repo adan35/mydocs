@@ -24,8 +24,9 @@ import { useUi } from './ui-store';
 import { useSettings } from './settings-store';
 import { exportFile, exportHtml, exportText, exportZip } from './exporter';
 import { UNREADABLE_REASON, importItems, type ImportItem, type ImportResult } from './importer';
-import { canPrint } from '@/platform';
-import { diskLinks } from './disk-links';
+import { canPrint, canRevealInFileManager, revealInFileManager } from '@/platform';
+import { sourcePaths } from './source-paths';
+import { diskLinks, useDiskLinks } from './disk-links';
 import { folderSync } from './folder-sync';
 import { dirname, relativePath, resolvePath } from '@/domain/paths';
 import { NEW_FILE_BODIES, lastNewKind, type NewKindId } from '@/domain/new-document';
@@ -77,6 +78,38 @@ export function revealInFiles(id: EntryId) {
   else if (!ui.sidebarOpen) ui.setSidebar(true);
   appActions.reveal(id);
   ui.requestReveal(id);
+}
+
+/**
+ * Opens the folder holding a file in File Explorer. Documents live inside My Doc, so only a
+ * file the desktop app opened from disk has a place to show; for anything else (and in
+ * browsers, which can't open the file manager) the toast says so and offers a copy.
+ */
+export async function showInFileExplorer(id: EntryId) {
+  const e = ws().get(id);
+  if (!e || e.kind !== 'file') return;
+  const path = canRevealInFileManager ? sourcePaths.get(id) : undefined;
+  if (path) {
+    try {
+      await revealInFileManager(path);
+    } catch (err) {
+      toastError("The original file was moved or deleted, so File Explorer can't show it.", err);
+    }
+    return;
+  }
+  const linked = diskLinks.isLinked(id) ? useDiskLinks.getState().links[id]?.fileName : undefined;
+  toast({
+    message: canRevealInFileManager
+      ? 'This document is stored inside My Doc.'
+      : "Browsers can't open File Explorer.",
+    detail: linked
+      ? `It is linked to "${linked}" on your computer; look for that file in the folder you imported it from.`
+      : `Save a copy to put "${e.name}" in a folder you choose.`,
+    action: {
+      label: canRevealInFileManager ? 'Save a copy…' : 'Download a copy',
+      run: () => void exportEntry(id, 'file'),
+    },
+  });
 }
 
 export type CopyPathKind = 'workspace' | 'absolute' | 'relative' | 'name' | 'wiki';
@@ -600,7 +633,11 @@ export async function favoriteEntries(ids: EntryId[], favorite: boolean) {
     });
 }
 
-export async function runImport(items: ImportItem[], targetId: EntryId | null = contextFolderId()) {
+/** Resolves to the first imported file, once the import is done. */
+export async function runImport(
+  items: ImportItem[],
+  targetId: EntryId | null = contextFolderId(),
+): Promise<EntryId | undefined> {
   if (!items.length) return;
   if (!(await editorActions.saveBeforeAction())) return;
   const progressToast = toast({
@@ -640,6 +677,7 @@ export async function runImport(items: ImportItem[], targetId: EntryId | null = 
       appActions.setExpanded(result.firstFolderId, true);
       await openEntry(result.firstFolderId);
     } else if (result.firstFileId) await openEntry(result.firstFileId);
+    return result.firstFileId;
   } catch (err) {
     dismissToast(progressToast);
     toastError('The import stopped before finishing. Files imported so far were kept.', err);

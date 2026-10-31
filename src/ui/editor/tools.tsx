@@ -45,6 +45,7 @@ import { editorActions } from '@/app/editor-store';
 import { useSettings } from '@/app/settings-store';
 import { dialogs } from '@/app/dialog-store';
 import { SHORTCUTS } from '@/app/shortcuts';
+import { aonEnabled } from '@/app/aon/enabled';
 import { openAonMenu } from './aon-menu';
 import type { RichApi, RichFocus } from '../document/rich-editing';
 import {
@@ -570,7 +571,7 @@ export const TOOLS: Tool[] = [
     label: 'Write or rewrite with AON',
     icon: <Sparkles />,
     group: 'text',
-    when: mdSource,
+    when: (c) => mdSource(c) && aonEnabled(),
     run: openAonMenu,
   },
 ];
