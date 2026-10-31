@@ -1,5 +1,6 @@
 import { Settings as SettingsIcon, Download, Keyboard } from 'lucide-react';
 import { useSettings, type Settings } from '@/app/settings-store';
+import { canWatchFolders } from '@/app/folder-sync';
 import { useApp } from '@/app/app-store';
 import { useAon } from '@/app/aon/chat';
 import { dialogs } from '@/app/dialog-store';
@@ -432,6 +433,39 @@ export function SettingsView() {
           />
         </Row>
       </Section>
+
+      {canWatchFolders() && (
+        <Section
+          title="Folders on disk"
+          description="For folders you imported from your computer. You can also change this for one folder from its menu."
+        >
+          <Row
+            label="Sync folders in real time"
+            hint="Mirror the folder on disk: edits, new files and deleted files show up here within seconds."
+            htmlFor="live-folders"
+          >
+            <Toggle
+              id="live-folders"
+              checked={s.liveFolderSync}
+              onChange={(liveFolderSync) => set({ liveFolderSync })}
+            />
+          </Row>
+          <Row
+            label="When a file is deleted on disk"
+            hint="In folders synced in real time. Removed files go to Trash, where you can restore them."
+          >
+            <Segmented
+              label="When a file is deleted on disk"
+              value={s.diskDeleteAction}
+              onChange={(diskDeleteAction) => set({ diskDeleteAction })}
+              options={[
+                ['ask', 'Ask me'],
+                ['remove', 'Move to Trash'],
+              ]}
+            />
+          </Row>
+        </Section>
+      )}
 
       <Section title="Daily notes">
         <Row

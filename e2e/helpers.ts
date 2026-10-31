@@ -97,9 +97,12 @@ export async function fakeDisk(
       const handle = {
         kind: 'file',
         name,
-        getFile: async () =>
-          new File([w.__disk as string], name, { lastModified: w.__diskTime as number }),
+        getFile: async () => {
+          if (w.__diskGone) throw new DOMException('gone', 'NotFoundError');
+          return new File([w.__disk as string], name, { lastModified: w.__diskTime as number });
+        },
         createWritable: async () => {
+          if (w.__diskGone) throw new DOMException('gone', 'NotFoundError');
           if (state !== 'granted') throw new DOMException('denied', 'NotAllowedError');
           let next = '';
           return {
@@ -140,4 +143,11 @@ export async function changeDisk(page: Page, text: string) {
     w.__disk = t;
     w.__diskTime = (w.__diskTime as number) + 1000;
   }, text);
+}
+
+/** Deletes the fake file on disk, as the file explorer would. */
+export async function deleteFromDisk(page: Page) {
+  await page.evaluate(() => {
+    (window as unknown as Record<string, unknown>).__diskGone = true;
+  });
 }
