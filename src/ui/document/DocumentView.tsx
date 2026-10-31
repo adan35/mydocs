@@ -57,9 +57,9 @@ import type { BlockType } from '@/domain/source-edit';
 import { baseName } from '@/domain/names';
 import { ScrollSync } from './scroll-sync';
 import type { RichFocus } from './rich-editing';
-import { openMenuAt, type MenuEntry } from '../components/Menu';
+import { openMenu, openMenuAt, type MenuEntry } from '../components/Menu';
 import { formatShortcut, useLayout, useTree } from '../hooks';
-import { copyPathSubmenu, exportSubmenu, showInExplorerItem } from '../entry-menu';
+import { copyPathSubmenu, entryMenu, exportSubmenu, showInExplorerItem } from '../entry-menu';
 import { sendDocCommand } from '../doc-commands';
 import { Preview, type PreviewHandle } from './Preview';
 import { RightPanel } from './RightPanel';
@@ -475,6 +475,17 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
       ref={previewScroller}
       className={`scroll-area min-w-0 flex-1 print-source ${stacked ? 'min-h-0 w-full' : 'h-full'}`}
       data-testid="preview-pane"
+      // Only the empty space around the text: the text itself keeps the browser's menu (copy, select).
+      onContextMenu={(e) => {
+        const t = e.target as Node;
+        if (t !== e.currentTarget && t.parentNode !== e.currentTarget) return;
+        e.preventDefault();
+        openMenu({
+          items: entryMenu(entry),
+          at: { x: e.clientX, y: e.clientY },
+          label: entry.name,
+        });
+      }}
       onScroll={
         readingMode
           ? (e) => {

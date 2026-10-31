@@ -74,3 +74,16 @@ test('Show in File Explorer explains the browser limit and offers a copy', async
   await page.getByRole('combobox', { name: 'Command palette' }).fill('Show in File Explorer');
   await expect(page.getByRole('option', { name: /Show in File Explorer/ })).toBeVisible();
 });
+
+test('right-clicking the blank space beside a document offers the file menu', async ({ page }) => {
+  await openGuide(page);
+  await page.getByRole('button', { name: 'Read', exact: true }).click();
+  const pane = page.getByTestId('preview-pane');
+  const box = (await pane.boundingBox())!;
+  await pane.click({ button: 'right', position: { x: 12, y: box.height / 2 } });
+  await expect(page.getByRole('menuitem', { name: 'Show in File Explorer' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  // On the text itself the browser's own menu stays.
+  await page.locator('.prose p').first().click({ button: 'right' });
+  await expect(page.getByRole('menuitem', { name: 'Show in File Explorer' })).toHaveCount(0);
+});
