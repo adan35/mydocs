@@ -3,7 +3,6 @@ import { MemoryProvider } from '@/storage/memory';
 import { Workspace, setWriteGuard } from './workspace';
 import { WorkspaceSession } from './session';
 import { useApp } from './app-store';
-import { useRouter } from './router';
 import { useToasts } from './toast-store';
 import { diskLinks, useDiskLinks } from './disk-links';
 
@@ -104,17 +103,5 @@ describe('disk link permission after a restart', () => {
     await diskLinks.allowAll();
     expect([state(a.id), state(b.id)]).toEqual(['synced', 'synced']);
     expect(diskLinks.needingPermission()).toHaveLength(0);
-  });
-
-  it('the first click in the open document asks, once', async () => {
-    const a = await linked('a.md', 'a', 'prompt', true);
-    useRouter.setState({ route: { name: 'doc', id: a.id } as never });
-    const stop = diskLinks.watch();
-    let asked = 0;
-    a.handle.requestPermission = async () => (asked++, a.handle.state);
-    document.dispatchEvent(new Event('pointerdown'));
-    document.dispatchEvent(new Event('pointerdown'));
-    stop();
-    expect(asked).toBe(1);
   });
 });

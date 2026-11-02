@@ -29,6 +29,7 @@ import { toast } from './toast-store';
  * then the file is restored silently where the browser already allows it. Otherwise the
  * document shows an "Allow saving to disk" button, a banner restores all files at once, and
  * the first click or key press in a document asks for it (permission needs a user gesture).
+ * `disk-access` asks for linked folders first, so files inside them need no prompt of their own.
  */
 
 export type DiskLinkState =
@@ -476,20 +477,28 @@ function onFocus() {
   else void round(false);
 }
 
-/** Documents already asked on a gesture this session, so a refusal isn't nagged about. */
-const askedOnGesture = new Set<EntryId>();
+function refused(name: string) {
+  toast({
+    tone: 'error',
+    message: `Couldn't get permission to save to "${name}".`,
+    detail:
+      'Click "Allow saving to disk" again and choose "Allow" or "Edit file". Your edits are still saved in My Doc.',
+  });
+}
+
+/** After permission came back: writes the latest text, or reads the file if there is none. */
+async function resume(id: EntryId, text?: string): Promise<boolean> {
+  patch(id, { state: 'synced', error: undefined });
+  if (binaries.has(id) || text === undefined) await check(id);
+  else {
+    pendingText.set(id, text);
+    await schedule(id);
+  }
+  return stateOf(id) === 'synced';
+}
+
 /** Permission prompts currently open, so a click can't stack a second one. */
 const asking = new Set<EntryId>();
-
-/** After a restart the first click or key press in a document asks for its permission. */
-function onGesture() {
-  const route = useRouter.getState().route;
-  if (route.name !== 'doc' || stateOf(route.id) !== 'needs-permission') return;
-  if (askedOnGesture.has(route.id)) return;
-  askedOnGesture.add(route.id);
-  const text = binaries.has(route.id) ? undefined : workspace()?.allTexts().get(route.id);
-  void diskLinks.allow(route.id, text);
-}
 
 export const diskLinks = {
   /** Loads the links of a workspace (called when a workspace opens). */
@@ -536,11 +545,7 @@ export const diskLinks = {
     timer = setInterval(() => void round(false), POLL_MS);
     addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onFocus);
-    document.addEventListener('pointerdown', onGesture, true);
-    document.addEventListener('keydown', onGesture, true);
     return () => {
-      document.removeEventListener('pointerdown', onGesture, true);
-      document.removeEventListener('keydown', onGesture, true);
       if (timer) clearInterval(timer);
       timer = null;
       removeEventListener('focus', onFocus);
@@ -614,29 +619,37 @@ export const diskLinks = {
     // Ask before anything else: awaiting first would let the user gesture expire.
     const state = await permission(h, true, modeOf(id)).finally(() => asking.delete(id));
     if (state !== 'granted') {
-      toast({
-        tone: 'error',
-        message: `Couldn't get permission to save to "${h.name}".`,
-        detail:
-          'Click "Allow saving to disk" again and choose "Allow" or "Edit file". Your edits are still saved in My Doc.',
-      });
+      refused(h.name);
       return false;
     }
-    patch(id, { state: 'synced', error: undefined });
-    if (binaries.has(id) || text === undefined) await check(id);
-    else {
-      pendingText.set(id, text);
-      await schedule(id);
-    }
-    return stateOf(id) === 'synced';
+    return resume(id, text);
   },
 
-  /** The "Allow all" banner: asks for every file that lost permission, stopping at a refusal. */
-  async allowAll(): Promise<void> {
+  /**
+   * Restores every file that lost permission. Files the browser already allows again (one
+   * inside a folder that was just allowed) need no prompt; of the rest, only those in `ask`
+   * get one each, stopping at a refusal. Must run from a click or key press.
+   */
+  async allowAll(ask: EntryId[] = diskLinks.needingPermission()): Promise<void> {
+    const ready: EntryId[] = [];
+    let stop = false;
     for (const id of diskLinks.needingPermission()) {
-      const text = binaries.has(id) ? undefined : workspace()?.allTexts().get(id);
-      if (!(await diskLinks.allow(id, text))) return;
+      const h = handles.get(id);
+      if (!h || asking.has(id)) continue;
+      let state = await permission(h, false, modeOf(id));
+      if (state !== 'granted' && !stop && ask.includes(id)) {
+        asking.add(id);
+        state = await permission(h, true, modeOf(id)).finally(() => asking.delete(id));
+        if (state !== 'granted') {
+          stop = true;
+          refused(h.name);
+        }
+      }
+      if (state === 'granted') ready.push(id);
     }
+    // Prompts first, writes after: a slow write in between could outlast the gesture.
+    for (const id of ready)
+      await resume(id, binaries.has(id) ? undefined : workspace()?.allTexts().get(id));
   },
 
   needingPermission(): EntryId[] {

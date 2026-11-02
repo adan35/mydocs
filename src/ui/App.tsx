@@ -1,4 +1,5 @@
 import { DiskPermissionBanner } from './components/DiskPermissionBanner';
+import { watchDiskAccess } from '@/app/disk-access';
 import { useEffect } from 'react';
 import { appActions, useApp } from '@/app/app-store';
 import { editorActions, writeRecoveryDrafts } from '@/app/editor-store';
@@ -47,6 +48,8 @@ function useLifecycle() {
     void diskLinks.load(workspace.id, (id) => !!workspace.get(id));
     // Files changed on disk (in another app) show their new contents here.
     const stopWatching = diskLinks.watch();
+    // After a restart the first click in a document asks for disk access again.
+    const stopAsking = watchDiskAccess();
     // Folders imported from disk pick up files added there later.
     void folderSync.load(workspace.id, (id) => !!workspace.get(id));
     const stopWatchingFolders = folderSync.watch();
@@ -82,6 +85,7 @@ function useLifecycle() {
       stopOpening?.();
       unsub();
       stopWatching();
+      stopAsking();
       stopWatchingFolders();
       stopWatchingDeletions();
     };
