@@ -63,7 +63,7 @@ import { PALETTES } from '@/app/themes';
 import { useUi } from '@/app/ui-store';
 import { dialogs } from '@/app/dialog-store';
 import { quickNote } from '@/app/notes';
-import { SHORTCUTS } from '@/app/shortcuts';
+import { SHORTCUTS, templatesHint } from '@/app/shortcuts';
 import { isMarkdownName } from '@/domain/names';
 import { conversionsFrom, formatOf } from '@/lib/convert/capabilities';
 import { canPrint } from '@/platform';
@@ -186,7 +186,7 @@ export function getCommands(): Command[] {
       title: 'New document from template',
       group: 'Create',
       icon: <LayoutTemplate />,
-      shortcut: SHORTCUTS.templates,
+      shortcut: templatesHint(),
       keywords: 'readme meeting notes lecture class daily todo api research',
       run: () => void A.newFromTemplate(),
     },

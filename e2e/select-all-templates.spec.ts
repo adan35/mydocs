@@ -26,10 +26,10 @@ test('Ctrl+A in the sidebar selects the sidebar only', async ({ page }) => {
   expect(text).not.toContain('Welcome to My Doc');
 });
 
-test('Ctrl+T and Alt+T open the template picker; the sidebar shows the hint', async ({ page }) => {
+test('Ctrl+T and Alt+T open the template picker; the browser hint is Alt+T', async ({ page }) => {
   await freshApp(page);
   await expect(page.getByRole('button', { name: /^Templates/ }).locator('kbd')).toHaveText(
-    process.platform === 'darwin' ? '⌘T' : 'Ctrl+T',
+    process.platform === 'darwin' ? '⌥T' : 'Alt+T',
   );
   for (const key of [`${mod}+t`, 'Alt+t']) {
     await page.keyboard.press(key);

@@ -29,7 +29,7 @@ import { useApp } from '@/app/app-store';
 import { useRouter, navigate, type Route } from '@/app/router';
 import { cloudAvailable } from '@/app/cloud';
 import { useUi } from '@/app/ui-store';
-import { SHORTCUTS } from '@/app/shortcuts';
+import { SHORTCUTS, templatesHint } from '@/app/shortcuts';
 import { dialogs } from '@/app/dialog-store';
 import * as A from '@/app/actions';
 import { toggleAon } from '@/app/aon/chat';
@@ -186,7 +186,7 @@ export function Sidebar({ onClose, drawer }: { onClose?: () => void; drawer?: bo
               <LayoutTemplate size={16} />
             </span>
             <span className="flex-1">Templates</span>
-            <kbd className="kbd hidden md:inline-flex">{formatShortcut(SHORTCUTS.templates)}</kbd>
+            <kbd className="kbd hidden md:inline-flex">{formatShortcut(templatesHint())}</kbd>
           </button>
           {aonOn && (
             <button

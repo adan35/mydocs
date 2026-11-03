@@ -33,6 +33,12 @@ export const SHORTCUTS = {
   aon: 'Mod+J',
 } as const;
 
+/** The templates shortcut to show: Ctrl+T only where the browser doesn't keep it for a new tab. */
+export const templatesHint = () =>
+  '__TAURI_INTERNALS__' in window || matchMedia('(display-mode: standalone)').matches
+    ? SHORTCUTS.templates
+    : SHORTCUTS.templatesAlt;
+
 export const SHORTCUT_GROUPS: { title: string; items: [string, string][] }[] = [
   {
     title: 'General',
@@ -42,7 +48,10 @@ export const SHORTCUT_GROUPS: { title: string; items: [string, string][] }[] = [
       ['Search everything', SHORTCUTS.search],
       ['New document', SHORTCUTS.newDoc],
       ['New folder', SHORTCUTS.newFolder],
-      ['New from template', `${SHORTCUTS.templates} or ${SHORTCUTS.templatesAlt}`],
+      [
+        'New from template',
+        `${SHORTCUTS.templatesAlt}, or ${SHORTCUTS.templates} in the installed app`,
+      ],
       ["Today's daily note", SHORTCUTS.dailyNote],
       ['Quick note', SHORTCUTS.quickNote],
       ['Quick checklist', SHORTCUTS.quickList],
