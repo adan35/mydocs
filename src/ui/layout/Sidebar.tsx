@@ -392,7 +392,7 @@ function NavItem({
     <button
       type="button"
       aria-current={current ? 'page' : undefined}
-      className={`nav-item flex h-[30px] w-full items-center gap-2 rounded-md px-2 text-left text-[14px] ${current ? 'bg-active font-medium text-ink' : 'hover:bg-hover'} ${drop.over ? 'drop-target' : ''}`}
+      className={`nav-item flex h-[30px] w-full items-center gap-2 rounded-md px-2 text-left text-[14px] ${current ? 'bg-active font-medium text-ink shadow-[inset_2px_0_0_var(--primary)]' : 'hover:bg-hover'} ${drop.over ? 'drop-target' : ''}`}
       {...(onDropEntry ? drop.props : {})}
       onClick={() => {
         useUi.getState().setDrawer(false);

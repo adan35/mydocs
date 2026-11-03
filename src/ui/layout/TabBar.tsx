@@ -99,7 +99,7 @@ export function TabBar() {
             data-pinned={isPinned || undefined}
             className={`group relative flex h-8 ${isPinned ? 'max-w-[160px] min-w-0' : 'max-w-[220px] min-w-[96px]'} shrink-0 cursor-pointer items-center gap-1.5 rounded-t-md pr-1 pl-2.5 text-[13px] select-none ${
               selected
-                ? 'bg-canvas text-ink shadow-[0_1px_0_var(--canvas)]'
+                ? 'bg-canvas text-ink shadow-[inset_0_2px_0_var(--primary),0_1px_0_var(--canvas)]'
                 : 'text-steel hover:bg-hover hover:text-charcoal'
             } ${dragIndex === i ? 'opacity-50' : ''}`}
             onClick={() => void openEntry(id)}
@@ -170,7 +170,7 @@ export function TabBar() {
               setDragIndex(null);
             }}
           >
-            <FileIcon entry={e} size={14} className="shrink-0 opacity-80" />
+            <FileIcon entry={e} size={14} className={`shrink-0 ${selected ? '' : 'opacity-80'}`} />
             <span className="min-w-0 flex-1 truncate">{e.name}</span>
             {isPinned ? (
               <button

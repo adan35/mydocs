@@ -497,7 +497,7 @@ const TreeRow = memo(function TreeRow({
         selected
           ? 'bg-[color-mix(in_srgb,var(--primary)_16%,transparent)] font-medium text-ink'
           : active
-            ? 'bg-active font-medium text-ink'
+            ? 'bg-active font-medium text-ink shadow-[inset_2px_0_0_var(--primary)]'
             : 'text-charcoal hover:bg-hover'
       } ${dropping || flash ? 'ring-2 ring-[var(--primary)] ring-inset' : ''}`}
       style={{ top, height, paddingLeft: 6 + depth * 14 }}
