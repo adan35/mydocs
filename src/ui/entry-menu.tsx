@@ -140,7 +140,8 @@ export function copyPathSubmenu(e: Entry): MenuEntry[] {
     { label: 'Full path (from root)', onSelect: () => void A.copyPath(e.id, 'absolute') },
     {
       label: 'Relative to open document',
-      disabled: !A.relativeBase(e.id),
+      disabled: !A.relativeBase(),
+      hint: A.relativeBase() ? undefined : 'Open a document first',
       onSelect: () => void A.copyPath(e.id, 'relative'),
     },
     {
