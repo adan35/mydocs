@@ -144,7 +144,7 @@ test('your own templates, front matter properties and outline folding', async ({
   await page.keyboard.type('save as template');
   await page.keyboard.press('Enter');
   await expect(page.getByRole('treeitem', { name: 'Templates' })).toBeVisible();
-  await page.getByRole('button', { name: 'Templates', exact: true }).click();
+  await page.getByRole('button', { name: /^Templates/ }).click();
   const dialog = page.getByRole('dialog', { name: 'New from template' });
   await dialog.getByRole('button', { name: /Weekly report/ }).click();
   await expect(page.locator('.cm-content')).toContainText('# Weekly report (2)');

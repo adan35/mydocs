@@ -475,6 +475,7 @@ function TextDocument({ entry, anchor }: { entry: Entry; anchor?: string }) {
       ref={previewScroller}
       className={`scroll-area min-w-0 flex-1 print-source ${stacked ? 'min-h-0 w-full' : 'h-full'}`}
       data-testid="preview-pane"
+      data-select-scope
       // Only the empty space around the text: the text itself keeps the browser's menu (copy, select).
       onContextMenu={(e) => {
         const t = e.target as Node;

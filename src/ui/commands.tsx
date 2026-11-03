@@ -186,6 +186,7 @@ export function getCommands(): Command[] {
       title: 'New document from template',
       group: 'Create',
       icon: <LayoutTemplate />,
+      shortcut: SHORTCUTS.templates,
       keywords: 'readme meeting notes lecture class daily todo api research',
       run: () => void A.newFromTemplate(),
     },
