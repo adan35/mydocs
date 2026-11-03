@@ -61,6 +61,7 @@ export interface AppMenu {
   items: MenuEntry[];
 }
 
+const MENU_TITLES = ['File', 'Edit', 'View', 'Help'];
 const ZOOM_MIN = 13;
 const ZOOM_MAX = 22;
 
@@ -385,7 +386,13 @@ export function MenuBar({ compact }: { compact?: boolean }) {
   const show = (el: HTMLElement, name: string) => {
     const menu = appMenus().find((m) => m.label === name)!;
     setActive(name);
-    openMenuAt(el, menu.items, name);
+    const titles = [...el.parentElement!.children] as HTMLElement[];
+    // ← / → in an open menu moves to the neighbouring title.
+    const onNavigate = (dir: -1 | 1) => {
+      const n = (titles.indexOf(el) + dir + titles.length) % titles.length;
+      show(titles[n]!, MENU_TITLES[n]!);
+    };
+    openMenuAt(el, menu.items, name, { onNavigate });
   };
 
   if (compact)
@@ -409,7 +416,7 @@ export function MenuBar({ compact }: { compact?: boolean }) {
       aria-label="Application menu"
       className="flex h-8 shrink-0 items-center gap-0.5 border-b border-hairline bg-canvas px-1.5 no-print"
     >
-      {['File', 'Edit', 'View', 'Help'].map((name) => (
+      {MENU_TITLES.map((name) => (
         <button
           key={name}
           type="button"
@@ -418,6 +425,11 @@ export function MenuBar({ compact }: { compact?: boolean }) {
           aria-expanded={active === name && open}
           className="h-6 rounded-md px-2.5 text-[13px] text-ink hover:bg-hover aria-expanded:bg-hover"
           onClick={(e) => show(e.currentTarget, name)}
+          onKeyDown={(e) => {
+            if (e.key !== 'ArrowDown') return;
+            e.preventDefault();
+            show(e.currentTarget, name);
+          }}
           // Once one menu is open, pointing at another title switches to it, as in other apps.
           onPointerEnter={(e) => open && active && active !== name && show(e.currentTarget, name)}
         >

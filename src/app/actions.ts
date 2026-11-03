@@ -114,10 +114,10 @@ export async function showInFileExplorer(id: EntryId) {
 
 export type CopyPathKind = 'workspace' | 'absolute' | 'relative' | 'name' | 'wiki';
 
-/** The open document, when it is a different entry from `id` (what a relative path starts from). */
-export function relativeBase(id: EntryId): EntryId | undefined {
+/** The open document, which a relative path starts from (it may be `id` itself). */
+export function relativeBase(): EntryId | undefined {
   const active = useEditor.getState().activeId;
-  return active && active !== id && ws().get(active) ? active : undefined;
+  return active && ws().get(active) ? active : undefined;
 }
 
 /**
@@ -138,7 +138,7 @@ export async function copyPath(id: EntryId, kind: CopyPathKind) {
     text = e.name;
     what = 'file name';
   } else if (kind === 'relative') {
-    const from = relativeBase(id);
+    const from = relativeBase();
     if (!from) return;
     text = relativePath(dirname(tree.pathOf(from)), path);
     what = 'relative path';
