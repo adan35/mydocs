@@ -150,11 +150,14 @@ export async function listFolder(
   return out;
 }
 
-async function granted(h: DirHandle, ask: boolean): Promise<boolean> {
+async function granted(
+  h: DirHandle,
+  ask: boolean,
+  mode: 'read' | 'readwrite' = 'read',
+): Promise<boolean> {
   try {
-    if (ask && h.requestPermission)
-      return (await h.requestPermission({ mode: 'read' })) === 'granted';
-    if (h.queryPermission) return (await h.queryPermission({ mode: 'read' })) === 'granted';
+    if (ask && h.requestPermission) return (await h.requestPermission({ mode })) === 'granted';
+    if (h.queryPermission) return (await h.queryPermission({ mode })) === 'granted';
     return true;
   } catch {
     // requestPermission throws without a user gesture.
@@ -182,7 +185,8 @@ async function sync(id: EntryId, ask: boolean): Promise<FolderSyncResult | null>
   tried.set(id, started);
   patch(id, { state: 'syncing', error: undefined });
   try {
-    if (!(await granted(rec.handle, ask))) {
+    // Asking covers writing too, so the linked files inside need no prompt of their own.
+    if (!(await granted(rec.handle, ask, ask ? 'readwrite' : 'read'))) {
       patch(id, { state: 'needs-permission' });
       return null;
     }
@@ -400,6 +404,43 @@ export const folderSync = {
     records.set(id, { handle: handle as DirHandle, watch: true, seen, lastSync: Date.now() });
     setLink(id, { name: handle.name, watch: true, state: 'idle', lastSync: Date.now() });
     await persist(id);
+  },
+
+  /**
+   * Asks for read and write access to the linked folders that need it: those waiting for
+   * permission and those holding any of `fileIds`. Access to a folder covers every file
+   * inside it, so this is one prompt per folder instead of one per file. Returns false at
+   * the first refusal. Must run from a click or key press.
+   */
+  async allowFor(fileIds: EntryId[]): Promise<boolean> {
+    const ws = useApp.getState().session?.workspace;
+    const links = useFolderLinks.getState().links;
+    const allowed: EntryId[] = [];
+    let ok = true;
+    for (const [id, rec] of records) {
+      const wanted =
+        links[id]?.state === 'needs-permission' ||
+        (!!ws && fileIds.some((f) => ws.tree.isWithin(f, id)));
+      if (!wanted) continue;
+      // Already allowed, possibly through a parent folder asked a moment ago.
+      if (!(await granted(rec.handle, false, 'readwrite'))) {
+        if (!(await granted(rec.handle, true, 'readwrite'))) {
+          ok = false;
+          toast({
+            tone: 'error',
+            message: `Couldn't get access to "${rec.handle.name}".`,
+            detail: 'Your edits are still saved in My Doc.',
+          });
+          break;
+        }
+      }
+      allowed.push(id);
+    }
+    // Prompts first, scans after: a long scan in between could outlast the gesture.
+    for (const id of allowed)
+      if (links[id]?.state === 'needs-permission')
+        void sync(id, false).then((r) => report(id, r, true));
+    return ok;
   },
 
   /** "Sync now": must run from a click, so a permission prompt can show. */

@@ -263,12 +263,21 @@ export const appActions = {
   },
 };
 
+const PERSIST_ASKED = 'mydoc:persist-asked';
+
 /** Asks the browser not to evict our data under storage pressure. */
 async function requestPersistence() {
   try {
     if (!navigator.storage?.persist) return;
     const already = await navigator.storage.persisted();
-    set({ persistentStorage: already || (await navigator.storage.persist()) });
+    // Firefox shows a prompt for this: ask once, not on every launch.
+    // shortcut: Chrome (no prompt) isn't retried after it says no; retry there if that matters.
+    if (already || prefs.get(PERSIST_ASKED, false)) {
+      set({ persistentStorage: already });
+      return;
+    }
+    prefs.set(PERSIST_ASKED, true);
+    set({ persistentStorage: await navigator.storage.persist() });
   } catch {
     set({ persistentStorage: false });
   }

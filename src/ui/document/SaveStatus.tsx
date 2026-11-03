@@ -12,6 +12,7 @@ import {
 import { openMenuAt } from '../components/Menu';
 import { useEditor } from '@/app/editor-store';
 import { editorActions } from '@/app/editor-store';
+import { allowDiskAccess } from '@/app/disk-access';
 import { diskLinks, useDiskLinks } from '@/app/disk-links';
 import { diskRemoved } from '@/app/disk-removed';
 import { ws } from '@/app/app-store';
@@ -89,6 +90,11 @@ export function DiskStatus({ id }: { id: EntryId }) {
   }, [refreshedAt]);
   if (!link) return null;
   const allow = () => {
+    // Asks the linked folder first, so one prompt restores the files next to this one too.
+    if (link.state === 'needs-permission') {
+      void allowDiskAccess([id]);
+      return;
+    }
     if (link.binary) {
       void diskLinks.allow(id);
       return;
