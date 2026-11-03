@@ -77,7 +77,7 @@ test('the meeting minutes template creates a ready-to-fill document with editabl
   page,
 }) => {
   await freshApp(page);
-  await page.getByRole('button', { name: 'Templates', exact: true }).click();
+  await page.getByRole('button', { name: /^Templates/ }).click();
   await page
     .getByRole('dialog', { name: 'New from template' })
     .getByRole('button', { name: /Meeting minutes/ })

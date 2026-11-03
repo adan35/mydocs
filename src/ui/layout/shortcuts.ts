@@ -27,9 +27,17 @@ function inSidebar(target: EventTarget | null) {
   return !!nav && (nav.contains(target as Node) || (!inTextField(target) && nav.matches(':hover')));
 }
 
+/** The pane Select all works in: the nearest marked pane, else the sidebar, side panel or main area. */
+const scopeOf = (n: EventTarget | null) =>
+  (n instanceof Element ? n : document.body).closest<HTMLElement>(
+    '[data-select-scope], nav, aside, main',
+  );
+let lastScope: HTMLElement | null = null;
+
 /** App-wide keyboard shortcuts. Editor-specific ones live in the editor keymap. */
 export function useGlobalShortcuts() {
   useEffect(() => {
+    const onPointer = (e: PointerEvent) => (lastScope = scopeOf(e.target));
     const onKey = (e: KeyboardEvent) => {
       // Modal controls own their keys. A save/rename prompt must not create files,
       // change documents or open another overlay behind itself.
@@ -53,6 +61,8 @@ export function useGlobalShortcuts() {
       if (m('Mod+N') && route.name === 'notes')
         return run(() => useNotesUi.getState().setComposer('note'));
       if (m(SHORTCUTS.newDoc) || m('Mod+N')) return run(() => void A.chooseNewDocument());
+      if (m(SHORTCUTS.templates) || m(SHORTCUTS.templatesAlt))
+        return run(() => void A.newFromTemplate());
       if (m(SHORTCUTS.newFolder)) return run(() => void A.newFolder());
       if (m(SHORTCUTS.dailyNote)) return run(() => void A.openDailyNote());
       if (m(SHORTCUTS.quickNote)) return run(() => quickNote('note'));
@@ -68,6 +78,20 @@ export function useGlobalShortcuts() {
       if (m(SHORTCUTS.back)) return run(() => void goBack());
       if (m(SHORTCUTS.forward)) return run(goForward);
       if (m(SHORTCUTS.reopenTab)) return run(() => void reopenClosedTab());
+      // Editors, inputs and the sheet grid select their own content. Anywhere else the browser would
+      // select the whole page (sidebar included): select the focused pane's content instead.
+      if (
+        m('Mod+A') &&
+        !inTextField(e.target) &&
+        !(e.target as Element).closest?.('[role="grid"]')
+      ) {
+        // Focus on the page itself or on <main> (after a click on plain text): use the last pane clicked.
+        const t = scopeOf(e.target);
+        const scope = t && !t.matches('main') ? t : lastScope?.isConnected ? lastScope : t;
+        return run(() => {
+          if (scope) getSelection()?.selectAllChildren(scope);
+        });
+      }
       if (m(SHORTCUTS.save)) {
         const id = useEditor.getState().activeId;
         return run(() => void (id ? editorActions.flush(id) : editorActions.flushAll()));
@@ -103,6 +127,10 @@ export function useGlobalShortcuts() {
       }
     };
     addEventListener('keydown', onKey, true);
-    return () => removeEventListener('keydown', onKey, true);
+    addEventListener('pointerdown', onPointer, true);
+    return () => {
+      removeEventListener('keydown', onKey, true);
+      removeEventListener('pointerdown', onPointer, true);
+    };
   }, []);
 }

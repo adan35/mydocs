@@ -186,6 +186,7 @@ export function Sidebar({ onClose, drawer }: { onClose?: () => void; drawer?: bo
               <LayoutTemplate size={16} />
             </span>
             <span className="flex-1">Templates</span>
+            <kbd className="kbd hidden md:inline-flex">{formatShortcut(SHORTCUTS.templates)}</kbd>
           </button>
           {aonOn && (
             <button
