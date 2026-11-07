@@ -62,7 +62,7 @@ export function ConvertDialog({
       void markdownTables(entryId).then((t) =>
         setTables(t.map((x) => ({ index: x.index, label: x.label, rows: x.table.rows.length }))),
       );
-    if (from === 'xlsx')
+    if (from === 'xlsx' || from === 'xls')
       void ws()
         .readBlob(entryId)
         .then(async (b) =>
@@ -203,22 +203,24 @@ export function ConvertDialog({
               </select>
             </label>
           )}
-          {(to === 'csv' || to === 'tsv') && from === 'xlsx' && sheets.length > 1 && (
-            <label className="flex items-center gap-2 text-caption text-steel">
-              Sheet
-              <select
-                className="input h-8 w-auto py-0"
-                value={sheet}
-                onChange={(e) => setSheet(Number(e.target.value))}
-              >
-                {sheets.map((s, i) => (
-                  <option key={s} value={i}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
+          {(to === 'csv' || to === 'tsv') &&
+            (from === 'xlsx' || from === 'xls') &&
+            sheets.length > 1 && (
+              <label className="flex items-center gap-2 text-caption text-steel">
+                Sheet
+                <select
+                  className="input h-8 w-auto py-0"
+                  value={sheet}
+                  onChange={(e) => setSheet(Number(e.target.value))}
+                >
+                  {sheets.map((s, i) => (
+                    <option key={s} value={i}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
           {error && (
             <p
               className="flex items-start gap-2 rounded-md bg-danger-soft p-3 text-caption text-charcoal"

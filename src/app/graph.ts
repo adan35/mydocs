@@ -50,6 +50,7 @@ export function docTypeOf(name: string): DocType | null {
     case 'docx':
       return 'word';
     case 'xlsx':
+    case 'xls':
     case 'csv':
     case 'tsv':
     case 'unl':

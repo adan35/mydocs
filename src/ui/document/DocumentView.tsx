@@ -141,7 +141,7 @@ function FileDocument({ entry }: { entry: Entry }) {
           onOutline={() => setOutlineSheet(true)}
         />
         <div className="min-h-0 flex-1">
-          {format === 'xlsx' ? (
+          {format === 'xlsx' || format === 'xls' ? (
             <XlsxView entry={entry} onConvert={onConvert} />
           ) : format === 'docx' ? (
             <DocxView entry={entry} onConvert={onConvert} />

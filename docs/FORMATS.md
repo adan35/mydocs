@@ -7,6 +7,7 @@
 | Markdown (.md, .markdown, .mdx) | Source, split, rich and reading views | Everything: source, rich editing, tables as a sheet |
 | Word document (.docx) | Formatted read-only view | Not in place. Convert to Markdown to edit; the original is kept. |
 | Excel workbook (.xlsx) | Sheet view with sheet tabs and formulas | Cell values and formulas; every save keeps a version |
+| Legacy Excel workbook (.xls) | Sheet view with sheet tabs, formulas and fill colors; large files open without freezing | Not saved in place (MyDocs cannot write .xls). Edit as .xlsx saves a copy next to it and keeps the original. |
 | CSV (.csv) | Sheet view, or as text | Cells (only edited rows are rewritten) or raw text |
 | TSV (.tsv, .tab) | Sheet view, or as text | Cells (only edited rows are rewritten) or raw text |
 | UNL (.unl) | Sheet view (pipe-delimited, columns A, B, C… with an optional header row), or as text | Cells (only edited rows are rewritten, keeping the trailing delimiter) or raw text |
@@ -52,6 +53,10 @@
 | HTML → PDF | convert, export | Headings, lists, tables, links, quotes and code; Title and author | Styles and layout (the PDF uses its own page design); Images; Text outside Western European alphabets and emoji (written as ?) |
 | Plain text → PDF | convert, export | All words; blank lines separate paragraphs | Text outside Western European alphabets and emoji (written as ?) |
 | Plain text → Markdown | convert | All text; blank lines separate paragraphs; Markdown characters are escaped so nothing changes meaning | Nothing |
+| Legacy Excel workbook → Excel workbook | convert, export | Every sheet, value and formula MyDocs can read; Number formats (dates, percentages, decimals); Fill and text colors; Column widths | Fonts, bold, borders, merged cells, charts, images and macros; Formulas that use names, arrays or functions MyDocs cannot read (saved as their values) |
+| Legacy Excel workbook → CSV | convert, export (sheet) | The values each cell shows (formula results, formatted dates) | Formulas (saved as their values); Other sheets; Number formats beyond the shown text |
+| Legacy Excel workbook → TSV | convert, export (sheet) | The values each cell shows | Formulas (saved as their values); Other sheets |
+| Legacy Excel workbook → Markdown | convert | Every sheet as a heading and a table of shown values | Formulas (saved as their values); Number types (cells become text) |
 
 ## Not supported
 
@@ -61,4 +66,5 @@
 | Editing PDFs, or converting PDFs to text documents | PDFs have no reliable structure; text extraction would guess at headings, tables and reading order. |
 | Editing Word documents in place | Word layout features (sections, fonts, comments) have no Markdown equivalent; converting first makes every loss visible before it happens. |
 | Sync, sharing and real-time collaboration | MyDocs keeps documents on this device only. There is no server. |
-| Formatted viewing of legacy .doc, .xls, .ppt and .rtf | These open as raw text or bytes with the original available to download. Save them as .docx, .xlsx or .pptx for a document preview. |
+| Formatted viewing of legacy .doc, .ppt and .rtf | These open as raw text or bytes with the original available to download. Save them as .docx or .pptx for a document preview. |
+| Writing legacy .xls files | Excel 97-2003 files open and convert, but MyDocs saves edits as .xlsx next to the original instead of rewriting the old binary format. |

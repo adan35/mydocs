@@ -4,7 +4,8 @@
  * docs/FORMATS.md are all generated from this table, so they cannot disagree.
  */
 
-export type FormatId = 'md' | 'docx' | 'xlsx' | 'csv' | 'tsv' | 'unl' | 'html' | 'txt' | 'pdf';
+export type FormatId =
+  'md' | 'docx' | 'xlsx' | 'xls' | 'csv' | 'tsv' | 'unl' | 'html' | 'txt' | 'pdf';
 
 export interface FormatInfo {
   id: FormatId;
@@ -37,6 +38,13 @@ export const FORMATS: FormatInfo[] = [
     extensions: ['xlsx'],
     view: 'Sheet view with sheet tabs and formulas',
     edit: 'Cell values and formulas; every save keeps a version',
+  },
+  {
+    id: 'xls',
+    label: 'Legacy Excel workbook',
+    extensions: ['xls'],
+    view: 'Sheet view with sheet tabs, formulas and fill colors; large files open without freezing',
+    edit: 'Not saved in place (MyDocs cannot write .xls). Edit as .xlsx saves a copy next to it and keeps the original.',
   },
   {
     id: 'csv',
@@ -128,7 +136,7 @@ const PDF_LOSES = [
   'Images that are not JPEG or PNG, and images from the web',
 ];
 
-export const CONVERSIONS: Conversion[] = [
+const BASE_CONVERSIONS: Conversion[] = [
   {
     from: 'md',
     to: 'docx',
@@ -377,6 +385,27 @@ export const CONVERSIONS: Conversion[] = [
   },
 ];
 
+/** A legacy .xls reads into the same workbook as .xlsx, so it converts the same ways. */
+export const CONVERSIONS: Conversion[] = [
+  ...BASE_CONVERSIONS,
+  {
+    from: 'xls',
+    to: 'xlsx',
+    kinds: ['convert', 'export'],
+    keeps: [
+      'Every sheet, value and formula MyDocs can read',
+      'Number formats (dates, percentages, decimals)',
+      'Fill and text colors',
+      'Column widths',
+    ],
+    loses: [
+      'Fonts, bold, borders, merged cells, charts, images and macros',
+      'Formulas that use names, arrays or functions MyDocs cannot read (saved as their values)',
+    ],
+  },
+  ...BASE_CONVERSIONS.filter((c) => c.from === 'xlsx').map((c) => ({ ...c, from: 'xls' as const })),
+];
+
 export const NOT_SUPPORTED: { what: string; why: string }[] = [
   {
     what: 'Google Docs and Google Sheets',
@@ -395,8 +424,12 @@ export const NOT_SUPPORTED: { what: string; why: string }[] = [
     why: 'MyDocs keeps documents on this device only. There is no server.',
   },
   {
-    what: 'Formatted viewing of legacy .doc, .xls, .ppt and .rtf',
-    why: 'These open as raw text or bytes with the original available to download. Save them as .docx, .xlsx or .pptx for a document preview.',
+    what: 'Formatted viewing of legacy .doc, .ppt and .rtf',
+    why: 'These open as raw text or bytes with the original available to download. Save them as .docx or .pptx for a document preview.',
+  },
+  {
+    what: 'Writing legacy .xls files',
+    why: 'Excel 97-2003 files open and convert, but MyDocs saves edits as .xlsx next to the original instead of rewriting the old binary format.',
   },
 ];
 

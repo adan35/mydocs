@@ -73,6 +73,7 @@ const MIME: Record<FormatId, string> = {
   md: 'text/markdown;charset=utf-8',
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  xls: 'application/vnd.ms-excel',
   csv: 'text/csv;charset=utf-8',
   tsv: 'text/tab-separated-values;charset=utf-8',
   unl: 'text/plain;charset=utf-8',
@@ -303,10 +304,10 @@ export async function runConversion(
   }
 
   // ---------------------------------------------------------------- spreadsheet sources
-  if (from === 'xlsx' || from === 'csv' || from === 'tsv' || from === 'unl') {
+  if (from === 'xlsx' || from === 'xls' || from === 'csv' || from === 'tsv' || from === 'unl') {
     let wb: Workbook;
     let sourceReport: ReportData | undefined;
-    if (from === 'xlsx') {
+    if (from === 'xlsx' || from === 'xls') {
       const blob = await ws().readBlob(id);
       if (!blob) throw new Error('The file could not be read.');
       const out = await convert('readXlsx', { data: await bytes(blob) });
@@ -351,7 +352,7 @@ export async function runConversion(
     if (to === 'md') {
       const r = ConversionReport.from(merged);
       let md: string;
-      if (from === 'xlsx') md = workbookMarkdown(wb, r);
+      if (from === 'xlsx' || from === 'xls') md = workbookMarkdown(wb, r);
       else {
         let sheet = wb.sheets[0]!;
         if (from === 'unl') {

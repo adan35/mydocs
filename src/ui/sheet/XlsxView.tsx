@@ -1,10 +1,12 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import type { Entry } from '@/domain/types';
-import { baseName } from '@/domain/names';
+import { baseName, extensionOf } from '@/domain/names';
 import { ws } from '@/app/app-store';
 import { toast, toastError } from '@/app/toast-store';
 import { dialogs } from '@/app/dialog-store';
+import { openEntry } from '@/app/actions';
+import { runConversion, saveConversion } from '@/app/convert';
 import { convert } from '@/lib/convert/client';
 import type { ReportData } from '@/lib/convert/doc-ast';
 import { recalculate } from '@/lib/convert/formula';
@@ -58,6 +60,9 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
   const [editable, setEditable] = useState(false);
   const [save, setSave] = useState<SaveState>('saved');
   const [asking, setAsking] = useState(false);
+  const [copying, setCopying] = useState(false);
+  // MyDocs reads .xls but can't write it, so edits go to an .xlsx copy.
+  const legacy = extensionOf(entry.name) === 'xls';
   const [lastColors, setLastColors] = useState<{ bg?: string | null; fg?: string | null }>({});
   const [paintScope, setPaintScope] = usePaintScope(selection);
   const undo = useRef<Workbook[]>([]);
@@ -81,7 +86,7 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
         if (cancelled) return;
         setWb(out.workbook);
         setReport(out.report);
-        setEditable(!out.report.notes.some((n) => n.severity === 'warning'));
+        setEditable(!legacy && !out.report.notes.some((n) => n.severity === 'warning'));
         undo.current = [];
         redo.current = [];
       } catch (e) {
@@ -91,7 +96,7 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
     return () => {
       cancelled = true;
     };
-  }, [entry.id, entry.updatedAt]);
+  }, [entry.id, entry.updatedAt, legacy]);
 
   const flush = useCallback(async () => {
     clearTimeout(timer.current);
@@ -219,6 +224,20 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
     });
   };
 
+  /** Saves the workbook as a new .xlsx next to the .xls (which stays as it is) and opens it. */
+  const editAsXlsx = async () => {
+    setCopying(true);
+    try {
+      const copy = await saveConversion(await runConversion(entry.id, 'xlsx'));
+      toast({ message: `Saved ${copy.name} next to the original .xls. You are editing the copy.` });
+      await openEntry(copy.id);
+    } catch (e) {
+      toastError('Unable to make an .xlsx copy.', e);
+    } finally {
+      setCopying(false);
+    }
+  };
+
   const switchTo = (i: number) => {
     setSheetIndex(i);
     setSelection({ r: 0, c: 0 });
@@ -293,7 +312,30 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
         }
       }}
     >
-      {!editable && (
+      {legacy && (
+        <div
+          className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-hairline bg-surface-soft px-3 py-2 text-caption text-charcoal"
+          role="status"
+        >
+          <AlertTriangle size={15} className="shrink-0 text-warning" aria-hidden />
+          <span className="min-w-[min(100%,16rem)] flex-1">
+            Legacy .xls files can&apos;t be saved in place. Edit as .xlsx makes a copy next to this
+            file and keeps the original untouched.
+          </span>
+          <button type="button" className="btn btn-secondary h-8" onClick={onConvert}>
+            Convert or export…
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary h-8"
+            disabled={copying}
+            onClick={() => void editAsXlsx()}
+          >
+            {copying ? 'Making copy…' : 'Edit as .xlsx'}
+          </button>
+        </div>
+      )}
+      {!editable && !legacy && (
         <div
           className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-hairline bg-surface-soft px-3 py-2 text-caption text-charcoal"
           role="status"
