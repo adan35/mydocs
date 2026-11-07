@@ -831,3 +831,10 @@
 [data-density='compact'] .menu-item {
   min-height: 26px;
 }
+
+@keyframes tab-line {
+  from {
+    transform: scaleX(0.2);
+    opacity: 0;
+  }
+}
