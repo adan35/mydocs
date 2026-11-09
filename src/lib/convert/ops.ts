@@ -6,7 +6,9 @@
 import { astToDocx, docxToAst, MEDIA_SRC, type ExtractedMedia } from './docx';
 import { astToPdf } from './pdf';
 import { astToMarkdown, markdownToAst } from './markdown';
-import { workbookToXlsx, xlsxToWorkbook } from './xlsx';
+import { workbookToXlsx, xlsxToWorkbook, type XlsxReadResult } from './xlsx';
+import { isOleFile, xlsToWorkbook } from './xls';
+import { delimitedToSheet, detectDialect, typeTextCells } from './delimited';
 import { recalculate } from './formula';
 import { ConversionReport, type DocAst, type ReportData } from './doc-ast';
 import type { Workbook } from './workbook';
@@ -27,6 +29,32 @@ function writePdf(
   for (const n of report.notes) merged.notes.push({ ...n });
   for (const [k, v] of report.kept) merged.kept.set(k, v);
   return { data, report: merged.toJSON() };
+}
+
+/**
+ * Reads whatever the file really is, not what its extension says: .xlsx (a zip), .xls (an
+ * OLE file) or, as many reporting tools export, plain delimited text named .xls.
+ */
+function readSpreadsheet(data: Uint8Array): XlsxReadResult {
+  if (isOleFile(data)) return xlsToWorkbook(data);
+  if (data[0] === 0x50 && data[1] === 0x4b) return xlsxToWorkbook(data);
+  const head = data.subarray(0, 4096);
+  if (head.includes(0))
+    throw new Error('This file is not an Excel workbook (it is neither .xlsx nor .xls).');
+  const text = new TextDecoder().decode(data).replace(/^\uFEFF/, '');
+  if (/^\s*</.test(text))
+    throw new Error(
+      'This file is named like a workbook but is a web page or XML export, not an Excel file. Download or rename it as .html to read it.',
+    );
+  const { sheet, report } = delimitedToSheet(
+    text,
+    detectDialect(text, /\t/.test(text.split('\n', 1)[0]!) ? 'tsv' : 'csv'),
+  );
+  report.note(
+    'This file is plain delimited text with an Excel extension; it was read as text.',
+    'info',
+  );
+  return { workbook: { sheets: [typeTextCells(sheet)] }, report };
 }
 
 export const ops = {
@@ -75,7 +103,7 @@ export const ops = {
     return { markdown: astToMarkdown(ast), media, report: report.toJSON() };
   },
   readXlsx(input: { data: Uint8Array }): { workbook: Workbook; stale: number; report: ReportData } {
-    const { workbook, report } = xlsxToWorkbook(input.data);
+    const { workbook, report } = readSpreadsheet(input.data);
     const { stale } = recalculate(workbook);
     if (stale)
       report.note(

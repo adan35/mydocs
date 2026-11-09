@@ -39,7 +39,7 @@ const NS_R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationship
 const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 
 /** Built-in number formats (ECMA-376 18.8.30) that matter for display. */
-const BUILTIN_FORMATS: Record<number, string> = {
+export const BUILTIN_FORMATS: Record<number, string> = {
   0: 'General',
   1: '0',
   2: '0.00',

@@ -156,6 +156,32 @@ test('an Excel workbook keeps types and formulas, recalculates edits and keeps v
   );
 });
 
+test('a legacy .xls opens as a sheet, stays untouched, and edits as an .xlsx copy', async ({
+  page,
+}) => {
+  await freshApp(page);
+  await importFile(page, 'functions.xls', 'application/vnd.ms-excel');
+  const grid = page.getByTestId('sheet-grid');
+  await expect(grid.locator('[data-cell="A2"]')).toHaveText('North');
+  await expect(grid.locator('[data-cell="D2"]')).toHaveText('25');
+  await expect(grid.locator('[data-cell="E2"]')).toHaveText('2026-01-02');
+  await expect(page.getByRole('tab', { name: 'Second Sheet' })).toBeVisible();
+  // It can't be written back, so cells are locked until an .xlsx copy is made.
+  await grid.locator('[data-cell="B2"]').dblclick();
+  await expect(page.getByTestId('formula-bar')).toHaveValue('10');
+  await expect(page.getByText("Legacy .xls files can't be saved in place")).toBeVisible();
+  await page.getByRole('button', { name: 'Edit as .xlsx' }).click();
+  await expect(page.getByRole('treeitem', { name: 'functions.xlsx' })).toBeVisible();
+  await expect(page.getByText("Legacy .xls files can't be saved in place")).toBeHidden();
+  await grid.locator('[data-cell="B2"]').click();
+  await page.keyboard.type('20');
+  await page.keyboard.press('Enter');
+  await expect(grid.locator('[data-cell="D2"]')).toHaveText('50');
+  await expect(page.getByTestId('sheet-save-status')).toHaveText('Saved');
+  // The original is still there.
+  await expect(page.getByRole('treeitem', { name: 'functions.xls', exact: true })).toBeVisible();
+});
+
 test('a CSV file edits as a sheet and rewrites only the edited row', async ({ page }) => {
   await freshApp(page);
   await importFile(page, 'inventory.csv', 'text/csv');

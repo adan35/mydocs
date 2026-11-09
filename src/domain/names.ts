@@ -179,6 +179,7 @@ const MIME_BY_EXT: Record<string, string> = {
   avi: 'video/x-msvideo',
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  xls: 'application/vnd.ms-excel',
   pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 };
 

@@ -150,7 +150,11 @@ export function SheetGrid({
   const [editing, setEditing] = useState<{ value: string; from: 'cell' | 'bar' } | null>(null);
   const [view, setView] = useState({ top: 0, height: 600 });
   const dataRows = sheet.rows.length;
-  const dataCols = useMemo(() => Math.max(1, ...sheet.rows.map((r) => r?.length ?? 0)), [sheet]);
+  // A loop, not Math.max(...): a spread of a few hundred thousand rows overflows the stack.
+  const dataCols = useMemo(
+    () => sheet.rows.reduce((n, r) => Math.max(n, r?.length ?? 0), 1),
+    [sheet],
+  );
   // Spare rows and columns to type into, unless the shape is fixed (a Markdown table).
   const grow = !readOnly && (pad.rows > 0 || pad.cols > 0);
   const rows = Math.max(dataRows + (readOnly ? 0 : pad.rows), grow ? 30 : 1);
@@ -178,8 +182,10 @@ export function SheetGrid({
   const rowHeight = useSettings((st) => st.tableRowHeight);
   const maxLines = ROW_LINES[rowHeight];
   const wrap = maxLines > 1;
-  // Very large sheets use an average character width instead of measuring every word.
-  const measure = useMemo(() => (wrap ? textMeasurer(dataRows > 20_000) : null), [wrap, dataRows]);
+  // Very large sheets use an average character width instead of measuring every word
+  // (measuring 200,000 cells freezes the tab for over a second).
+  const rough = dataRows > 20_000 || dataRows * dataCols > 50_000;
+  const measure = useMemo(() => (wrap ? textMeasurer(rough) : null), [wrap, rough]);
   const tops = useMemo(() => {
     // tops[r] is where row r starts (row 0 sits under the column header); tops[rows] is the end.
     const out = new Float64Array(rows + 1);
