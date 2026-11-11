@@ -48,7 +48,9 @@ Deploy:
 npm run worker:deploy
 ```
 
-Wrangler prints the Worker's URL (`https://mydoc-api.<you>.workers.dev`). A custom domain such as `api.mydocs.doerwise.com` can be attached to the Worker in the Cloudflare dashboard if you prefer.
+No command line? Add the repository secrets `CLOUDFLARE_API_TOKEN` (the "Edit Cloudflare Workers" token template), `CLOUDFLARE_ACCOUNT_ID`, `SESSION_SECRET` and optionally `AI_API_KEY` under GitHub > Settings > Secrets and variables > Actions, then run **Actions > Deploy Worker > Run workflow**. It deploys the Worker and sets the secrets; it also redeploys whenever `worker/` changes on `main`.
+
+Wrangler (or the workflow log) prints the Worker's URL (`https://mydoc-api.<you>.workers.dev`). A custom domain such as `api.mydocs.doerwise.com` can be attached to the Worker in the Cloudflare dashboard if you prefer.
 
 ### 3. Tell the app where it is
 
