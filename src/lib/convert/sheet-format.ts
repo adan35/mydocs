@@ -238,6 +238,16 @@ export function permuteRowsFormat(
   return remap(f, 'row', (i) => moved.get(i) ?? i);
 }
 
+/** Columns were reordered: `order[newIndex]` is the column's old index. Colors follow their columns. */
+export function permuteColsFormat(
+  f: SheetFormat | undefined,
+  order: readonly number[],
+): SheetFormat | undefined {
+  const moved = new Map<number, number>();
+  order.forEach((old, now) => moved.set(old, now));
+  return remap(f, 'col', (i) => moved.get(i) ?? i);
+}
+
 // ------------------------------------------------------------------ targets
 
 /** What a selection paints: the cells themselves, or the whole rows or columns they span. */

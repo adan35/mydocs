@@ -818,3 +818,22 @@ export function moveRefs(f: string, axis: 'row' | 'col', at: number, delta: numb
     },
   );
 }
+
+/**
+ * Keeps references pointing at the same cells after columns were reordered: `to(old)` is a
+ * column's new index. Both ends of a range follow their cells, as in Excel.
+ */
+export function permuteColRefs(f: string, to: (c: number) => number): string {
+  return mapRefs(
+    f,
+    (r, c) => ({ r, c: to(c) }),
+    (a, b) => {
+      const x = to(a.c);
+      const y = to(b.c);
+      return [
+        { ...a, c: Math.min(x, y) },
+        { ...b, c: Math.max(x, y) },
+      ];
+    },
+  );
+}
