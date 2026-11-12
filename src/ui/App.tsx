@@ -48,7 +48,7 @@ function useLifecycle() {
     void diskLinks.load(workspace.id, (id) => !!workspace.get(id));
     // Files changed on disk (in another app) show their new contents here.
     const stopWatching = diskLinks.watch();
-    // After a restart the first click in a document asks for disk access again.
+    // After a restart a document asks for disk access on its first edit (or click, in a linked folder).
     const stopAsking = watchDiskAccess();
     // Folders imported from disk pick up files added there later.
     void folderSync.load(workspace.id, (id) => !!workspace.get(id));

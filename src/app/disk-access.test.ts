@@ -7,7 +7,7 @@ import { useRouter } from './router';
 import { useToasts } from './toast-store';
 import { diskLinks, useDiskLinks } from './disk-links';
 import { folderSync, useFolderLinks } from './folder-sync';
-import { allowDiskAccess, watchDiskAccess } from './disk-access';
+import { accessPlan, allowDiskAccess, watchDiskAccess } from './disk-access';
 
 /** Permission like Chrome's: a file is allowed when it or its folder is. */
 interface Grant {
@@ -129,5 +129,49 @@ describe('disk access after a restart', () => {
     await expect.poll(() => state(b.id)).toBe('synced');
     expect(folderGrant.asked).toBe(1);
     expect(state(a.id)).toBe('synced');
+  });
+
+  it('opening or clicking a file outside a folder asks nothing; the first edit key does, once', async () => {
+    const grant: Grant = { state: 'prompt', asked: 0 };
+    const e = await workspace.createFile(null, 'a.md', 'a');
+    await diskLinks.link(e.id, fileHandle('a.md', grant));
+    restarted([e.id]);
+    useRouter.setState({ route: { name: 'doc', id: e.id } as never });
+    const stop = watchDiskAccess();
+    document.dispatchEvent(new Event('pointerdown'));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', ctrlKey: true }));
+    await Promise.resolve();
+    expect(grant.asked).toBe(0);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'x' }));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'y' }));
+    stop();
+    await expect.poll(() => state(e.id)).toBe('synced');
+    expect(grant.asked).toBe(1);
+  });
+
+  it('the plan counts one prompt per folder and per file outside a folder', async () => {
+    const folderGrant: Grant = { state: 'prompt', asked: 0 };
+    const proj = await workspace.createFolder(null, 'proj');
+    await folderSync.link(proj.id, folderHandle('proj', folderGrant));
+    const ids: string[] = [];
+    for (const [parent, name] of [
+      [proj.id, 'in1.md'],
+      [proj.id, 'in2.md'],
+      [null, 'out1.md'],
+      [null, 'out2.md'],
+    ] as const) {
+      const e = await workspace.createFile(parent, name, name);
+      await diskLinks.link(e.id, fileHandle(name, { state: 'prompt', asked: 0 }, folderGrant));
+      ids.push(e.id);
+    }
+    restarted(ids);
+    useFolderLinks.setState((s) => ({
+      links: { ...s.links, [proj.id]: { ...s.links[proj.id]!, state: 'needs-permission' } },
+    }));
+    const plan = accessPlan();
+    expect(plan.folders.map((f) => f.name)).toEqual(['proj']);
+    expect(plan.files.map((f) => f.name).sort()).toEqual(['out1.md', 'out2.md']);
+    expect(plan.prompts).toBe(3);
   });
 });

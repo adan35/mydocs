@@ -27,8 +27,9 @@ import { toast } from './toast-store';
  * Handles are kept in their own IndexedDB database, keyed by workspace and entry, so the
  * link survives reloads. The browser may ask again for permission after a restart; until
  * then the file is restored silently where the browser already allows it. Otherwise the
- * document shows an "Allow saving to disk" button, a banner restores all files at once, and
- * the first click or key press in a document asks for it (permission needs a user gesture).
+ * document shows an "Allow saving to disk" button, a banner opens a dialog that lists what the
+ * browser will ask for and restores everything, and the first edit in a document asks for its
+ * own file (permission needs a user gesture; opening or clicking a file never prompts).
  * `disk-access` asks for linked folders first, so files inside them need no prompt of their own.
  */
 
@@ -78,8 +79,8 @@ interface Record_ {
 }
 
 const DB = 'mydoc-disk-links';
-/** Permission prompts shown right after an import; later files ask on their own button. */
-const MAX_PROMPTS = 3;
+/** Permission prompts shown right after an import; the rest wait for the "Allow" dialog or their first edit. */
+const MAX_PROMPTS = 1;
 const STORE = 'links';
 /** How often open documents are checked for changes on disk. */
 export const POLL_MS = 2000;
@@ -628,9 +629,9 @@ export const diskLinks = {
   /**
    * Restores every file that lost permission. Files the browser already allows again (one
    * inside a folder that was just allowed) need no prompt; of the rest, only those in `ask`
-   * get one each, stopping at a refusal. Must run from a click or key press.
+   * get one each, stopping at a refusal (returns false then). Must run from a click or key press.
    */
-  async allowAll(ask: EntryId[] = diskLinks.needingPermission()): Promise<void> {
+  async allowAll(ask: EntryId[] = diskLinks.needingPermission()): Promise<boolean> {
     const ready: EntryId[] = [];
     let stop = false;
     for (const id of diskLinks.needingPermission()) {
@@ -650,6 +651,7 @@ export const diskLinks = {
     // Prompts first, writes after: a slow write in between could outlast the gesture.
     for (const id of ready)
       await resume(id, binaries.has(id) ? undefined : workspace()?.allTexts().get(id));
+    return !stop;
   },
 
   needingPermission(): EntryId[] {
