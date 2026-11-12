@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowDownToLine, ArrowUpToLine, Rows3, Trash2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowDownToLine,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUpToLine,
+  ChevronsLeft,
+  ChevronsRight,
+  Rows3,
+  Trash2,
+} from 'lucide-react';
 import { dialogs } from '@/app/dialog-store';
 import { openMenu, type MenuEntry } from '../components/Menu';
 import { ROW_LINES, useSettings } from '@/app/settings-store';
@@ -14,6 +24,7 @@ import {
   type Sheet,
 } from '@/lib/convert/workbook';
 import { shiftFormula } from '@/lib/convert/formula';
+import { colMoveTarget } from '@/lib/convert/sheet-ops';
 import { parseEmphasis, rangeStats } from '@/lib/convert/table-sheet';
 import { contrastText, type CellStyle } from '@/lib/convert/sheet-format';
 
@@ -55,6 +66,15 @@ export interface RowAction {
   select?: number;
 }
 
+/** A block of columns to move: `count` columns from `from`, so the block starts at `to`. */
+export interface ColMove {
+  from: number;
+  count: number;
+  to: number;
+  /** Widths (px) the person set by dragging, by column; they move with their columns. */
+  widths: Record<number, number>;
+}
+
 export interface SheetGridProps {
   sheet: Sheet;
   readOnly?: boolean;
@@ -90,6 +110,8 @@ export interface SheetGridProps {
   textOnly?: boolean;
   /** Click or right-click a row number to insert or delete rows. */
   onRows?(action: RowAction): void;
+  /** Drag the selected column headers (or use their right-click menu) to move the columns. */
+  onMoveCols?(move: ColMove): void;
   /** Row 1 is a table header that can't be moved or removed (Markdown tables). */
   fixedHeader?: boolean | ((r: number) => boolean);
   /** Column alignment, as a Markdown table declares it. */
@@ -117,6 +139,7 @@ export function SheetGrid({
   textOnly,
   align,
   onRows,
+  onMoveCols,
   fixedHeader,
   onClearRange,
   onFill,
@@ -131,6 +154,7 @@ export function SheetGrid({
     : cellEditValue;
   const [sr1, sc1, sr2, sc2] = selectionRange(selection);
   const hasRange = sr1 !== sr2 || sc1 !== sc2;
+  const movable = !!onMoveCols && !readOnly;
   const frozenRows = Math.min(freeze?.rows ?? 0, 50);
   const frozenCols = Math.min(freeze?.cols ?? 0, 10);
   const isHeader = (r: number) =>
@@ -147,6 +171,10 @@ export function SheetGrid({
     return () => window.removeEventListener('mouseup', up);
   }, []);
   const scroller = useRef<HTMLDivElement>(null);
+  /** While columns are dragged: the moving block, and the gap (0 = before column A) it would drop into. */
+  const [colDrag, setColDrag] = useState<{ first: number; count: number; gap: number } | null>(
+    null,
+  );
   const [editing, setEditing] = useState<{ value: string; from: 'cell' | 'bar' } | null>(null);
   const [view, setView] = useState({ top: 0, height: 600 });
   const dataRows = sheet.rows.length;
@@ -295,7 +323,8 @@ export function SheetGrid({
       ArrowLeft: [0, -1],
       ArrowRight: [0, 1],
     };
-    if (map[e.key]) {
+    // Alt+Shift+arrows move columns (handled by the parent), they don't change the selection.
+    if (map[e.key] && !e.altKey) {
       e.preventDefault();
       const [dr, dc] = map[e.key]!;
       if (e.shiftKey) {
@@ -555,6 +584,113 @@ export function SheetGrid({
     });
   };
 
+  const bottom = Math.max(0, dataRows - 1);
+  const dropColumns = (first: number, count: number, gap: number) => {
+    // A gap inside or right next to the block leaves it where it is.
+    if (!onMoveCols || (gap >= first && gap <= first + count)) return;
+    const to = gap > first ? gap - count : gap;
+    onMoveCols({ from: first, count, to, widths: colW });
+    setColW({});
+    onSelect({
+      r: 0,
+      c: to,
+      to: bottom > 0 || count > 1 ? { r: bottom, c: to + count - 1 } : undefined,
+      scope: 'cols',
+    });
+  };
+
+  /** Drag the selected column headers: a line shows where they will land. */
+  const startColDrag = (first: number, count: number, e: React.MouseEvent) => {
+    const el = scroller.current!;
+    const x0 = e.clientX;
+    let x = x0;
+    let dragging = false;
+    let gap = first;
+    // The boundary between columns nearest the pointer, never past the last column with data.
+    const gapAt = (clientX: number) => {
+      const px = clientX - el.getBoundingClientRect().left + el.scrollLeft;
+      let c = 0;
+      while (c < dataCols - 1 && lefts[c + 1]! <= px) c++;
+      return Math.min(dataCols, px - lefts[c]! < widths[c]! / 2 ? c : c + 1);
+    };
+    const update = () => {
+      gap = gapAt(x);
+      setColDrag((d) => (d && d.gap === gap ? d : { first, count, gap }));
+    };
+    const onMove = (ev: MouseEvent) => {
+      x = ev.clientX;
+      if (!dragging && Math.abs(x - x0) < 5) return;
+      dragging = true;
+      update();
+    };
+    // Keep scrolling while the pointer rests near an edge.
+    const timer = window.setInterval(() => {
+      if (!dragging) return;
+      const box = el.getBoundingClientRect();
+      const edge = 48;
+      if (x < box.left + NUM_W + edge) el.scrollLeft -= 20;
+      else if (x > box.right - edge) el.scrollLeft += 20;
+      else return;
+      update();
+    }, 30);
+    const end = (ev: MouseEvent) => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', end);
+      window.clearInterval(timer);
+      setColDrag(null);
+      if (dragging && ev.type === 'mouseup') dropColumns(first, count, gap);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', end);
+  };
+
+  const openColMenu = (c: number, at: DOMRect | { x: number; y: number }) => {
+    if (readOnly || !onMoveCols) return;
+    const picked = selection.scope === 'cols' && c >= sc1 && c <= sc2;
+    if (!picked) selectCol(c, false);
+    const first = picked ? sc1 : c;
+    const n = picked ? sc2 - sc1 + 1 : 1;
+    const noun = n > 1 ? 'columns' : 'column';
+    const go = (where: 'left' | 'right' | 'start' | 'end') => {
+      const to = colMoveTarget(first, n, where, dataCols);
+      if (to === null) return;
+      dropColumns(first, n, to > first ? to + n : to);
+    };
+    const can = (where: 'left' | 'right' | 'start' | 'end') =>
+      colMoveTarget(first, n, where, dataCols) !== null;
+    openMenu({
+      items: [
+        {
+          label: `Move ${noun} left`,
+          icon: <ArrowLeft />,
+          disabled: !can('left'),
+          onSelect: () => go('left'),
+        },
+        {
+          label: `Move ${noun} right`,
+          icon: <ArrowRight />,
+          disabled: !can('right'),
+          onSelect: () => go('right'),
+        },
+        {
+          label: `Move ${noun} to the start`,
+          icon: <ChevronsLeft />,
+          disabled: !can('start'),
+          onSelect: () => go('start'),
+        },
+        {
+          label: `Move ${noun} to the end`,
+          icon: <ChevronsRight />,
+          disabled: !can('end'),
+          onSelect: () => go('end'),
+        },
+      ],
+      at,
+      label: n > 1 ? `Columns ${colName(first)}–${colName(first + n - 1)}` : `Column ${colName(c)}`,
+      returnFocus: scroller.current,
+    });
+  };
+
   const totalW = lefts[cols]!;
   const cellTitle = (c: Cell | undefined) =>
     c?.stale
@@ -788,16 +924,38 @@ export function SheetGrid({
               <div
                 key={c}
                 role="columnheader"
-                className={`sheet-head relative cursor-pointer ${c >= sc1 && c <= sc2 ? 'is-active' : ''} ${c < frozenCols ? 'is-frozen' : ''}`}
+                className={`sheet-head relative ${movable && selection.scope === 'cols' && c >= sc1 && c <= sc2 ? 'cursor-grab' : 'cursor-pointer'} ${c >= sc1 && c <= sc2 ? 'is-active' : ''} ${c < frozenCols ? 'is-frozen' : ''} ${colDrag && c >= colDrag.first && c < colDrag.first + colDrag.count ? 'opacity-50' : ''}`}
+                title={
+                  movable && selection.scope === 'cols' && c >= sc1 && c <= sc2
+                    ? 'Drag to move the selected columns'
+                    : undefined
+                }
                 style={{
                   width: w,
                   ...(c < frozenCols ? { position: 'sticky', left: lefts[c]!, zIndex: 6 } : null),
                 }}
                 onMouseDown={(e) => {
+                  if (e.button !== 0) return; // the context menu has its own handler
                   e.preventDefault();
                   if (editing) commit(editing.value);
-                  selectCol(c, e.shiftKey);
                   scroller.current?.focus({ preventScroll: true });
+                  // Pressing an already selected column starts moving it; pressing another selects it.
+                  if (
+                    movable &&
+                    !e.shiftKey &&
+                    selection.scope === 'cols' &&
+                    c >= sc1 &&
+                    c <= sc2
+                  ) {
+                    startColDrag(sc1, sc2 - sc1 + 1, e);
+                    return;
+                  }
+                  selectCol(c, e.shiftKey);
+                }}
+                onContextMenu={(e) => {
+                  if (!movable) return;
+                  e.preventDefault();
+                  openColMenu(c, { x: e.clientX, y: e.clientY });
                 }}
               >
                 {colName(c)}
@@ -815,6 +973,14 @@ export function SheetGrid({
               </div>
             ))}
           </div>
+          {colDrag &&
+            !(colDrag.gap >= colDrag.first && colDrag.gap <= colDrag.first + colDrag.count) && (
+              <div
+                className="pointer-events-none absolute top-0 z-[25] w-[3px] bg-primary"
+                style={{ left: lefts[colDrag.gap]! - 1, height: '100%' }}
+                data-testid="column-drop-indicator"
+              />
+            )}
           {frozenRows > 0 && (
             <div
               className="sheet-frozen-rows sticky z-[19]"
