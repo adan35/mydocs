@@ -18,7 +18,9 @@ import {
   deleteSheet,
   duplicateSheet,
   insertCols,
+  colMoveTarget,
   insertRows,
+  moveCols,
   moveSheet,
   renameSheet,
   sortRows,
@@ -33,8 +35,16 @@ import {
   sheetSize,
   type Workbook,
 } from '@/lib/convert/workbook';
-import { SheetGrid, selectionRange, type Selection } from './SheetGrid';
+import { SheetGrid, selectionRange, type ColMove, type Selection } from './SheetGrid';
 import { SheetRibbon, type PaintScope, type SheetCommand } from './SheetRibbon';
+
+const XLSX_GROUPS: SheetCommand[][] = [
+  ['undo', 'redo'],
+  ['row-above', 'row-below', 'delete-row'],
+  ['col-left', 'col-right', 'delete-col', 'col-move-left', 'col-move-right'],
+  ['sort-asc', 'sort-desc'],
+  ['filter'],
+];
 import { SheetTabs } from './SheetTabs';
 import { ColumnFilterPanel, FilterChips } from './ColumnFilter';
 import {
@@ -281,6 +291,10 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
       setFilterMode(!(filterMode || rowMap));
       return;
     }
+    if (cmd === 'col-move-left' || cmd === 'col-move-right') {
+      moveSelected(cmd === 'col-move-left' ? 'left' : 'right');
+      return;
+    }
     if (cmd !== 'sort-asc' && cmd !== 'sort-desc' && blockedByFilter()) return;
     const { r, c } = selection;
     edit((book) => {
@@ -315,6 +329,44 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
         }
       }
     });
+  };
+
+  /** Moves columns (a drag, the menu, a button or a key) and keeps them selected. */
+  const moveColumns = ({ from, count, to, widths }: ColMove) => {
+    if (!wb || !editable) return;
+    edit((book) => {
+      const s = book.sheets[si]!;
+      // Widths set by dragging a border live in the grid; save them so they travel with the columns.
+      for (const [c, px] of Object.entries(widths)) (s.widths ??= [])[Number(c)] = px / 7.5;
+      return moveCols(book, si, from, count, to) ? undefined : false;
+    });
+    // Filters belong to their columns: they move along (the rows that pass don't change).
+    const newCol = (c: number) => {
+      if (c >= from && c < from + count) return to + c - from;
+      const rest = c < from ? c : c - count;
+      return rest < to ? rest : rest + count;
+    };
+    setFiltBySheet((prev) => {
+      const f = prev[si];
+      if (!f) return prev;
+      const moved: ColumnFilters = {};
+      for (const [c, cf] of Object.entries(f.filters)) moved[newCol(Number(c))] = cf;
+      return { ...prev, [si]: { ...f, filters: moved } };
+    });
+    const bottom = Math.max(0, (view ?? wb.sheets[si]!).rows.length - 1);
+    setSelection({
+      r: 0,
+      c: to,
+      to: bottom > 0 || count > 1 ? { r: bottom, c: to + count - 1 } : undefined,
+      scope: 'cols',
+    });
+  };
+  const moveSelected = (where: 'left' | 'right') => {
+    if (!wb || !editable) return;
+    const [, c1, , c2] = selectionRange(selection);
+    const count = c2 - c1 + 1;
+    const to = colMoveTarget(c1, count, where, sheetSize(wb.sheets[si]!).cols);
+    if (to !== null) moveColumns({ from: c1, count, to, widths: {} });
   };
 
   /** Saves the workbook as a new .xlsx next to the .xls (which stays as it is) and opens it. */
@@ -409,8 +461,14 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
     <div
       className="flex h-full min-h-0 flex-col"
       onKeyDown={(e) => {
+        if ((e.target as HTMLElement).tagName === 'INPUT') return;
+        if (e.altKey && e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+          e.preventDefault();
+          moveSelected(e.key === 'ArrowLeft' ? 'left' : 'right');
+          return;
+        }
         const mod = e.metaKey || e.ctrlKey;
-        if (!mod || (e.target as HTMLElement).tagName === 'INPUT') return;
+        if (!mod) return;
         const k = e.key.toLowerCase();
         if (k === 'z' || k === 'y') {
           e.preventDefault();
@@ -474,15 +532,9 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
       )}
       <SheetRibbon
         run={run}
+        groups={XLSX_GROUPS}
         readOnly={!editable}
         onAsk={() => setAsking(true)}
-        groups={[
-          ['undo', 'redo'],
-          ['row-above', 'row-below', 'delete-row'],
-          ['col-left', 'col-right', 'delete-col'],
-          ['sort-asc', 'sort-desc'],
-          ['filter'],
-        ]}
         pressed={{ filter: filterMode || !!rowMap }}
         colors={{
           last: lastColors,
@@ -545,6 +597,7 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
           }}
           filterColumns={new Set(cur ? filteredColumns(cur.filters) : [])}
           filterMode={filterMode || !!rowMap}
+          onMoveCols={moveColumns}
           onEdit={(r, c, input) =>
             edit((book) =>
               setCellRaw(

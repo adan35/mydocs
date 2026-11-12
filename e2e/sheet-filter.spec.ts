@@ -87,3 +87,22 @@ test('a column header menu and Alt+Down open the filter', async ({ page }) => {
   await page.keyboard.press('Alt+ArrowDown');
   await expect(page.getByTestId('column-filter')).toContainText('Filter C');
 });
+
+test('a filter stays with its column when the column is moved', async ({ page }) => {
+  await openSales(page);
+  await page.getByRole('button', { name: 'Filter column F' }).click();
+  await page.getByTestId('column-filter').getByRole('checkbox', { name: /FALSE/ }).uncheck();
+  await page
+    .getByTestId('column-filter')
+    .getByRole('checkbox', { name: /\(empty\)/ })
+    .uncheck();
+  await page.getByRole('button', { name: 'Apply' }).click();
+  await expect(page.getByTestId('filter-chip')).toContainText('F · Shipped');
+
+  await grid(page).getByRole('columnheader', { name: /^F\b/ }).click();
+  await page.keyboard.press('Alt+Shift+ArrowLeft');
+  await expect(page.getByTestId('filter-chip')).toContainText('E · Shipped');
+  await expect(page.getByTestId('filter-bar')).toContainText('2 of 7 rows');
+  await expect(grid(page).locator('[data-cell="B2"]')).toHaveText('Pen');
+  await expect(grid(page).locator('[data-cell="B3"]')).toHaveText('Lamp');
+});

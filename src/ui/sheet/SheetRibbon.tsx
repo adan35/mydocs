@@ -6,6 +6,8 @@ import {
   ArrowRightToLine,
   ArrowUpToLine,
   ArrowDownToLine,
+  MoveLeft,
+  MoveRight,
   Redo2,
   Trash2,
   Undo2,
@@ -65,6 +67,8 @@ export type SheetCommand =
   | 'col-left'
   | 'col-right'
   | 'delete-col'
+  | 'col-move-left'
+  | 'col-move-right'
   | 'sort-asc'
   | 'sort-desc'
   | 'autosum'
@@ -127,6 +131,20 @@ const META: Record<SheetCommand, Omit<SheetAction, 'run' | 'disabled'>> = {
         <Trash2 className="-ml-1.5 !size-3" />
       </>
     ),
+    group: 'cols',
+  },
+  'col-move-left': {
+    id: 'col-move-left',
+    label: 'Move column left',
+    icon: <MoveLeft />,
+    shortcut: 'Alt+Shift+Left',
+    group: 'cols',
+  },
+  'col-move-right': {
+    id: 'col-move-right',
+    label: 'Move column right',
+    icon: <MoveRight />,
+    shortcut: 'Alt+Shift+Right',
     group: 'cols',
   },
   'sort-asc': {

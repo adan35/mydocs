@@ -2,12 +2,13 @@
  * Structural edits on a sheet (rows, columns, sorting). Formulas on every sheet keep
  * pointing at the same cells; references to deleted cells become #REF!, as in Excel.
  */
-import { moveRefs } from './formula';
+import { moveRefs, permuteColRefs } from './formula';
 import {
   deleteColsFormat,
   deleteRowsFormat,
   insertColsFormat,
   insertRowsFormat,
+  permuteColsFormat,
   permuteRowsFormat,
 } from './sheet-format';
 import { cleanSheetName } from './xlsx';
@@ -20,6 +21,11 @@ function rewriteFormulas(
   at: number,
   delta: number,
 ) {
+  rewriteRefs(wb, sheetIndex, (refs) => moveRefs(refs, axis, at, delta));
+}
+
+/** Rewrites the references into one sheet (unqualified ones on that sheet, qualified ones anywhere). */
+function rewriteRefs(wb: Workbook, sheetIndex: number, rewrite: (refs: string) => string) {
   const name = wb.sheets[sheetIndex]!.name.toLowerCase();
   wb.sheets.forEach((s, si) => {
     for (const row of s.rows)
@@ -27,36 +33,30 @@ function rewriteFormulas(
         if (cell?.f === undefined) continue;
         if (si === sheetIndex) {
           // References to other sheets must not move; protect them by checking the prefix.
-          cell.f = moveLocal(cell.f, axis, at, delta);
+          cell.f = moveLocal(cell.f, rewrite);
         } else if (
           cell.f.toLowerCase().includes(`${name}!`) ||
           cell.f.toLowerCase().includes(`'${name}'!`)
         ) {
-          cell.f = moveQualified(cell.f, wb.sheets[sheetIndex]!.name, axis, at, delta);
+          cell.f = moveQualified(cell.f, wb.sheets[sheetIndex]!.name, rewrite);
         }
       }
   });
 }
 
 /** Moves unqualified references only. */
-function moveLocal(f: string, axis: 'row' | 'col', at: number, delta: number): string {
+function moveLocal(f: string, rewrite: (refs: string) => string): string {
   return splitQualified(f)
-    .map((p) => (p.qualified ? p.text : moveRefs(p.text, axis, at, delta)))
+    .map((p) => (p.qualified ? p.text : rewrite(p.text)))
     .join('');
 }
 
 /** Moves references qualified with `sheet` only. */
-function moveQualified(
-  f: string,
-  sheet: string,
-  axis: 'row' | 'col',
-  at: number,
-  delta: number,
-): string {
+function moveQualified(f: string, sheet: string, rewrite: (refs: string) => string): string {
   return splitQualified(f)
     .map((p) =>
       p.qualified && p.sheet?.toLowerCase() === sheet.toLowerCase()
-        ? p.prefix + moveRefs(p.text.slice(p.prefix.length), axis, at, delta)
+        ? p.prefix + rewrite(p.text.slice(p.prefix.length))
         : p.text,
     )
     .join('');
@@ -112,6 +112,51 @@ export function deleteCols(wb: Workbook, si: number, at: number, count = 1) {
   s.widths?.splice(at, count);
   s.format = deleteColsFormat(s.format, at, count);
   rewriteFormulas(wb, si, 'col', at, -count);
+}
+
+/**
+ * Moves `count` columns starting at `from` so the block begins at column `to` (counted after
+ * the block is taken out, so `to` is where its first column ends up). Cells, widths, colors
+ * and every formula that points at the columns follow them. Returns false if nothing moves.
+ */
+export function moveCols(wb: Workbook, si: number, from: number, count: number, to: number) {
+  const s = wb.sheets[si]!;
+  if (count < 1 || from < 0 || to < 0 || from === to) return false;
+  // A loop, not Math.max(...rows): a spread of tens of thousands of rows is slow and can overflow.
+  let width = Math.max(from + count, to + count);
+  for (const row of s.rows) if (row && row.length > width) width = row.length;
+  // order[new] = old
+  const order = Array.from({ length: width }, (_, i) => i);
+  const block = order.splice(from, count);
+  order.splice(to, 0, ...block);
+  const newOf = new Map(order.map((old, now) => [old, now]));
+  const permute = <T>(row: readonly (T | undefined)[]): (T | undefined)[] => {
+    const out = order.map((old) => row[old]);
+    // Trailing blanks go, so a row stays as short as its last cell.
+    while (out.length && out[out.length - 1] === undefined) out.pop();
+    return out;
+  };
+  for (let r = 0; r < s.rows.length; r++) {
+    const row = s.rows[r];
+    if (row?.length) s.rows[r] = permute(row);
+  }
+  if (s.widths) s.widths = permute(s.widths) as number[]; // holes mean "default width"
+  s.format = permuteColsFormat(s.format, order);
+  rewriteRefs(wb, si, (refs) => permuteColRefs(refs, (c) => newOf.get(c) ?? c));
+  return true;
+}
+
+/** Where a block of `count` columns starting at `first` should start to move one step or to an end; null if it can't. */
+export function colMoveTarget(
+  first: number,
+  count: number,
+  where: 'left' | 'right' | 'start' | 'end',
+  totalCols: number,
+): number | null {
+  const last = totalCols - count;
+  const to =
+    where === 'left' ? first - 1 : where === 'right' ? first + 1 : where === 'start' ? 0 : last;
+  return to < 0 || to > last || to === first ? null : to;
 }
 
 /**
