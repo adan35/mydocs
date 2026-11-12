@@ -443,6 +443,12 @@ export const folderSync = {
     return ok;
   },
 
+  /** Whether a linked folder contains this document, so asking for the folder covers the file. */
+  covers(fileId: EntryId): boolean {
+    const ws = useApp.getState().session?.workspace;
+    return !!ws && [...records.keys()].some((f) => ws.tree.isWithin(fileId, f));
+  },
+
   /** "Sync now": must run from a click, so a permission prompt can show. */
   async syncNow(id: EntryId): Promise<void> {
     report(id, await sync(id, true), false);
