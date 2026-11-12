@@ -51,14 +51,16 @@ test('Markdown tables calculate formulas, select ranges, fill, filter and write 
   await expect(grid.locator('[data-cell="B4"]')).toHaveText('1300');
 
   // A filter hides rows in the view only.
-  await page.getByRole('button', { name: 'Filter rows' }).click();
-  await page.getByLabel('Filter column').selectOption({ label: 'B · Cost' });
-  await page.getByLabel('Filter condition').selectOption({ label: 'is greater than' });
+  await page.getByRole('button', { name: 'Filter columns' }).click();
+  await page.getByRole('button', { name: 'Filter column B' }).click();
+  await page
+    .getByLabel('Filter condition')
+    .selectOption({ label: 'Rows where the cell is greater than' });
   await page.getByLabel('Filter value').fill('500');
-  await page.getByRole('button', { name: 'Add filter' }).click();
+  await page.getByRole('button', { name: 'Apply' }).click();
   await expect(grid.locator('[data-cell="A2"]')).toHaveText('Rent');
   await expect(grid.locator('[data-cell="A3"]')).toHaveText('Total');
-  await page.getByRole('button', { name: /Remove filter 1/ }).click();
+  await page.getByRole('button', { name: /Remove filter on B/ }).click();
   await expect(grid.locator('[data-cell="A3"]')).toHaveText('Food');
 
   // Freeze the header row.

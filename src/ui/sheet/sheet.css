@@ -83,6 +83,43 @@
   opacity: 0.22;
   pointer-events: none;
 }
+/* Column filter funnel: on hover or focus, always while filtering, and on touch screens. */
+.sheet-filter-btn {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-top: -10px;
+  border-radius: 4px;
+  color: var(--steel);
+  opacity: 0;
+  z-index: 3;
+}
+.sheet-head:hover .sheet-filter-btn,
+.sheet-filter-btn:focus-visible,
+.sheet-grid.show-filters .sheet-filter-btn,
+.sheet-filter-btn.is-on {
+  opacity: 1;
+}
+.sheet-filter-btn:hover {
+  background: var(--surface);
+  color: var(--ink);
+}
+.sheet-filter-btn.is-on {
+  background: var(--primary);
+  color: var(--on-primary, #fff);
+}
+.sheet-filter-btn.is-on svg {
+  fill: currentColor;
+}
+@media (hover: none) {
+  .sheet-filter-btn {
+    opacity: 1;
+  }
+}
 /* Frozen rows and columns stay put while the rest scrolls, so they need a solid background. */
 .sheet-frozen-rows {
   background: var(--canvas);

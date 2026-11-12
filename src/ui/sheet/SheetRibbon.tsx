@@ -177,7 +177,7 @@ const META: Record<SheetCommand, Omit<SheetAction, 'run' | 'disabled'>> = {
     icon: <AlignRight />,
     group: 'align',
   },
-  filter: { id: 'filter', label: 'Filter rows', icon: <Filter />, group: 'view' },
+  filter: { id: 'filter', label: 'Filter columns', icon: <Filter />, group: 'view' },
   'freeze-row': {
     id: 'freeze-row',
     label: 'Freeze header row',
@@ -192,11 +192,14 @@ const META: Record<SheetCommand, Omit<SheetAction, 'run' | 'disabled'>> = {
   },
 };
 
+const VIEW_ONLY: SheetCommand[] = ['filter', 'freeze-row', 'freeze-col'];
+
 const DEFAULT_GROUPS: SheetCommand[][] = [
   ['undo', 'redo'],
   ['row-above', 'row-below', 'delete-row'],
   ['col-left', 'col-right', 'delete-col'],
   ['sort-asc', 'sort-desc'],
+  ['filter'],
 ];
 
 /** The ribbon for spreadsheets: the same toolbar pattern as the document ribbon. */
@@ -225,7 +228,10 @@ export function SheetRibbon({
   children?: ReactNode;
 }) {
   const aonOn = useAonEnabled();
-  const groups: SheetCommand[][] = readOnly ? [] : wanted;
+  // A sheet that can't be edited can still be filtered and frozen: they only change the view.
+  const groups: SheetCommand[][] = readOnly
+    ? wanted.map((g) => g.filter((c) => VIEW_ONLY.includes(c))).filter((g) => g.length)
+    : wanted;
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     const items = [...e.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled)')];
     const i = items.indexOf(document.activeElement as HTMLElement);

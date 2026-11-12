@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
-import { Filter as FilterIcon, Table2, X } from 'lucide-react';
+import { Table2 } from 'lucide-react';
 import type { StateEffect } from '@codemirror/state';
 import type { EntryId } from '@/domain/types';
 import { extensionOf } from '@/domain/names';
@@ -20,11 +20,11 @@ import {
 import type { Cell, Sheet } from '@/lib/convert/workbook';
 import type { Align } from '@/domain/table';
 import {
-  FILTER_OPS,
   autoSum,
   deleteColsAt,
   deleteRowsAt,
-  describeFilter,
+  columnValues,
+  filteredColumns,
   evaluateRows,
   fillRange,
   filterRows,
@@ -34,13 +34,14 @@ import {
   setCellText,
   sortRowsWithOrder,
   toggleEmphasis,
-  type Filter,
-  type FilterOp,
+  type ColumnFilter,
+  type ColumnFilters,
   type Rows,
 } from '@/lib/convert/table-sheet';
 import { SheetGrid, selectionRange, type RowAction, type Selection } from './SheetGrid';
 import { SheetRibbon, type PaintScope, type SheetCommand } from './SheetRibbon';
 import { SheetTabs } from './SheetTabs';
+import { ColumnFilterPanel, FilterChips } from './ColumnFilter';
 import { PAINT_SCOPES, usePaintScope } from './paint';
 import {
   applyColor,
@@ -119,7 +120,8 @@ export function TextSheetView({
   const [selection, setSelection] = useState<Selection>({ r: 0, c: 0 });
   // UNL exports have no header row; their columns are named A, B, C…
   const [headerRow, setHeaderRow] = useState(ext !== 'unl');
-  const [filters, setFilters] = useState<Filter[]>([]);
+  const [filters, setFilters] = useState<ColumnFilters>({});
+  const [filterPanel, setFilterPanel] = useState<{ col: number; anchor: HTMLElement } | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [freeze, setFreeze] = useState({ rows: 0, cols: 0 });
   const [asking, setAsking] = useState(false);
@@ -163,7 +165,10 @@ export function TextSheetView({
   }, [visible, parts]);
 
   const rowMap = useMemo(
-    () => (filters.length && parts[only] ? filterRows(parts[only]!.shown, filters, skip) : null),
+    () =>
+      filteredColumns(filters).length && parts[only]
+        ? filterRows(parts[only]!.shown, filters, skip)
+        : null,
     [filters, parts, only, skip],
   );
   const view = useMemo<Sheet>(() => {
@@ -202,7 +207,7 @@ export function TextSheetView({
   const at = locate(selection.r);
   const activeTable = at ? at.t : only;
   const resetFilters = () => {
-    setFilters([]);
+    setFilters({});
     setSelection({ r: 0, c: 0 });
   };
 
@@ -246,6 +251,16 @@ export function TextSheetView({
     });
   }, [markdown, tables, activeTable, parts, header, selection.c, docId, stacked, starts]);
   useEffect(() => () => publishOutline(docId, null), [docId]);
+
+  const applyFilter = (col: number, f: ColumnFilter | null) => {
+    const next = { ...filters };
+    if (f) next[col] = f;
+    else delete next[col];
+    setFilters(next);
+    setSelection({ r: 0, c: selection.c });
+    setFilterPanel(null);
+    filterPanel?.anchor.focus();
+  };
 
   /** Changes that move or add rows would act on hidden rows too; ask to clear the filter first. */
   const blockedByFilter = () => {
@@ -651,7 +666,7 @@ export function TextSheetView({
             onChange={(e) => {
               setTableIndex(Number(e.target.value));
               setSelection({ r: 0, c: 0 });
-              setFilters([]);
+              setFilters({});
             }}
           >
             {tables.map((t) => (
@@ -681,14 +696,13 @@ export function TextSheetView({
         )}
       </SheetRibbon>
       {filterOpen && (
-        <FilterBar
-          columns={columnNames}
+        <FilterChips
           filters={filters}
-          onChange={(next) => {
-            setFilters(next);
-            setSelection({ r: 0, c: 0 });
-          }}
-          shown={rowMap ? rowMap.length - skip : null}
+          labelOf={(c) => columnNames[c] ?? '?'}
+          onEdit={(col, anchor) => setFilterPanel({ col, anchor })}
+          onRemove={(col) => applyFilter(col, null)}
+          onClear={resetFilters}
+          shown={Math.max(0, (rowMap?.length ?? skip) - skip)}
           total={Math.max(0, src.length - skip)}
         />
       )}
@@ -707,6 +721,17 @@ export function TextSheetView({
             onFill={fill}
             onRows={onRows}
             freeze={freeze}
+            // Several tables stacked in one grid: filter one at a time, from the toolbar.
+            onFilter={
+              stacked
+                ? undefined
+                : (col, anchor) => {
+                    if (!filterOpen) run('filter');
+                    setFilterPanel({ col, anchor });
+                  }
+            }
+            filterColumns={new Set(filteredColumns(filters))}
+            filterMode={filterOpen}
             rowLabels={rowLabels}
             markdownText={markdown}
             fixedHeader={markdown ? isHeader : false}
@@ -744,6 +769,24 @@ export function TextSheetView({
           }}
         />
       )}
+      {filterPanel && (
+        <ColumnFilterPanel
+          anchor={filterPanel.anchor}
+          title={columnNames[filterPanel.col] ?? '?'}
+          values={columnValues(
+            parts[only]?.shown ?? { name: 'Table', rows: [] },
+            filterPanel.col,
+            filters,
+            skip,
+          )}
+          filter={filters[filterPanel.col]}
+          onApply={(f) => applyFilter(filterPanel.col, f)}
+          onClose={(restore) => {
+            if (restore) filterPanel.anchor.focus();
+            setFilterPanel(null);
+          }}
+        />
+      )}
       {asking && (
         <Suspense fallback={null}>
           <SheetAskDialog
@@ -754,99 +797,6 @@ export function TextSheetView({
             onClose={() => setAsking(false)}
           />
         </Suspense>
-      )}
-    </div>
-  );
-}
-
-/** Row filters: a condition per column, all of which must hold. Nothing is written to the file. */
-function FilterBar({
-  columns,
-  filters,
-  onChange,
-  shown,
-  total,
-}: {
-  columns: string[];
-  filters: Filter[];
-  onChange(next: Filter[]): void;
-  shown: number | null;
-  total: number;
-}) {
-  const [col, setCol] = useState(0);
-  const [op, setOp] = useState<FilterOp>('contains');
-  const [value, setValue] = useState('');
-  const needsValue = FILTER_OPS.find((o) => o.id === op)!.needsValue;
-  const add = () => {
-    if (needsValue && !value.trim()) return;
-    onChange([...filters, { col, op, value: needsValue ? value : '' }]);
-    setValue('');
-  };
-  return (
-    <div
-      className="flex shrink-0 flex-wrap items-center gap-2 border-b border-hairline-soft bg-surface-soft px-2 py-1.5 text-caption"
-      role="search"
-      aria-label="Filter rows"
-      data-testid="filter-bar"
-    >
-      <FilterIcon size={14} className="text-steel" aria-hidden />
-      <span className="text-steel">Show rows where</span>
-      <select
-        className="input h-8 w-auto max-w-[180px] py-0 text-caption"
-        aria-label="Filter column"
-        value={Math.min(col, columns.length - 1)}
-        onChange={(e) => setCol(Number(e.target.value))}
-      >
-        {columns.map((n, i) => (
-          <option key={i} value={i}>
-            {n}
-          </option>
-        ))}
-      </select>
-      <select
-        className="input h-8 w-auto py-0 text-caption"
-        aria-label="Filter condition"
-        value={op}
-        onChange={(e) => setOp(e.target.value as FilterOp)}
-      >
-        {FILTER_OPS.map((o) => (
-          <option key={o.id} value={o.id}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-      {needsValue && (
-        <input
-          className="input h-8 w-36 py-0 text-caption"
-          aria-label="Filter value"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && add()}
-        />
-      )}
-      <button type="button" className="btn btn-secondary h-8" onClick={add}>
-        Add filter
-      </button>
-      {filters.map((f, i) => (
-        <span
-          key={i}
-          className="inline-flex items-center gap-1 rounded-full border border-hairline bg-canvas py-0.5 pl-2.5 pr-1"
-        >
-          {describeFilter(f, columns[f.col]?.split(' · ')[0] ?? '?')}
-          <button
-            type="button"
-            className="icon-btn size-5"
-            aria-label={`Remove filter ${i + 1}`}
-            onClick={() => onChange(filters.filter((_, k) => k !== i))}
-          >
-            <X size={12} />
-          </button>
-        </span>
-      ))}
-      {shown !== null && (
-        <span className="ml-auto text-steel" aria-live="polite">
-          {shown.toLocaleString()} of {total.toLocaleString()} rows
-        </span>
       )}
     </div>
   );

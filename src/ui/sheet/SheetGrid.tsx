@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowDownToLine, ArrowUpToLine, Rows3, Trash2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowDownToLine,
+  ArrowUpToLine,
+  Filter as FilterIcon,
+  Rows3,
+  Trash2,
+} from 'lucide-react';
 import { dialogs } from '@/app/dialog-store';
 import { openMenu, type MenuEntry } from '../components/Menu';
 import { ROW_LINES, useSettings } from '@/app/settings-store';
@@ -92,6 +99,15 @@ export interface SheetGridProps {
   onRows?(action: RowAction): void;
   /** Row 1 is a table header that can't be moved or removed (Markdown tables). */
   fixedHeader?: boolean | ((r: number) => boolean);
+  /**
+   * Opens the filter for a column, from the funnel on its header, its right-click menu or
+   * Alt+Down. Setting this puts a funnel on every column header.
+   */
+  onFilter?(col: number, anchor: HTMLElement): void;
+  /** Columns that have a filter on them (their funnel stays lit). */
+  filterColumns?: ReadonlySet<number>;
+  /** Shows every column's funnel, not only the hovered one's. */
+  filterMode?: boolean;
   /** Column alignment, as a Markdown table declares it. */
   align?:
     | readonly ('left' | 'center' | 'right' | null)[]
@@ -124,6 +140,9 @@ export function SheetGrid({
   rowLabels,
   markdownText,
   styleAt,
+  onFilter,
+  filterColumns,
+  filterMode,
 }: SheetGridProps) {
   // Text sheets edit exactly what is written, except formulas, which show as typed.
   const editValue = textOnly
@@ -295,6 +314,12 @@ export function SheetGrid({
       ArrowLeft: [0, -1],
       ArrowRight: [0, 1],
     };
+    // Alt+Down opens the filter of the active column, as in other spreadsheets.
+    if (e.key === 'ArrowDown' && e.altKey && onFilter) {
+      e.preventDefault();
+      openFilter(selection.c);
+      return;
+    }
     if (map[e.key]) {
       e.preventDefault();
       const [dr, dc] = map[e.key]!;
@@ -386,6 +411,12 @@ export function SheetGrid({
       e.preventDefault();
       setEditing({ value: e.key, from: 'cell' });
     }
+  };
+
+  /** Opens a column's filter below its header funnel. */
+  const openFilter = (c: number) => {
+    const btn = scroller.current?.querySelector<HTMLElement>(`[data-filter-col="${c}"]`);
+    if (btn) onFilter?.(c, btn);
   };
 
   const selectAll = () =>
@@ -752,7 +783,7 @@ export function SheetGrid({
       </div>
       <div
         ref={scroller}
-        className="sheet-grid relative min-h-0 flex-1 overflow-auto outline-none focus-visible:ring-2 focus-visible:ring-focus"
+        className={`sheet-grid relative min-h-0 flex-1 overflow-auto outline-none focus-visible:ring-2 focus-visible:ring-focus ${filterMode ? 'show-filters' : ''}`}
         tabIndex={0}
         role="grid"
         aria-label={label}
@@ -799,8 +830,47 @@ export function SheetGrid({
                   selectCol(c, e.shiftKey);
                   scroller.current?.focus({ preventScroll: true });
                 }}
+                onContextMenu={(e) => {
+                  if (!onFilter) return;
+                  e.preventDefault();
+                  const btn = e.currentTarget.querySelector<HTMLElement>('[data-filter-col]');
+                  openMenu({
+                    items: [
+                      {
+                        label: filterColumns?.has(c) ? 'Change filter…' : 'Filter this column…',
+                        icon: <FilterIcon />,
+                        shortcut: 'Alt+Down',
+                        onSelect: () => btn && onFilter(c, btn),
+                      },
+                    ],
+                    at: { x: e.clientX, y: e.clientY },
+                    label: `Column ${colName(c)}`,
+                    returnFocus: scroller.current,
+                  });
+                }}
               >
                 {colName(c)}
+                {onFilter && (
+                  <button
+                    type="button"
+                    className={`sheet-filter-btn ${filterColumns?.has(c) ? 'is-on' : ''}`}
+                    data-filter-col={c}
+                    aria-label={`Filter column ${colName(c)}`}
+                    aria-haspopup="dialog"
+                    title={
+                      filterColumns?.has(c)
+                        ? `Column ${colName(c)} is filtered`
+                        : `Filter column ${colName(c)}`
+                    }
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onFilter(c, e.currentTarget);
+                    }}
+                  >
+                    <FilterIcon size={12} aria-hidden />
+                  </button>
+                )}
                 <span
                   className="sheet-resizer"
                   role="separator"

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import type { Entry } from '@/domain/types';
 import { baseName, extensionOf } from '@/domain/names';
@@ -25,6 +25,8 @@ import {
 } from '@/lib/convert/sheet-ops';
 import { applyColor, resolveStyle, targetFor } from '@/lib/convert/sheet-format';
 import {
+  colName,
+  displayValue,
   editValue,
   parseInput,
   setCellRaw,
@@ -34,6 +36,14 @@ import {
 import { SheetGrid, selectionRange, type Selection } from './SheetGrid';
 import { SheetRibbon, type PaintScope, type SheetCommand } from './SheetRibbon';
 import { SheetTabs } from './SheetTabs';
+import { ColumnFilterPanel, FilterChips } from './ColumnFilter';
+import {
+  columnValues,
+  filteredColumns,
+  filterRows,
+  type ColumnFilter,
+  type ColumnFilters,
+} from '@/lib/convert/table-sheet';
 import { PAINT_SCOPES, usePaintScope } from './paint';
 import { publishOutline } from '@/app/outline-store';
 import { aonCanSee } from '@/app/aon/tools';
@@ -65,6 +75,13 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
   const legacy = extensionOf(entry.name) === 'xls';
   const [lastColors, setLastColors] = useState<{ bg?: string | null; fg?: string | null }>({});
   const [paintScope, setPaintScope] = usePaintScope(selection);
+  // Column filters per sheet. They hide rows in the view only; `rows` are the source rows that
+  // pass, fixed when the filter is applied so a row you just edited does not vanish under you.
+  const [filtBySheet, setFiltBySheet] = useState<
+    Record<number, { filters: ColumnFilters; rows: number[] }>
+  >({});
+  const [filterMode, setFilterMode] = useState(false);
+  const [filterPanel, setFilterPanel] = useState<{ col: number; anchor: HTMLElement } | null>(null);
   const undo = useRef<Workbook[]>([]);
   const redo = useRef<Workbook[]>([]);
   const timer = useRef(0);
@@ -87,6 +104,8 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
         setWb(out.workbook);
         setReport(out.report);
         setEditable(!legacy && !out.report.notes.some((n) => n.severity === 'warning'));
+        setFiltBySheet({});
+        setFilterPanel(null);
         undo.current = [];
         redo.current = [];
       } catch (e) {
@@ -155,6 +174,68 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
   // The sheet on screen. A version restore or undo can leave fewer sheets than the index says.
   const si = wb ? Math.max(0, Math.min(sheetIndex, wb.sheets.length - 1)) : 0;
 
+  // Row 1 is the header: it always shows and is never filtered.
+  const HEADER_ROWS = 1;
+  const cur = filtBySheet[si];
+  const rowMap = cur && filteredColumns(cur.filters).length ? cur.rows : null;
+  /** The sheet row behind a row of the (possibly filtered) grid. */
+  const src = (r: number) => (rowMap ? (rowMap[r] ?? r) : r);
+  const full = wb?.sheets[si];
+  const view = useMemo(
+    () => (full && rowMap ? { ...full, rows: rowMap.map((i) => full.rows[i] ?? []) } : full),
+    [full, rowMap],
+  );
+  const panelValues = useMemo(
+    () =>
+      full && filterPanel
+        ? columnValues(full, filterPanel.col, cur?.filters ?? {}, HEADER_ROWS)
+        : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [full, filterPanel?.col, cur?.filters],
+  );
+  const colLabel = (c: number) => {
+    const head = displayValue(full?.rows[0]?.[c]).trim();
+    return head
+      ? `${colName(c)} · ${head.length > 24 ? `${head.slice(0, 24)}…` : head}`
+      : colName(c);
+  };
+  const setFilters = (idx: number, filters: ColumnFilters, book: Workbook) =>
+    setFiltBySheet((prev) => {
+      const next = { ...prev };
+      if (filteredColumns(filters).length)
+        next[idx] = { filters, rows: filterRows(book.sheets[idx]!, filters, HEADER_ROWS) };
+      else delete next[idx];
+      return next;
+    });
+  /** Works out again which rows pass (after undo, redo or a sort changed the rows or values). */
+  const refilter = (book: Workbook) =>
+    setFiltBySheet((prev) => {
+      const next: typeof prev = {};
+      for (const [k, v] of Object.entries(prev)) {
+        const sh = book.sheets[Number(k)];
+        if (sh)
+          next[Number(k)] = { filters: v.filters, rows: filterRows(sh, v.filters, HEADER_ROWS) };
+      }
+      return next;
+    });
+  const applyFilter = (col: number, f: ColumnFilter | null) => {
+    if (!wb) return;
+    const filters = { ...(cur?.filters ?? {}) };
+    if (f) filters[col] = f;
+    else delete filters[col];
+    setFilters(si, filters, wb);
+    setFilterMode(true);
+    setSelection({ r: 0, c: selection.c });
+    setFilterPanel(null);
+    filterPanel?.anchor.focus();
+  };
+  /** Inserting or deleting rows and columns would act on the hidden rows too. */
+  const blockedByFilter = () => {
+    if (!rowMap) return false;
+    toast({ message: 'Clear the filters first: this would also change the rows they hide.' });
+    return true;
+  };
+
   const commit = (next: Workbook) => {
     if (!wb) return;
     undo.current.push(wb);
@@ -184,12 +265,23 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
       if (!prev) return;
       to.push(wb);
       setWb(prev);
+      refilter(prev);
       pendingSave.current = prev;
       setSave('saving');
       clearTimeout(timer.current);
       timer.current = window.setTimeout(() => void flush(), SAVE_DELAY);
       return;
     }
+    if (cmd === 'filter') {
+      // On: a funnel on every column header. Off: all the filters on this sheet go.
+      if (filterMode || rowMap) {
+        setFilters(si, {}, wb);
+        setSelection({ r: 0, c: selection.c });
+      }
+      setFilterMode(!(filterMode || rowMap));
+      return;
+    }
+    if (cmd !== 'sort-asc' && cmd !== 'sort-desc' && blockedByFilter()) return;
     const { r, c } = selection;
     edit((book) => {
       switch (cmd) {
@@ -219,6 +311,7 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
             });
             return false;
           }
+          refilter(book);
         }
       }
     });
@@ -245,11 +338,25 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
 
   /** Paints the selection (cells, whole rows or whole columns), or clears it with null. */
   const paint = (prop: 'bg' | 'fg', color: string | null) => {
-    const target = targetFor(selectionRange(selection), paintScope);
+    const [r1, c1, r2, c2] = selectionRange(selection);
+    // The sheet rows behind the selection (a filter hides some), as runs of neighbours.
+    const runs: [number, number][] = [];
+    if (!rowMap) runs.push([r1, r2]);
+    else
+      for (let r = r1; r <= r2; r++) {
+        const at = src(r);
+        const last = runs[runs.length - 1];
+        if (last && last[1] === at - 1) last[1] = at;
+        else runs.push([at, at]);
+      }
     try {
       edit((book) => {
         const s = book.sheets[si]!;
-        s.format = applyColor(s.format, target, prop, color);
+        if (paintScope === 'cols')
+          s.format = applyColor(s.format, targetFor([0, c1, 0, c2], 'cols'), prop, color);
+        else
+          for (const [from, to] of runs)
+            s.format = applyColor(s.format, targetFor([from, c1, to, c2], paintScope), prop, color);
       });
       setLastColors((l) => ({ ...l, [prop]: color }));
     } catch (e) {
@@ -273,6 +380,7 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
     return <div className="skeleton m-6 h-60" aria-busy="true" aria-label="Loading workbook" />;
 
   const sheet = wb.sheets[si]!;
+  const shownSheet = view ?? sheet;
   const warnings = report?.notes.filter((n) => n.severity === 'warning') ?? [];
   const stale = report?.notes.find((n) => /can't calculate/.test(n.message));
   const aonContext = (): SheetContext => {
@@ -283,7 +391,8 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
       colCount: size.cols,
       cell: (r, c) => editValue(sheet.rows[r]?.[c]),
       formulas: true,
-      selection: selectionRange(selection),
+      selection: (([r1, c1, r2, c2]) =>
+        [src(r1), c1, src(r2), c2] as [number, number, number, number])(selectionRange(selection)),
     };
   };
   const applyAon = (edits: SheetEdit[]) => {
@@ -367,6 +476,14 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
         run={run}
         readOnly={!editable}
         onAsk={() => setAsking(true)}
+        groups={[
+          ['undo', 'redo'],
+          ['row-above', 'row-below', 'delete-row'],
+          ['col-left', 'col-right', 'delete-col'],
+          ['sort-asc', 'sort-desc'],
+          ['filter'],
+        ]}
+        pressed={{ filter: filterMode || !!rowMap }}
         colors={{
           last: lastColors,
           onPick: paint,
@@ -398,39 +515,69 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
           </span>
         )}
       </SheetRibbon>
+      {cur && (
+        <FilterChips
+          filters={cur.filters}
+          labelOf={colLabel}
+          onEdit={(col, anchor) => setFilterPanel({ col, anchor })}
+          onRemove={(col) => applyFilter(col, null)}
+          onClear={() => {
+            setFilters(si, {}, wb);
+            setSelection({ r: 0, c: selection.c });
+          }}
+          shown={Math.max(0, (rowMap?.length ?? 0) - HEADER_ROWS)}
+          total={Math.max(0, sheet.rows.length - HEADER_ROWS)}
+        />
+      )}
       <div className="min-h-0 flex-1">
         <SheetGrid
-          sheet={sheet}
+          sheet={shownSheet}
           label={`${sheet.name} cells`}
-          styleAt={(r, c) => resolveStyle(sheet.format, r, c)}
+          styleAt={(r, c) => resolveStyle(sheet.format, src(r), c)}
           readOnly={!editable}
           selection={selection}
           onSelect={setSelection}
+          rowLabels={rowMap?.map((i) => i + 1)}
+          pad={rowMap ? { rows: 0, cols: 0 } : undefined}
+          onFilter={(col, anchor) => {
+            setFilterMode(true);
+            setFilterPanel({ col, anchor });
+          }}
+          filterColumns={new Set(cur ? filteredColumns(cur.filters) : [])}
+          filterMode={filterMode || !!rowMap}
           onEdit={(r, c, input) =>
             edit((book) =>
-              setCellRaw(book.sheets[si]!, r, c, parseInput(input, book.sheets[si]!.rows[r]?.[c])),
+              setCellRaw(
+                book.sheets[si]!,
+                src(r),
+                c,
+                parseInput(input, book.sheets[si]!.rows[src(r)]?.[c]),
+              ),
             )
           }
           onRows={(a) => {
+            if (blockedByFilter()) return;
             edit((book) => {
               if (a.kind === 'insert') insertRows(book, si, a.at, a.count);
               else deleteRows(book, si, a.at, a.count);
             });
             if (a.select !== undefined) setSelection({ r: a.select, c: selection.c });
           }}
-          onClear={(r, c) => edit((book) => setCellRaw(book.sheets[si]!, r, c, undefined))}
+          onClear={(r, c) => edit((book) => setCellRaw(book.sheets[si]!, src(r), c, undefined))}
           onClearRange={([r1, c1, r2, c2]) =>
             edit((book) => {
               for (let r = r1; r <= r2; r++)
-                for (let c = c1; c <= c2; c++) setCellRaw(book.sheets[si]!, r, c, undefined);
+                for (let c = c1; c <= c2; c++) setCellRaw(book.sheets[si]!, src(r), c, undefined);
             })
           }
           onPaste={(r, c, block) =>
             edit((book) => {
               const s = book.sheets[si]!;
-              block.forEach((line, i) =>
-                line.forEach((v, j) => setCellRaw(s, r + i, c + j, parseInput(v))),
-              );
+              block.forEach((line, i) => {
+                // Pasting into a filtered view goes into the rows shown, one after the other.
+                if (rowMap && r + i >= rowMap.length) return;
+                line.forEach((v, j) => setCellRaw(s, src(r + i), c + j, parseInput(v)));
+              });
             })
           }
         />
@@ -442,6 +589,7 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
         onSelect={switchTo}
         onAdd={() =>
           edit((book) => {
+            setFiltBySheet({});
             setSheetIndex(addSheet(book, si));
             setSelection({ r: 0, c: 0 });
           })
@@ -449,6 +597,7 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
         onRename={(i, name) => edit((book) => void renameSheet(book, i, name))}
         onDuplicate={(i) =>
           edit((book) => {
+            setFiltBySheet({});
             setSheetIndex(duplicateSheet(book, i));
             setSelection({ r: 0, c: 0 });
           })
@@ -465,6 +614,7 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
           if (!ok) return;
           edit((book) => {
             if (!deleteSheet(book, i)) return false;
+            setFiltBySheet({});
             setSheetIndex(Math.max(0, Math.min(i, book.sheets.length - 1)));
             setSelection({ r: 0, c: 0 });
           });
@@ -472,6 +622,7 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
         onMove={(from, to) =>
           edit((book) => {
             if (!moveSheet(book, from, to)) return false;
+            setFiltBySheet({});
             // The sheet on screen stays on screen, wherever it moved to.
             setSheetIndex(
               si === from
@@ -491,6 +642,19 @@ export function XlsxView({ entry, onConvert }: { entry: Entry; onConvert(): void
           })
         }
       />
+      {filterPanel && (
+        <ColumnFilterPanel
+          anchor={filterPanel.anchor}
+          title={colLabel(filterPanel.col)}
+          values={panelValues}
+          filter={cur?.filters[filterPanel.col]}
+          onApply={(f) => applyFilter(filterPanel.col, f)}
+          onClose={(restore) => {
+            if (restore) filterPanel.anchor.focus();
+            setFilterPanel(null);
+          }}
+        />
+      )}
       {asking && (
         <Suspense fallback={null}>
           <SheetAskDialog

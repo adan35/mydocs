@@ -369,12 +369,6 @@ export function toggleEmphasis(
 export type FilterOp =
   'contains' | 'equals' | 'not-equals' | 'greater' | 'less' | 'empty' | 'filled';
 
-export interface Filter {
-  col: number;
-  op: FilterOp;
-  value: string;
-}
-
 export const FILTER_OPS: { id: FilterOp; label: string; needsValue: boolean }[] = [
   { id: 'contains', label: 'contains', needsValue: true },
   { id: 'equals', label: 'is', needsValue: true },
@@ -385,7 +379,22 @@ export const FILTER_OPS: { id: FilterOp; label: string; needsValue: boolean }[] 
   { id: 'filled', label: 'is not empty', needsValue: false },
 ];
 
-function matches(cell: Cell | undefined, f: Filter): boolean {
+export interface FilterCondition {
+  op: FilterOp;
+  value: string;
+}
+
+/** What one column lets through. Both parts must hold when both are set. */
+export interface ColumnFilter {
+  /** Only rows whose cell shows one of these texts ("" stands for an empty cell). */
+  include?: string[];
+  cond?: FilterCondition;
+}
+
+/** Filters by column index. Nothing is written to the file. */
+export type ColumnFilters = Record<number, ColumnFilter>;
+
+function matches(cell: Cell | undefined, f: FilterCondition): boolean {
   const text = displayValue(cell);
   const q = f.value.trim();
   const lower = text.toLowerCase();
@@ -412,16 +421,81 @@ function matches(cell: Cell | undefined, f: Filter): boolean {
   }
 }
 
-/** Indexes of the rows that satisfy every filter. The first `skip` rows (the header) always stay. */
-export function filterRows(shown: Sheet, filters: Filter[], skip: number): number[] {
+/** The columns that have a filter doing something. */
+export const filteredColumns = (filters: ColumnFilters): number[] =>
+  Object.keys(filters)
+    .map(Number)
+    .filter((c) => filters[c]!.include || filters[c]!.cond);
+
+/** The test a row's cell in one column must pass; built once per column, not per row. */
+function columnTest(f: ColumnFilter): (cell: Cell | undefined) => boolean {
+  const include = f.include && new Set(f.include);
+  const cond = f.cond;
+  return (cell) => (!include || include.has(displayValue(cell))) && (!cond || matches(cell, cond));
+}
+
+/**
+ * Indexes of the rows that satisfy every filter. The first `skip` rows (the header) always
+ * stay. `except` leaves one column's own filter out (to list the values it could still allow).
+ */
+export function filterRows(
+  shown: Sheet,
+  filters: ColumnFilters,
+  skip: number,
+  except?: number,
+): number[] {
+  const tests = filteredColumns(filters)
+    .filter((c) => c !== except)
+    .map((c) => [c, columnTest(filters[c]!)] as const);
   const out: number[] = [];
   shown.rows.forEach((row, i) => {
-    if (i < skip || filters.every((f) => matches(row?.[f.col], f))) out.push(i);
+    if (i < skip || tests.every(([c, ok]) => ok(row?.[c]))) out.push(i);
   });
   return out;
 }
 
-export const describeFilter = (f: Filter, name: string) =>
-  `${name} ${FILTER_OPS.find((o) => o.id === f.op)!.label}${
-    FILTER_OPS.find((o) => o.id === f.op)!.needsValue ? ` “${f.value}”` : ''
-  }`;
+/**
+ * The distinct texts a column shows below the header, with how many rows have each, over the
+ * rows the other columns' filters let through. Numbers come first in order, then text A to Z.
+ */
+export function columnValues(
+  shown: Sheet,
+  col: number,
+  filters: ColumnFilters,
+  skip: number,
+): { text: string; count: number }[] {
+  const counts = new Map<string, { count: number; num: number | null }>();
+  for (const i of filterRows(shown, filters, skip, col)) {
+    if (i < skip) continue;
+    const cell = shown.rows[i]?.[col];
+    const text = displayValue(cell);
+    const seen = counts.get(text);
+    if (seen) seen.count++;
+    else counts.set(text, { count: 1, num: numericOf(cell, true) });
+  }
+  const rank = (t: string, n: number | null) => (t === '' ? 2 : n !== null ? 0 : 1);
+  return [...counts]
+    .sort(([ta, a], [tb, b]) => {
+      const ra = rank(ta, a.num);
+      const rb = rank(tb, b.num);
+      if (ra !== rb) return ra - rb;
+      return ra === 0 ? a.num! - b.num! : ta.localeCompare(tb, undefined, { numeric: true });
+    })
+    .map(([text, { count }]) => ({ text, count }));
+}
+
+/** A short sentence for a filter chip: "Surgical, Medicine" or "contains “syr”". */
+export function describeColumnFilter(f: ColumnFilter): string {
+  const parts: string[] = [];
+  if (f.include)
+    parts.push(
+      f.include.length <= 3
+        ? f.include.map((t) => t || '(empty)').join(', ') || 'nothing'
+        : `${f.include.length.toLocaleString()} values`,
+    );
+  if (f.cond) {
+    const op = FILTER_OPS.find((o) => o.id === f.cond!.op)!;
+    parts.push(`${op.label}${op.needsValue ? ` “${f.cond.value}”` : ''}`);
+  }
+  return parts.join(' and ');
+}
