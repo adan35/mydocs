@@ -4,6 +4,8 @@ import {
   deleteRowsAt,
   evaluateRows,
   fillRange,
+  columnValues,
+  describeColumnFilter,
   filterRows,
   insertRowsAt,
   isFormulaText,
@@ -131,9 +133,72 @@ describe('text formatting and filters', () => {
       ['c', ''],
     ];
     const s = shown(rows);
-    expect(filterRows(s, [{ col: 1, op: 'greater', value: '10' }], 1)).toEqual([0, 2]);
-    expect(filterRows(s, [{ col: 0, op: 'contains', value: 'A' }], 1)).toEqual([0, 1]);
-    expect(filterRows(s, [{ col: 1, op: 'empty', value: '' }], 1)).toEqual([0, 3]);
+    expect(filterRows(s, { 1: { cond: { op: 'greater', value: '10' } } }, 1)).toEqual([0, 2]);
+    expect(filterRows(s, { 0: { cond: { op: 'contains', value: 'A' } } }, 1)).toEqual([0, 1]);
+    expect(filterRows(s, { 1: { cond: { op: 'empty', value: '' } } }, 1)).toEqual([0, 3]);
+  });
+
+  it('filters by the values ticked in a column, and combines columns', () => {
+    const s = shown([
+      ['cat', 'n'],
+      ['Surgical', '5'],
+      ['Medicine', '15'],
+      ['Surgical', '25'],
+      ['', '30'],
+    ]);
+    expect(filterRows(s, { 0: { include: ['Surgical'] } }, 1)).toEqual([0, 1, 3]);
+    expect(filterRows(s, { 0: { include: [''] } }, 1)).toEqual([0, 4]);
+    // A value filter and a condition on other columns must both hold.
+    const both = {
+      0: { include: ['Surgical'] },
+      1: { cond: { op: 'greater' as const, value: '10' } },
+    };
+    expect(filterRows(s, both, 1)).toEqual([0, 3]);
+    // An empty filter lets everything through.
+    expect(filterRows(s, { 0: {} }, 1)).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it("lists a column's values with counts, narrowed by the other columns only", () => {
+    const s = shown([
+      ['cat', 'n'],
+      ['Surgical', '5'],
+      ['Medicine', '15'],
+      ['Surgical', '25'],
+      ['', '30'],
+    ]);
+    expect(columnValues(s, 0, {}, 1)).toEqual([
+      { text: 'Medicine', count: 1 },
+      { text: 'Surgical', count: 2 },
+      { text: '', count: 1 },
+    ]);
+    // Its own filter does not hide the other choices; another column's does.
+    expect(columnValues(s, 0, { 0: { include: ['Surgical'] } }, 1)).toHaveLength(3);
+    expect(columnValues(s, 0, { 1: { cond: { op: 'less', value: '20' } } }, 1)).toEqual([
+      { text: 'Medicine', count: 1 },
+      { text: 'Surgical', count: 1 },
+    ]);
+    // Numbers sort as numbers.
+    expect(columnValues(s, 1, {}, 1).map((v) => v.text)).toEqual(['5', '15', '25', '30']);
+  });
+
+  it('describes a filter for its chip', () => {
+    expect(describeColumnFilter({ include: ['A', 'B'] })).toBe('A, B');
+    expect(describeColumnFilter({ include: ['1', '2', '3', '4'] })).toBe('4 values');
+    expect(describeColumnFilter({ cond: { op: 'contains', value: 'x' } })).toBe('contains “x”');
+    expect(describeColumnFilter({ include: [''], cond: { op: 'filled', value: '' } })).toBe(
+      '(empty) and is not empty',
+    );
+  });
+
+  it('filters 40,000 rows quickly', () => {
+    const rows = [['id', 'cat']];
+    for (let i = 0; i < 40_000; i++) rows.push([String(i), ['A', 'B', 'C', 'D'][i % 4]!]);
+    const s = shown(rows);
+    const t = performance.now();
+    const out = filterRows(s, { 1: { include: ['B', 'C'] } }, 1);
+    columnValues(s, 1, {}, 1);
+    expect(out).toHaveLength(20_001);
+    expect(performance.now() - t).toBeLessThan(1000);
   });
 });
 

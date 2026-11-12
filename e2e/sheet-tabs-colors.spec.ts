@@ -38,9 +38,7 @@ async function shot(page: Page, name: string) {
 const tabs = (page: Page) => page.getByTestId('sheet-tabs');
 const tab = (page: Page, name: string) => tabs(page).getByRole('tab', { name, exact: true });
 const colHead = (page: Page, letter: string) =>
-  page
-    .getByTestId('sheet-grid')
-    .getByRole('columnheader', { name: new RegExp(`^${letter} Resize`) });
+  page.getByTestId('sheet-grid').getByRole('columnheader', { name: new RegExp(`^${letter}\\b`) });
 const tabNames = (page: Page) => tabs(page).getByRole('tab').allTextContents();
 
 test.describe('Excel workbooks', () => {

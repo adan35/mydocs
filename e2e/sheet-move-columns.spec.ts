@@ -34,7 +34,7 @@ async function openSales(page: Page) {
 
 const grid = (page: Page) => page.getByTestId('sheet-grid');
 const head = (page: Page, letter: string) =>
-  grid(page).getByRole('columnheader', { name: new RegExp(`^${letter} Resize`) });
+  grid(page).getByRole('columnheader', { name: new RegExp(`^${letter}\\b`) });
 const cell = (page: Page, a: string) => grid(page).locator(`[data-cell="${a}"]`);
 const header = async (page: Page) => {
   const out: string[] = [];
