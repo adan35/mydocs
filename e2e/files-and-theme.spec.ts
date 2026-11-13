@@ -34,9 +34,7 @@ test('asks for permission before writing to disk', async ({ page }) => {
   await expect.poll(() => disk(page)).toBe('# Todo\n- [ ] call Sam');
 });
 
-test('the first edit in a document restores disk permission without a button', async ({
-  page,
-}) => {
+test('the first edit in a document restores disk permission without a button', async ({ page }) => {
   await fakeDisk(page, 'todo.md', '# Todo\n', 'prompt', 1);
   await freshApp(page);
   await importViaPicker(page, 'todo.md');
