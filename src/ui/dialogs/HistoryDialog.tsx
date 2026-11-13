@@ -270,12 +270,12 @@ export function HistoryDialog({ entryId, onClose }: { entryId: EntryId; onClose(
                       {c.id === HEAD ? (
                         <span className="history-badge">Now</span>
                       ) : (
-                        <span className="font-mono text-[11px] text-stone">{c.id.slice(0, 7)}</span>
+                        <span className="font-mono text-[12px] text-stone">{c.id.slice(0, 7)}</span>
                       )}
                       <span title={new Date(c.at).toLocaleString()}>{relativeTime(c.at)}</span>
                       {c.reason && REASON[c.reason] && <span>· {REASON[c.reason]}</span>}
                       {c.change && (c.change.added > 0 || c.change.removed > 0) && (
-                        <span className="ml-auto shrink-0 font-mono text-[11px]">
+                        <span className="ml-auto shrink-0 font-mono text-[12px]">
                           <span className="text-success">+{c.change.added}</span>{' '}
                           <span className="text-danger">−{c.change.removed}</span>
                         </span>

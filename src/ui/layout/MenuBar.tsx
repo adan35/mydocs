@@ -376,7 +376,7 @@ export const menuBarAsSubmenus = (): MenuEntry[] =>
   appMenus().map((m) => ({ label: m.label, submenu: m.items }));
 
 /** Top menu bar on desktop; a single menu button on tablets (phones use the More sheet). */
-export function MenuBar({ compact }: { compact?: boolean }) {
+export function MenuBar() {
   const open = useMenuOpen();
   const [active, setActive] = useState<string | null>(null);
   useEffect(() => {
@@ -394,21 +394,6 @@ export function MenuBar({ compact }: { compact?: boolean }) {
     };
     openMenuAt(el, menu.items, name, { onNavigate });
   };
-
-  if (compact)
-    return (
-      <div className="flex h-9 shrink-0 items-center border-b border-hairline px-1 no-print">
-        <button
-          type="button"
-          className="icon-btn"
-          aria-label="Menu"
-          aria-haspopup="menu"
-          onClick={(e) => openMenuAt(e.currentTarget, menuBarAsSubmenus(), 'Menu')}
-        >
-          <MenuIcon size={16} />
-        </button>
-      </div>
-    );
 
   return (
     <div
@@ -437,5 +422,20 @@ export function MenuBar({ compact }: { compact?: boolean }) {
         </button>
       ))}
     </div>
+  );
+}
+
+/** Tablets fold File/Edit/View/Help into one button that sits beside the sidebar button. */
+export function MenuButton() {
+  return (
+    <button
+      type="button"
+      className="icon-btn"
+      aria-label="Menu"
+      aria-haspopup="menu"
+      onClick={(e) => openMenuAt(e.currentTarget, menuBarAsSubmenus(), 'Menu')}
+    >
+      <MenuIcon size={16} />
+    </button>
   );
 }

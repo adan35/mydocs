@@ -182,7 +182,7 @@ const fontTheme = EditorView.theme({
   '.cm-content': { fontVariantLigatures: 'none', caretColor: 'var(--ink)' },
   '.cm-gutters': {
     backgroundColor: 'var(--canvas)',
-    color: 'var(--stone)',
+    color: 'var(--steel)',
     border: 'none',
   },
   '.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'var(--ink)' },

@@ -228,13 +228,13 @@ export function Outline({ outline }: { outline: DocOutline }) {
                   />
                 )}
                 {h.badge && (
-                  <span className="shrink-0 font-mono text-[10px] text-stone uppercase">
+                  <span className="shrink-0 font-mono text-[12px] text-stone uppercase">
                     {h.badge}
                   </span>
                 )}
                 <span className="min-w-0 flex-1 truncate">{h.text}</span>
                 {h.detail && (
-                  <span className="shrink-0 text-[11px] font-normal text-stone tabular-nums">
+                  <span className="shrink-0 text-[12px] font-normal text-stone tabular-nums">
                     {h.detail}
                   </span>
                 )}

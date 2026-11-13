@@ -244,7 +244,7 @@
 }
 @media (pointer: coarse) {
   .note-pill {
-    height: 40px;
+    height: 44px;
   }
 }
 .note-frame {
@@ -260,8 +260,8 @@
 }
 @media (pointer: coarse) {
   .note-card .note-tools .icon-btn {
-    width: 32px;
-    height: 32px;
+    width: 40px;
+    height: 40px;
   }
 }
 @media (hover: none) {

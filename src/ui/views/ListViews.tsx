@@ -146,7 +146,7 @@ export function TagsView({ tag }: { tag?: string }) {
             <li key={t.tag}>
               <button
                 type="button"
-                className="flex h-8 items-center gap-2 rounded-md border border-hairline px-3 text-[14px] text-charcoal hover:bg-hover"
+                className="tap flex h-8 items-center gap-2 rounded-md border border-hairline px-3 text-[14px] text-charcoal hover:bg-hover"
                 onClick={() => navigate({ name: 'tags', tag: t.tag })}
               >
                 <span className="text-tag-ink">#{t.tag}</span>

@@ -4,6 +4,7 @@ import { aiSource } from '@/app/ai';
 import { makeBrief, savedBrief, type Brief } from '@/app/aon/brief';
 import { openCapture, openTidy } from '@/app/aon/dialog';
 import { toggleAon } from '@/app/aon/chat';
+import { navigate } from '@/app/router';
 import { renderMarkdown } from '@/lib/markdown/render';
 
 /** Home's AON section: today's brief plus the ways to hand AON some work. */
@@ -51,14 +52,24 @@ export default function AonHome() {
           </p>
         )}
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            className="btn btn-secondary"
-            disabled={busy || noKey}
-            onClick={() => void run()}
-          >
-            {busy ? 'Writing…' : brief ? 'Refresh brief' : 'Get my brief'}
-          </button>
+          {noKey && !brief ? (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => navigate({ name: 'settings' })}
+            >
+              Set up AON
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={busy || noKey}
+              onClick={() => void run()}
+            >
+              {busy ? 'Writing…' : brief ? 'Refresh brief' : 'Get my brief'}
+            </button>
+          )}
           <button type="button" className="btn btn-secondary" onClick={() => openCapture()}>
             Capture
           </button>

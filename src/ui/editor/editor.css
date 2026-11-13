@@ -44,7 +44,7 @@
   background: var(--selection) !important;
 }
 .cm-placeholder {
-  color: var(--muted);
+  color: var(--steel);
 }
 .cm-tooltip-autocomplete > ul {
   font-family: var(--font-sans) !important;
@@ -62,7 +62,7 @@
   color: var(--ink) !important;
 }
 .cm-completionDetail {
-  color: var(--stone);
+  color: var(--steel);
   font-style: normal !important;
   margin-left: 8px;
 }
@@ -87,7 +87,7 @@
   color: var(--link);
 }
 .cm-md-url {
-  color: var(--stone);
+  color: var(--steel);
 }
 .cm-md-code {
   font-family: var(--font-mono);
@@ -114,7 +114,7 @@
   color: inherit;
 }
 .cm-md-meta {
-  color: var(--stone);
+  color: var(--steel);
 }
 .cm-md-tag {
   color: var(--primary);

@@ -121,7 +121,7 @@
   --color-charcoal: var(--charcoal);
   --color-slate: var(--slate);
   --color-steel: var(--steel);
-  --color-stone: var(--stone);
+  --color-stone: var(--steel);
   --color-muted: var(--muted);
   --color-primary: var(--primary);
   --color-primary-pressed: var(--primary-pressed);
@@ -145,7 +145,7 @@
   --shadow-1: var(--shadow-1);
   --shadow-2: var(--shadow-2);
   --shadow-3: var(--shadow-3);
-  --text-micro: 11px;
+  --text-micro: 12px;
   --text-micro--line-height: 1.4;
   --text-caption: 13px;
   --text-caption--line-height: 1.4;
@@ -476,24 +476,24 @@
   }
   @media (pointer: coarse) {
     .icon-btn {
+      width: 44px;
+      height: 44px;
+    }
+    .icon-btn-sm {
       width: 40px;
       height: 40px;
     }
-    .icon-btn-sm {
-      width: 34px;
-      height: 34px;
-    }
     /* Small controls keep their look but get a finger-sized hit area. */
     .tap {
+      min-height: 44px;
+      min-width: 44px;
+    }
+    .tap-sm {
       min-height: 40px;
       min-width: 40px;
     }
-    .tap-sm {
-      min-height: 32px;
-      min-width: 32px;
-    }
     .btn {
-      height: 40px;
+      height: 44px;
     }
   }
   .input {
@@ -519,7 +519,33 @@
     .input {
       /* Avoid Safari zooming the whole workspace when the keyboard opens. */
       font-size: 16px;
-      min-height: 40px;
+      min-height: 44px;
+    }
+  }
+  /* One look for every dropdown. The native picker still opens, which is best on phones. */
+  select.input {
+    appearance: none;
+    padding-right: 28px;
+    background-image:
+      linear-gradient(45deg, transparent 50%, var(--steel) 50%),
+      linear-gradient(135deg, var(--steel) 50%, transparent 50%);
+    background-position:
+      calc(100% - 16px) 50%,
+      calc(100% - 11px) 50%;
+    background-size: 5px 5px;
+    background-repeat: no-repeat;
+    text-overflow: ellipsis;
+  }
+  @media (pointer: coarse) {
+    /* Checkboxes and radios are ringed by their label, so the label is the target. */
+    input[type='checkbox'],
+    input[type='radio'] {
+      width: 20px;
+      height: 20px;
+    }
+    label:has(> input[type='checkbox']),
+    label:has(> input[type='radio']) {
+      min-height: 44px;
     }
   }
   .kbd {
@@ -532,7 +558,7 @@
     background: var(--surface-soft);
     color: var(--steel);
     font-family: var(--font-sans);
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 500;
     white-space: nowrap;
   }
@@ -588,11 +614,11 @@
     white-space: nowrap;
   }
   .section-label {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: var(--stone);
+    color: var(--steel);
   }
   .skeleton {
     background: linear-gradient(90deg, var(--hover) 25%, var(--active) 37%, var(--hover) 63%);
@@ -771,7 +797,7 @@
     border-radius: 999px;
     background: var(--primary-solid);
     color: var(--on-primary);
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 600;
     line-height: 16px;
   }
@@ -779,9 +805,9 @@
     margin: 2px 0;
     padding: 1px 12px;
     background: var(--hover);
-    color: var(--stone);
+    color: var(--steel);
     font-family: var(--font-sans);
-    font-size: 11px;
+    font-size: 12px;
   }
   [data-diff='add'] {
     background: color-mix(in srgb, var(--success) 14%, transparent);
