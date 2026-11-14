@@ -69,7 +69,7 @@ export function SaveStatus({ id }: { id: EntryId }) {
           ) : (
             <span className="status-dot" aria-hidden />
           )}
-          <span>{label}</span>
+          <span className={status === 'saved' ? 'max-md:sr-only' : undefined}>{label}</span>
         </span>
       )}
     </span>

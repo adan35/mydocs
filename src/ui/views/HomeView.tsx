@@ -81,7 +81,7 @@ export function HomeView() {
 
   return (
     <Page title={greeting()} subtitle={`${wsName} · ${total} document${total === 1 ? '' : 's'}`}>
-      <WorkspaceSafety />
+      <WorkspaceSafety only="unsaved" />
       {phone && (
         <button
           type="button"
@@ -118,6 +118,8 @@ export function HomeView() {
       </section>
 
       {!phone && <DropZone />}
+
+      <WorkspaceSafety only="safe" />
 
       {aonOn && (
         <Suspense fallback={null}>
@@ -163,7 +165,7 @@ export function HomeView() {
             </h2>
             <button
               type="button"
-              className="text-caption text-link hover:underline"
+              className="tap inline-flex items-center justify-end text-caption text-link hover:underline"
               onClick={() => navigate({ name: 'recent' })}
             >
               View all

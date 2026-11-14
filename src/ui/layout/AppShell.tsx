@@ -10,7 +10,7 @@ import { ws } from '@/app/app-store';
 import { Sidebar } from './Sidebar';
 import { TabBar } from './TabBar';
 import { MobileNav } from './MobileNav';
-import { MenuBar } from './MenuBar';
+import { MenuBar, MenuButton } from './MenuBar';
 import { CommandPalette, QuickOpen } from './Palette';
 import { ShareLanding, SharedWithMe } from '../share/ShareViews';
 import { HomeView } from '../views/HomeView';
@@ -250,7 +250,7 @@ export function AppShell() {
         if (useRouter.getState().route.name === 'home') navigate({ name: 'folder', id: null });
       }}
     >
-      {!phone && !immersive && <MenuBar compact={tablet} />}
+      {!phone && !tablet && !immersive && <MenuBar />}
       <div className="flex min-h-0 flex-1">
         <a
           href="#main"
@@ -320,7 +320,7 @@ export function AppShell() {
           </div>
         )}
         <div className="flex min-w-0 flex-1 flex-col">
-          {!phone && hasTabs && !immersive && (
+          {!phone && (hasTabs || tablet) && !immersive && (
             <div className="flex shrink-0 items-stretch">
               {(tablet || !sidebarOpen) && (
                 <button
@@ -334,22 +334,13 @@ export function AppShell() {
                   <PanelLeft size={16} />
                 </button>
               )}
-              <div className="min-w-0 flex-1">
-                <TabBar />
-              </div>
+              {tablet && (
+                <span className="self-center">
+                  <MenuButton />
+                </span>
+              )}
+              <div className="min-w-0 flex-1">{hasTabs && <TabBar />}</div>
             </div>
-          )}
-          {!phone && !hasTabs && route.name === 'doc' && (tablet || !sidebarOpen) && !immersive && (
-            <button
-              type="button"
-              className="icon-btn m-1"
-              aria-label="Open sidebar"
-              onClick={() =>
-                tablet ? useUi.getState().setDrawer(true) : useUi.getState().setSidebar(true)
-              }
-            >
-              <PanelLeft size={16} />
-            </button>
           )}
           <main id="main" className="min-h-0 flex-1 outline-none" tabIndex={-1}>
             <RouteView />

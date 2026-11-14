@@ -518,7 +518,7 @@ export function SettingsView() {
       <div className="mt-2 text-center">
         <button
           type="button"
-          className="text-xs text-steel hover:underline"
+          className="tap text-xs text-steel hover:underline"
           onClick={() => s.reset()}
         >
           Reset settings to defaults

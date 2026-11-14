@@ -253,7 +253,7 @@ export function FolderView({ id }: { id: EntryId | null }) {
           <span className="flex-1" />
           <button
             type="button"
-            className="btn btn-ghost h-8 text-steel"
+            className="tap btn btn-ghost h-8 text-steel"
             onClick={(e) => openMenuAt(e.currentTarget, sortMenu, 'Sort by')}
           >
             <ArrowDownUp size={14} aria-hidden />{' '}

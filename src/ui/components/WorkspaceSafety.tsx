@@ -5,7 +5,8 @@ import { exportEntry, openEntry } from '@/app/actions';
 import { navigate } from '@/app/router';
 
 /** A clear boundary between a local save and a separate backup. */
-export function WorkspaceSafety() {
+/** `only` picks which state shows: the warning (top of Home) or the calm reassurance (below the actions). */
+export function WorkspaceSafety({ only }: { only?: 'unsaved' | 'safe' }) {
   const unsaved = useEditor(
     (s) => Object.values(s.buffers).filter((b) => b.text !== b.savedText).length,
   );
@@ -18,6 +19,7 @@ export function WorkspaceSafety() {
       setExporting(false);
     }
   };
+  if (only && (only === 'unsaved') !== !!unsaved) return null;
   return (
     <section aria-label="Workspace safety" className="workspace-safety mb-6">
       <span className="workspace-safety-icon" aria-hidden>
@@ -34,7 +36,7 @@ export function WorkspaceSafety() {
         </p>
         <button
           type="button"
-          className="mt-2 inline-flex items-center gap-1 text-caption font-medium text-primary hover:underline"
+          className="tap mt-2 inline-flex items-center gap-1 text-caption font-medium text-primary hover:underline"
           onClick={() => {
             const dirty = Object.values(useEditor.getState().buffers).find(
               (b) => b.text !== b.savedText,

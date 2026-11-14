@@ -74,7 +74,7 @@ export function MobileNav() {
           key={it.label}
           type="button"
           aria-current={it.active ? 'page' : undefined}
-          className={`flex h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium ${it.active ? 'text-ink' : 'text-steel'}`}
+          className={`flex h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[12px] font-medium ${it.active ? 'text-ink' : 'text-steel'}`}
           onClick={it.onClick}
         >
           {it.icon}
@@ -83,7 +83,7 @@ export function MobileNav() {
       ))}
       <button
         type="button"
-        className="flex h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium text-steel"
+        className="flex h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[12px] font-medium text-steel"
         onClick={(e) =>
           openMenuAt(
             e.currentTarget,

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { ArrowLeft, Menu } from 'lucide-react';
 import { useUi } from '@/app/ui-store';
+import { useEditor } from '@/app/editor-store';
 import { goBack, navigate, useRouter } from '@/app/router';
 import { useLayout } from '../hooks';
 
@@ -25,6 +26,7 @@ export function Page({
 }) {
   const { phone, tablet } = useLayout();
   const sidebarOpen = useUi((s) => s.sidebarOpen);
+  const hasTabs = useEditor((s) => s.tabs.length > 0);
   const onHome = useRouter((s) => s.route.name === 'home');
   // Every page but Home can step back; a page can override where Back goes.
   const onBack = back ?? (onHome ? undefined : () => goBack() || navigate({ name: 'home' }));
@@ -44,7 +46,7 @@ export function Page({
               <ArrowLeft size={18} />
             </button>
           )}
-          {!back && (tablet || (!phone && !sidebarOpen)) && (
+          {!back && !tablet && !phone && !sidebarOpen && !hasTabs && (
             <button
               type="button"
               className={`icon-btn mt-0.5 ${onBack ? '' : '-ml-2'}`}

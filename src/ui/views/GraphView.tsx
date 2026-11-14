@@ -505,7 +505,7 @@ export function GraphView({ focusId }: { focusId?: string }) {
           <button
             type="button"
             aria-pressed={!local}
-            className={`h-6 rounded-full px-3 text-caption ${!local ? 'bg-ink text-canvas' : 'text-steel hover:bg-hover'}`}
+            className={`tap h-6 rounded-full px-3 text-caption ${!local ? 'bg-ink text-canvas' : 'text-steel hover:bg-hover'}`}
             onClick={() => navigate({ name: 'graph' }, { replace: true })}
           >
             Whole workspace
@@ -515,7 +515,7 @@ export function GraphView({ focusId }: { focusId?: string }) {
             aria-pressed={local}
             disabled={!localTarget || !tree.get(localTarget)}
             title={localTarget ? undefined : 'Open a document first'}
-            className={`h-6 rounded-full px-3 text-caption disabled:opacity-40 ${local ? 'bg-ink text-canvas' : 'text-steel hover:bg-hover'}`}
+            className={`tap h-6 rounded-full px-3 text-caption disabled:opacity-40 ${local ? 'bg-ink text-canvas' : 'text-steel hover:bg-hover'}`}
             onClick={() =>
               localTarget && navigate({ name: 'graph', id: localTarget }, { replace: true })
             }
@@ -574,11 +574,11 @@ export function GraphView({ focusId }: { focusId?: string }) {
             </option>
           ))}
         </select>
-        <label className="flex h-7 items-center gap-1.5 px-2 text-caption text-steel">
+        <label className="tap flex h-7 items-center gap-1.5 px-2 text-caption text-steel">
           <input type="checkbox" checked={orphans} onChange={(e) => setOrphans(e.target.checked)} />
           Unlinked documents
         </label>
-        <label className="flex h-7 items-center gap-1.5 px-2 text-caption text-steel">
+        <label className="tap flex h-7 items-center gap-1.5 px-2 text-caption text-steel">
           <input
             type="checkbox"
             checked={unresolved}
@@ -587,7 +587,7 @@ export function GraphView({ focusId }: { focusId?: string }) {
           Missing documents
         </label>
         <label
-          className="flex h-7 items-center gap-1.5 px-2 text-caption text-steel"
+          className="tap flex h-7 items-center gap-1.5 px-2 text-caption text-steel"
           title="Documents that name another one in their text without linking to it"
         >
           <input
@@ -608,7 +608,7 @@ export function GraphView({ focusId }: { focusId?: string }) {
         <div className="absolute top-2 right-2 flex w-[min(260px,calc(100%-1rem))] items-center gap-1 rounded-lg border border-hairline bg-canvas px-2 shadow-1">
           <Search size={14} className="shrink-0 text-steel" aria-hidden />
           <input
-            className="h-8 min-w-0 flex-1 bg-transparent text-[13px] outline-none"
+            className="tap h-8 min-w-0 flex-1 bg-transparent text-[13px] outline-none"
             placeholder="Find in graph"
             aria-label="Find in graph"
             value={query}
