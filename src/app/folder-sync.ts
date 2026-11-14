@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import type { EntryId } from '@/domain/types';
 import { sanitizeName } from '@/domain/names';
 import { useApp } from './app-store';
+import { MAX_ASK, inChunks, orTimeout, reacher } from './disk-batch';
 import { confirmGone, diskLinks, isGone } from './disk-links';
 import { useSettings } from './settings-store';
 import {
@@ -83,6 +84,8 @@ const OBSERVED_POLL_MS = 30_000;
 const FOCUS_MS = 10_000;
 
 const records = new Map<EntryId, Record_>();
+/** Folders with a permission prompt open, so a click can't stack a second one. */
+const asking = new Set<EntryId>();
 const running = new Set<EntryId>();
 /** How long the last scan of each folder took, to space out scans of big folders. */
 const cost = new Map<EntryId, number>();
@@ -156,7 +159,9 @@ async function granted(
   mode: 'read' | 'readwrite' = 'read',
 ): Promise<boolean> {
   try {
-    if (ask && h.requestPermission) return (await h.requestPermission({ mode })) === 'granted';
+    // A prompt nobody answers must not hold the app: stop waiting after a while.
+    if (ask && h.requestPermission)
+      return (await orTimeout(h.requestPermission({ mode }))) === 'granted';
     if (h.queryPermission) return (await h.queryPermission({ mode })) === 'granted';
     return true;
   } catch {
@@ -268,6 +273,17 @@ function report(id: EntryId, r: FolderSyncResult | null, quiet: boolean) {
     detail: r.skipped ? `${plural(r.skipped, 'file')} skipped.` : undefined,
     tone: parts.length ? 'success' : 'info',
   });
+}
+
+/**
+ * Folders whose permission is back: they leave "needs permission" at once, and are scanned
+ * one after another in the background so a big folder never holds up the page.
+ */
+function rescan(ids: EntryId[]) {
+  for (const id of ids) patch(id, { state: 'idle' });
+  void (async () => {
+    for (const id of ids) report(id, await sync(id, false), true);
+  })();
 }
 
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -407,40 +423,74 @@ export const folderSync = {
   },
 
   /**
-   * Asks for read and write access to the linked folders that need it: those waiting for
-   * permission and those holding any of `fileIds`. Access to a folder covers every file
-   * inside it, so this is one prompt per folder instead of one per file. Returns false at
-   * the first refusal. Must run from a click or key press.
+   * Asks for read and write access to the linked folders that cover `fileIds` and, unless
+   * `onlyCovering`, those waiting for permission. Access to a folder covers every file
+   * inside it, so this is one prompt per folder instead of one per file. Only a few
+   * prompts are asked per click (one for `onlyCovering`); the rest wait for "Allow all".
+   * Returns false at the first refusal. Must run from a click or key press.
    */
-  async allowFor(fileIds: EntryId[]): Promise<boolean> {
+  async allowFor(fileIds: EntryId[], onlyCovering = false): Promise<boolean> {
     const ws = useApp.getState().session?.workspace;
     const links = useFolderLinks.getState().links;
+    const covering = (id: EntryId) => !!ws && fileIds.some((f) => ws.tree.isWithin(f, id));
+    // Outer folders first: allowing one covers the folders inside it.
+    const wanted = [...records]
+      .filter(([id]) =>
+        onlyCovering ? covering(id) : links[id]?.state === 'needs-permission' || covering(id),
+      )
+      .sort((a, b) => (ws?.tree.pathOf(a[0]).length ?? 0) - (ws?.tree.pathOf(b[0]).length ?? 0));
     const allowed: EntryId[] = [];
+    let prompts = 0;
     let ok = true;
-    for (const [id, rec] of records) {
-      const wanted =
-        links[id]?.state === 'needs-permission' ||
-        (!!ws && fileIds.some((f) => ws.tree.isWithin(f, id)));
-      if (!wanted) continue;
+    for (const [id, rec] of wanted) {
       // Already allowed, possibly through a parent folder asked a moment ago.
-      if (!(await granted(rec.handle, false, 'readwrite'))) {
-        if (!(await granted(rec.handle, true, 'readwrite'))) {
-          ok = false;
-          toast({
-            tone: 'error',
-            message: `Couldn't get access to "${rec.handle.name}".`,
-            detail: 'Your edits are still saved in My Doc.',
-          });
-          break;
-        }
+      if (await granted(rec.handle, false, 'readwrite')) {
+        allowed.push(id);
+        continue;
+      }
+      if (prompts >= (onlyCovering ? 1 : MAX_ASK) || asking.has(id)) continue;
+      prompts++;
+      asking.add(id);
+      const yes = await granted(rec.handle, true, 'readwrite').finally(() => asking.delete(id));
+      if (!yes) {
+        ok = false;
+        toast({
+          tone: 'error',
+          message: `Couldn't get access to "${rec.handle.name}".`,
+          detail: 'Your edits are still saved in My Doc.',
+        });
+        break;
       }
       allowed.push(id);
     }
-    // Prompts first, scans after: a long scan in between could outlast the gesture.
-    for (const id of allowed)
-      if (links[id]?.state === 'needs-permission')
-        void sync(id, false).then((r) => report(id, r, true));
+    rescan(allowed.filter((id) => links[id]?.state === 'needs-permission'));
     return ok;
+  },
+
+  /**
+   * After the person chose a folder and allowed it: every linked folder waiting for
+   * permission that lies inside it gets a handle reached through that folder, which carries
+   * its permission. Returns how many were restored.
+   */
+  async adoptUnder(root: FileSystemDirectoryHandle): Promise<number> {
+    const reach = reacher(root);
+    const need = Object.entries(useFolderLinks.getState().links)
+      .filter(([, l]) => l.state === 'needs-permission')
+      .map(([id]) => id);
+    const restored: EntryId[] = [];
+    await inChunks(need, 16, async (id) => {
+      const rec = records.get(id);
+      if (!rec) return;
+      if (!(await granted(rec.handle, false, 'readwrite'))) {
+        const via = (await reach(rec.handle)) as DirHandle | null;
+        if (!via || !(await granted(via, false, 'readwrite'))) return;
+        rec.handle = via;
+        await persist(id);
+      }
+      restored.push(id);
+    });
+    rescan(restored);
+    return restored.length;
   },
 
   /** Whether a linked folder contains this document, so asking for the folder covers the file. */
