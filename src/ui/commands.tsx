@@ -402,6 +402,7 @@ export function getCommands(): Command[] {
       group: 'Workspace',
       icon: <Keyboard />,
       keywords: 'keys help hotkeys',
+      shortcut: SHORTCUTS.shortcuts,
       run: () => void dialogs.shortcuts(),
     },
     {

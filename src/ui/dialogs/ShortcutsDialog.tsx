@@ -7,16 +7,14 @@ import { formatShortcut } from '../hooks';
 export function ShortcutsDialog({ onClose }: { onClose(): void }) {
   const [query, setQuery] = useState('');
   const input = useRef<HTMLInputElement>(null);
-  const q = query.trim().toLowerCase();
+  // Every word must appear somewhere, so "next file" finds "Open the next / previous file".
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   const groups = SHORTCUT_GROUPS.map((g) => ({
     ...g,
-    items: g.items.filter(
-      ([label, keys]) =>
-        !q ||
-        label.toLowerCase().includes(q) ||
-        formatShortcut(keys).toLowerCase().includes(q) ||
-        g.title.toLowerCase().includes(q),
-    ),
+    items: g.items.filter(([label, keys]) => {
+      const text = `${label} ${keys} ${formatShortcut(keys)} ${g.title}`.toLowerCase();
+      return words.every((w) => text.includes(w));
+    }),
   })).filter((g) => g.items.length);
   return (
     <Dialog title="Keyboard shortcuts" onClose={onClose} size="lg" initialFocus={input}>

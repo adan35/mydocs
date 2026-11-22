@@ -8,7 +8,7 @@ My Doc is one place for every document. Your files stay plain Markdown and text,
 
 - **Create** a document with **Alt + N**, or use **New document** in the sidebar.
 - **Import** an existing folder: drag it onto the sidebar, or use *Import* from the command palette (**Ctrl/Cmd + K**).
-- **Find anything** with **Ctrl/Cmd + P** (open a document) or **Ctrl/Cmd + Shift + F** (search everything).
+- **Find anything** with **Alt + S** (open a document) or **Ctrl/Cmd + Shift + F** (search everything).
 - **Organize** with folders, favorites and #tags.
 
 Everything saves automatically while you type.
@@ -84,20 +84,27 @@ flowchart LR
 
 const SHORTCUTS = `# Keyboard shortcuts
 
+Press **Ctrl/Cmd + /** anywhere to see and search every shortcut. None of them clash with your browser's own keys, so they work the same in a browser tab and in the installed apps.
+
 | Action | Shortcut |
 | --- | --- |
+| Show all shortcuts | Ctrl/Cmd + / |
 | Command palette | Ctrl/Cmd + K |
-| Quick open | Ctrl/Cmd + P |
+| Search files by name | Alt + S |
 | Search everything | Ctrl/Cmd + Shift + F |
-| New document | Alt + N (or Ctrl/Cmd + N where the browser allows it) |
+| New document | Alt + N |
+| New from template | Alt + T |
+| Ask AON | Alt + A |
+| Open the next / previous file in Files | Ctrl + Alt + Down / Up |
+| Next / previous tab | Alt + . / Alt + , |
+| Close tab / reopen closed tab | Alt + W / Alt + Shift + W |
+| Switch source / read | Ctrl/Cmd + Alt + S |
+| Reading mode | Alt + R |
 | Save now | Ctrl/Cmd + S |
 | Find in document | Ctrl/Cmd + F |
 | Bold / Italic | Ctrl/Cmd + B / I |
 | Insert link | Ctrl/Cmd + Shift + K |
-| Toggle edit / preview | Ctrl/Cmd + E |
 | Toggle sidebar | Ctrl/Cmd + \\\\ |
-| Close tab | Alt + W |
-| Reopen closed tab | Alt + Shift + T |
 | Close overlays | Esc |
 
 Back to [[Welcome to My Doc]].

@@ -1,48 +1,74 @@
 /** Single source of truth for keyboard shortcuts (shown in menus, palette and help). */
+/**
+ * Every shortcut avoids keys Chrome, Edge and Firefox keep for themselves (Ctrl+T, N, W, Tab, P, J,
+ * E, D...) so it works the same in a browser tab and in the installed apps. Alt+letter is the app's
+ * own layer, with the letter matching the word (Alt+S Search, Alt+T Templates, Alt+A Ask AON).
+ * Avoid Alt+D, Alt+E and Alt+F: Chrome on Windows uses them for the address bar and its menu.
+ */
 export const SHORTCUTS = {
   palette: 'Mod+K',
   paletteAlt: 'Mod+Shift+P',
-  quickOpen: 'Mod+P',
+  shortcuts: 'Mod+/',
+  quickOpen: 'Alt+S',
   search: 'Mod+Shift+F',
   newDoc: 'Alt+N',
   newFolder: 'Alt+Shift+N',
-  // Ctrl+T is the browser's new-tab key: only the installed and desktop apps receive it, so Alt+T is the browser fallback.
-  templates: 'Mod+T',
-  templatesAlt: 'Alt+T',
+  templates: 'Alt+T',
   save: 'Mod+S',
   find: 'Mod+F',
   bold: 'Mod+B',
   italic: 'Mod+I',
   link: 'Mod+Shift+K',
-  toggleMode: 'Mod+E',
+  toggleMode: 'Mod+Alt+S',
   splitView: 'Mod+Alt+E',
   richMode: 'Mod+Alt+R',
   toggleSidebar: 'Mod+\\',
   togglePanel: 'Mod+Alt+\\',
   closeTab: 'Alt+W',
-  reopenTab: 'Alt+Shift+T',
-  nextTab: 'Ctrl+Tab',
+  reopenTab: 'Alt+Shift+W',
+  nextTab: 'Alt+.',
+  prevTab: 'Alt+,',
+  nextFile: 'Ctrl+Alt+Down',
+  prevFile: 'Ctrl+Alt+Up',
   back: 'Ctrl+Alt+Left',
   forward: 'Ctrl+Alt+Right',
   focusMode: 'Mod+Shift+.',
-  readingMode: 'Mod+Shift+R',
+  readingMode: 'Alt+R',
   rename: 'F2',
-  dailyNote: 'Mod+Shift+D',
+  dailyNote: 'Alt+Shift+D',
   quickNote: 'Alt+K',
   quickList: 'Alt+Shift+K',
-  aon: 'Mod+J',
+  aon: 'Alt+A',
 } as const;
+
+/**
+ * Earlier keys that still work where the browser lets them through (and always in the installed
+ * apps), so people who learned them aren't stranded. They aren't shown anywhere.
+ */
+export const OLD_SHORTCUTS: Partial<Record<keyof typeof SHORTCUTS, string[]>> = {
+  quickOpen: ['Mod+P'],
+  templates: ['Mod+T'],
+  toggleMode: ['Mod+E'],
+  readingMode: ['Mod+Shift+R'],
+  dailyNote: ['Mod+Shift+D'],
+  reopenTab: ['Alt+Shift+T'],
+  nextTab: ['Ctrl+Tab'],
+  prevTab: ['Ctrl+Shift+Tab'],
+  aon: ['Mod+J'],
+  shortcuts: ['Shift+?'],
+};
 
 export const SHORTCUT_GROUPS: { title: string; items: [string, string][] }[] = [
   {
     title: 'General',
     items: [
       ['Command palette', `${SHORTCUTS.palette} or ${SHORTCUTS.paletteAlt}`],
-      ['Quick open', SHORTCUTS.quickOpen],
+      ['Show all keyboard shortcuts', SHORTCUTS.shortcuts],
+      ['Search files by name (quick open)', SHORTCUTS.quickOpen],
       ['Search everything', SHORTCUTS.search],
       ['New document', SHORTCUTS.newDoc],
       ['New folder', SHORTCUTS.newFolder],
-      ['New from template', `${SHORTCUTS.templates} or ${SHORTCUTS.templatesAlt}`],
+      ['New from template', SHORTCUTS.templates],
       ["Today's daily note", SHORTCUTS.dailyNote],
       ['Quick note', SHORTCUTS.quickNote],
       ['Quick checklist', SHORTCUTS.quickList],
@@ -80,8 +106,9 @@ export const SHORTCUT_GROUPS: { title: string; items: [string, string][] }[] = [
       ['Reading mode', SHORTCUTS.readingMode],
       ['Close tab', SHORTCUTS.closeTab],
       ['Reopen closed tab', SHORTCUTS.reopenTab],
-      ['Next tab', SHORTCUTS.nextTab],
       ['Go back / forward', `${SHORTCUTS.back} / ${SHORTCUTS.forward}`],
+      ['Next / previous tab', `${SHORTCUTS.nextTab} / ${SHORTCUTS.prevTab}`],
+      ['Open the next / previous file in Files', `${SHORTCUTS.nextFile} / ${SHORTCUTS.prevFile}`],
       ['Rename (in the file tree)', SHORTCUTS.rename],
     ],
   },
@@ -117,6 +144,9 @@ export function matches(e: KeyboardEvent, shortcut: string, isMac: boolean): boo
     return code === `key${key}` || code === `digit${key}`;
   if (key === '\\') return code === 'backslash';
   if (key === '.') return code === 'period';
+  if (key === ',') return code === 'comma';
+  if (key === '/' || key === '?') return code === 'slash';
   if (key === 'tab') return e.key === 'Tab';
-  return e.key.toLowerCase() === (key === 'left' || key === 'right' ? `arrow${key}` : key);
+  const arrow = ['left', 'right', 'up', 'down'].includes(key);
+  return e.key.toLowerCase() === (arrow ? `arrow${key}` : key);
 }

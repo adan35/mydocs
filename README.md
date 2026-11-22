@@ -38,7 +38,7 @@ Your documents stay plain Markdown and text. Everything My Doc adds, like tags a
 
 **Finding things**
 
-- Quick open (Ctrl/Cmd + P) with fuzzy matching on names, paths and tags, ranking exact and prefix matches first and documents you open often or recently higher.
+- Quick open (Alt + S) with fuzzy matching on names, paths and tags, ranking exact and prefix matches first and documents you open often or recently higher.
 - Full-text search (Ctrl/Cmd + Shift + F) with typo tolerance, highlighted plain-text snippets, and filters by type, folder, tag and date modified. Opening a result jumps to the first match.
 - Search operators: `"exact phrase"`, `-exclude`, `tag:idea` (or `#idea`), `folder:Projects`, `type:md`, `modified:week`, `created:2026-10`, `modified:>2026-09-01`.
 - Command palette (Ctrl/Cmd + K or Ctrl/Cmd + Shift + P) for every command.
@@ -73,7 +73,7 @@ Your documents stay plain Markdown and text. Everything My Doc adds, like tags a
 - Tabs with pinning, drag reordering, close others / to the right, reopen closed tab, and session restore.
 - A layout for each screen size: a bottom navigation bar on phones, a drawer on tablets, and resizable side panels on desktop.
 - Light, dark and system themes, with a one-click toggle in the sidebar; comfortable or compact density; adjustable font size and reading width.
-- Keyboard shortcuts for everything (open **Keyboard shortcuts** from the command palette for the full list).
+- Keyboard shortcuts for everything, chosen so none clash with the browser's own keys. Press **Ctrl/Cmd + /** to see and search the full list.
 
 ## Where your data lives
 
