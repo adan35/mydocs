@@ -5,6 +5,7 @@ import { useApp } from './app-store';
 import { editorActions, useEditor } from './editor-store';
 import { textFromBytes } from './importer';
 import { useRouter } from './router';
+import { MAX_ASK, inChunks, orTimeout, reacher } from './disk-batch';
 import { toast } from './toast-store';
 
 /**
@@ -135,6 +136,16 @@ function patch(id: EntryId, p: Partial<DiskLink>) {
   if (cur) setLink(id, { ...cur, ...p });
 }
 
+/** Changes many links with one store update: one update per link would be quadratic for thousands. */
+function patchMany(ids: EntryId[], p: Partial<DiskLink>) {
+  if (!ids.length) return;
+  useDiskLinks.setState((s) => {
+    const links = { ...s.links };
+    for (const id of ids) if (links[id]) links[id] = { ...links[id]!, ...p };
+    return { links };
+  });
+}
+
 const stateOf = (id: EntryId) => useDiskLinks.getState().links[id]?.state;
 const modeOf = (id: EntryId) => (binaries.has(id) ? 'read' : 'readwrite');
 
@@ -193,6 +204,27 @@ async function persist(id: EntryId) {
     await (await db()).put(STORE, rec, key(id));
   } catch {
     /* the link still works until reload */
+  }
+}
+
+async function persistMany(ids: EntryId[]) {
+  if (!workspaceId || !ids.length) return;
+  try {
+    const tx = (await db()).transaction(STORE, 'readwrite');
+    await Promise.all([
+      ...ids.map((id) => {
+        const handle = handles.get(id);
+        const rec: Record_ | undefined = handle && {
+          handle,
+          binary: binaries.has(id),
+          stamp: stamps.get(id),
+        };
+        return rec && tx.store.put(rec, key(id));
+      }),
+      tx.done,
+    ]);
+  } catch {
+    /* the links still work until reload */
   }
 }
 
@@ -501,6 +533,42 @@ async function resume(id: EntryId, text?: string): Promise<boolean> {
 /** Permission prompts currently open, so a click can't stack a second one. */
 const asking = new Set<EntryId>();
 
+/**
+ * Asks the browser for permission. Never waits forever: if nobody answers the prompt, the
+ * app carries on, and an "Allow" given later still restores the file.
+ */
+async function askFor(id: EntryId, h: PermissionHandle): Promise<PermissionState> {
+  asking.add(id);
+  const real = permission(h, true, modeOf(id)).finally(() => asking.delete(id));
+  const answer = await orTimeout(real);
+  if (answer) return answer;
+  void real.then((s) => {
+    if (s === 'granted' && stateOf(id) === 'needs-permission') void restoreMany([id]);
+  });
+  return 'prompt';
+}
+
+/**
+ * Takes files whose permission is back out of "needs permission" in one update. Edits that
+ * never reached the file are written (unless the file changed on disk meanwhile); the rest
+ * is read from disk in the background.
+ */
+async function restoreMany(ids: EntryId[]): Promise<void> {
+  patchMany(ids, { state: 'synced', error: undefined });
+  const texts = workspace()?.allTexts();
+  const writes: EntryId[] = [];
+  for (const id of ids) {
+    if (binaries.has(id)) continue;
+    const mine = texts?.get(id);
+    const known = stamps.get(id)?.hash;
+    if (mine !== undefined && known !== undefined && textHash(mine) !== known)
+      pendingText.set(id, mine);
+    if (pendingText.has(id)) writes.push(id);
+  }
+  await inChunks(writes, 8, (id) => schedule(id));
+  void round(true);
+}
+
 export const diskLinks = {
   /** Loads the links of a workspace (called when a workspace opens). */
   async load(wsId: string, liveIds: (id: EntryId) => boolean): Promise<void> {
@@ -529,10 +597,12 @@ export const diskLinks = {
       }
       if (workspaceId !== wsId) return;
       useDiskLinks.setState({ links });
-      for (const [id, h] of handles) {
-        if ((await permission(h, false, modeOf(id))) !== 'granted')
-          patch(id, { state: 'needs-permission' });
-      }
+      const need: EntryId[] = [];
+      await inChunks([...handles], 64, async ([id, h]) => {
+        if ((await permission(h, false, modeOf(id))) !== 'granted') need.push(id);
+      });
+      if (workspaceId !== wsId) return;
+      patchMany(need, { state: 'needs-permission' });
       // Files changed while My Doc was closed show their new contents right away.
       void round(true);
     } catch {
@@ -616,9 +686,8 @@ export const diskLinks = {
     const h = handles.get(id);
     if (!h) return false;
     if (asking.has(id)) return false;
-    asking.add(id);
     // Ask before anything else: awaiting first would let the user gesture expire.
-    const state = await permission(h, true, modeOf(id)).finally(() => asking.delete(id));
+    const state = await askFor(id, h);
     if (state !== 'granted') {
       refused(h.name);
       return false;
@@ -627,31 +696,59 @@ export const diskLinks = {
   },
 
   /**
-   * Restores every file that lost permission. Files the browser already allows again (one
-   * inside a folder that was just allowed) need no prompt; of the rest, only those in `ask`
-   * get one each, stopping at a refusal (returns false then). Must run from a click or key press.
+   * Restores every file the browser allows again, and asks for those in `ask` that it
+   * doesn't: at most a few prompts per click, stopping at a refusal or a prompt nobody
+   * answers (returns false then). A prompt that covers a folder restores the files inside
+   * it without more. For many files use `adoptUnder`. Must run from a click or key press.
    */
   async allowAll(ask: EntryId[] = diskLinks.needingPermission()): Promise<boolean> {
-    const ready: EntryId[] = [];
-    let stop = false;
-    for (const id of diskLinks.needingPermission()) {
-      const h = handles.get(id);
-      if (!h || asking.has(id)) continue;
-      let state = await permission(h, false, modeOf(id));
-      if (state !== 'granted' && !stop && ask.includes(id)) {
-        asking.add(id);
-        state = await permission(h, true, modeOf(id)).finally(() => asking.delete(id));
-        if (state !== 'granted') {
-          stop = true;
-          refused(h.name);
-        }
+    const need = diskLinks.needingPermission().filter((id) => handles.has(id) && !asking.has(id));
+    const ready = new Set<EntryId>();
+    const probe = (ids: EntryId[]) =>
+      inChunks(ids, 32, async (id) => {
+        if ((await permission(handles.get(id)!, false, modeOf(id))) === 'granted') ready.add(id);
+      });
+    await probe(need);
+    let ok = true;
+    const toAsk = ask.filter((id) => need.includes(id) && !ready.has(id)).slice(0, MAX_ASK);
+    for (const id of toAsk) {
+      if (ready.has(id)) continue; // covered by an answer a moment ago
+      const h = handles.get(id)!;
+      if ((await askFor(id, h)) !== 'granted') {
+        ok = false;
+        refused(h.name);
+        break;
       }
-      if (state === 'granted') ready.push(id);
+      ready.add(id);
+      await probe(need.filter((n) => !ready.has(n)));
     }
-    // Prompts first, writes after: a slow write in between could outlast the gesture.
-    for (const id of ready)
-      await resume(id, binaries.has(id) ? undefined : workspace()?.allTexts().get(id));
-    return !stop;
+    await restoreMany([...ready]);
+    return ok;
+  },
+
+  /**
+   * After the person chose a folder and allowed it: every file waiting for permission that
+   * lies inside it gets a handle reached through that folder, which carries its permission.
+   * One prompt for thousands of files. Returns how many were restored.
+   */
+  async adoptUnder(root: FileSystemDirectoryHandle): Promise<number> {
+    const reach = reacher(root);
+    const restored: EntryId[] = [];
+    const swapped: EntryId[] = [];
+    await inChunks(diskLinks.needingPermission(), 32, async (id) => {
+      const h = handles.get(id);
+      if (!h) return;
+      if ((await permission(h, false, modeOf(id))) !== 'granted') {
+        const via = (await reach(h)) as PermissionHandle | null;
+        if (!via || (await permission(via, false, modeOf(id))) !== 'granted') return;
+        handles.set(id, via);
+        swapped.push(id);
+      }
+      restored.push(id);
+    });
+    await persistMany(swapped);
+    await restoreMany(restored);
+    return restored.length;
   },
 
   needingPermission(): EntryId[] {

@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { File, Folder, HardDrive, X } from 'lucide-react';
-import { accessPlan, allowDiskAccess } from '@/app/disk-access';
+import { accessPlan, allowAllDiskAccess } from '@/app/disk-access';
 import { useDiskLinks } from '@/app/disk-links';
 import { useFolderLinks } from '@/app/folder-sync';
 import { Dialog } from './Dialog';
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
-/** After a restart: a banner with the count, and a dialog that says what the browser will ask. */
+/** After a restart: a banner with an "Allow all" button, and a dialog that says what it will ask. */
 export function DiskPermissionBanner() {
   const files = useDiskLinks(
     (s) => Object.values(s.links).filter((l) => l.state === 'needs-permission').length,
@@ -32,8 +32,15 @@ export function DiskPermissionBanner() {
             {folders ? `${count} linked files and folders` : `${count} linked files`} need
             permission to sync with your computer.
           </p>
-          <button type="button" className="btn btn-primary" onClick={() => setOpen(true)}>
-            Review
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => void allowAllDiskAccess()}
+          >
+            Allow all
+          </button>
+          <button type="button" className="btn" onClick={() => setOpen(true)}>
+            Details
           </button>
           <button
             type="button"
@@ -51,18 +58,19 @@ export function DiskPermissionBanner() {
 }
 
 function AccessDialog({ onClose }: { onClose: () => void }) {
-  // Re-read on every change: each granted prompt takes its items off the list.
+  // Re-read on every change: each restored item takes itself off the list.
   useDiskLinks((s) => s.links);
   useFolderLinks((s) => s.links);
-  const { folders, files, prompts } = accessPlan();
-  const [busy, setBusy] = useState(false);
-  const allow = async () => {
-    setBusy(true);
-    try {
-      await allowDiskAccess();
-    } finally {
-      setBusy(false);
-    }
+  const { folders, files, prompts, items } = accessPlan();
+  const listed = [
+    ...folders.map((f) => ({ ...f, folder: true })),
+    ...files.map((f) => ({ ...f, folder: false })),
+  ];
+  const shown = listed.slice(0, 8);
+  const allow = () => {
+    // The browser's own prompt or folder picker takes over; the app stays usable meanwhile.
+    onClose();
+    void allowAllDiskAccess();
   };
   return (
     <Dialog
@@ -71,9 +79,11 @@ function AccessDialog({ onClose }: { onClose: () => void }) {
       onClose={onClose}
       description={
         <>
-          Your browser forgets file access when it closes. It will ask{' '}
-          <strong>{plural(prompts, 'time')}</strong> now: once for each folder (which covers the
-          files inside it) and once for each file outside a folder. Choose Allow each time.
+          Your browser forgets file access when it closes.{' '}
+          <strong>{plural(items, 'linked item')}</strong> need it again.{' '}
+          {prompts > 1
+            ? 'Choose the folder that contains them (for example your projects folder) and allow it once: that one permission covers everything inside.'
+            : 'The browser will ask once.'}
         </>
       }
       footer={
@@ -81,35 +91,31 @@ function AccessDialog({ onClose }: { onClose: () => void }) {
           <button type="button" className="btn" onClick={onClose}>
             Not now
           </button>
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={busy}
-            onClick={() => void allow()}
-          >
-            {busy ? 'Waiting for the browser…' : `Allow ${plural(prompts, 'item')}`}
+          <button type="button" className="btn btn-primary" onClick={allow}>
+            Allow all
           </button>
         </>
       }
     >
       <ul className="max-h-[300px] space-y-1 overflow-auto text-[14px]" data-testid="access-list">
-        {folders.map((f) => (
+        {shown.map((f) => (
           <li key={f.id} className="flex items-center gap-2">
-            <Folder size={14} className="shrink-0 opacity-60" aria-hidden />
+            {f.folder ? (
+              <Folder size={14} className="shrink-0 opacity-60" aria-hidden />
+            ) : (
+              <File size={14} className="shrink-0 opacity-60" aria-hidden />
+            )}
             <span className="min-w-0 truncate">{f.name}</span>
-            <span className="shrink-0 text-ink/50">and the files inside</span>
+            {f.folder && <span className="shrink-0 text-ink/50">and the files inside</span>}
           </li>
         ))}
-        {files.map((f) => (
-          <li key={f.id} className="flex items-center gap-2">
-            <File size={14} className="shrink-0 opacity-60" aria-hidden />
-            <span className="min-w-0 truncate">{f.name}</span>
-          </li>
-        ))}
+        {listed.length > shown.length && (
+          <li className="text-ink/60">and {listed.length - shown.length} more</li>
+        )}
       </ul>
       <p className="mt-3 text-[13px] text-ink/60">
-        If the browser stops asking part-way, press the button again to continue. Your edits are
-        always kept in My Doc, whatever you choose.
+        In Chrome, choose “Allow on every visit” to stop being asked after each restart. Your edits
+        are always kept in My Doc, whatever you choose.
       </p>
     </Dialog>
   );
