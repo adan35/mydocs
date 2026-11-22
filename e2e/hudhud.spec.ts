@@ -18,7 +18,7 @@ test('Hudhud follows what AON is doing in the chat', async ({ page }) => {
   );
   await slowly(page, 700);
   await freshApp(page);
-  await page.keyboard.press(`${mod}+j`);
+  await page.keyboard.press('Alt+a');
   const panel = page.getByTestId('aon-panel');
   await expect(bird(page)).toHaveAttribute('data-state', 'idle');
 

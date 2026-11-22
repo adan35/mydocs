@@ -337,6 +337,7 @@ export function appMenus(): AppMenu[] {
     {
       label: 'Keyboard shortcuts',
       icon: <Keyboard />,
+      shortcut: SHORTCUTS.shortcuts,
       onSelect: () => void dialogs.shortcuts(),
     },
     {

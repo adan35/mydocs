@@ -202,6 +202,18 @@ export function FileTree() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId]);
 
+  // Ctrl+Alt+Up/Down: open the previous/next file among the visible rows, skipping folders.
+  const treeStep = useUi((s) => s.treeStep);
+  const stepDone = useRef(useUi.getState().treeStep?.n ?? 0); // ignore requests from before this tree mounted
+  useEffect(() => {
+    if (!treeStep || treeStep.n === stepDone.current) return;
+    stepDone.current = treeStep.n;
+    const i = rows.findIndex((r) => r.entry.id === activeId);
+    const from = i >= 0 ? i : treeStep.dir > 0 ? -1 : rows.length;
+    for (let j = from + treeStep.dir; j >= 0 && j < rows.length; j += treeStep.dir)
+      if (rows[j]!.entry.kind !== 'folder') return void A.openEntry(rows[j]!.entry.id);
+  }, [treeStep, rows, activeId]);
+
   const start = Math.max(0, Math.floor(viewport.top / rowHeight) - OVERSCAN);
   const end = Math.min(
     rows.length,

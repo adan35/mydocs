@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { matches, SHORTCUTS } from '@/app/shortcuts';
+import { matches, OLD_SHORTCUTS, SHORTCUTS } from '@/app/shortcuts';
 import { useUi } from '@/app/ui-store';
 import { useRouter, navigate, goBack, goForward } from '@/app/router';
 import { editorActions, useEditor } from '@/app/editor-store';
@@ -8,6 +8,7 @@ import { quickNote, useNotesUi } from '@/app/notes';
 import { toggleAon } from '@/app/aon/chat';
 import { isMac } from '../hooks';
 import { reopenClosedTab, sendDocCommand, toggleSidePanel } from '../doc-commands';
+import { dialogs } from '@/app/dialog-store';
 
 function inTextField(target: EventTarget | null) {
   const el = target as HTMLElement | null;
@@ -41,10 +42,17 @@ export function useGlobalShortcuts() {
     const onKey = (e: KeyboardEvent) => {
       // Modal controls own their keys. A save/rename prompt must not create files,
       // change documents or open another overlay behind itself.
-      if (document.querySelector('[role="dialog"], [role="menu"]')) return;
+      const m = (s: string) => matches(e, s, isMac);
+      /** The shortcut, or one of its older keys. */
+      const k = (name: keyof typeof SHORTCUTS) =>
+        m(SHORTCUTS[name]) || !!OLD_SHORTCUTS[name]?.some(m);
+      if (document.querySelector('[role="dialog"], [role="menu"]')) {
+        // Still keep browser-owned keys (print, downloads, address bar) from firing behind a dialog.
+        if (k('quickOpen') || k('aon') || k('palette') || k('shortcuts')) e.preventDefault();
+        return;
+      }
       const ui = useUi.getState();
       const route = useRouter.getState().route;
-      const m = (s: string) => matches(e, s, isMac);
       const onDoc = route.name === 'doc';
       const run = (fn: () => void) => {
         e.preventDefault();
@@ -53,7 +61,9 @@ export function useGlobalShortcuts() {
       };
       if (m(SHORTCUTS.palette) || m(SHORTCUTS.paletteAlt))
         return run(() => ui.setOverlay(ui.overlay === 'palette' ? null : 'palette'));
-      if (m(SHORTCUTS.quickOpen))
+      if (m(SHORTCUTS.shortcuts) || (m('Shift+?') && !inTextField(e.target)))
+        return run(() => void dialogs.shortcuts());
+      if (k('quickOpen'))
         return run(() => ui.setOverlay(ui.overlay === 'quickopen' ? null : 'quickopen'));
       if (m(SHORTCUTS.search)) return run(() => navigate({ name: 'search', q: '' }));
       // Mod+N also works where the browser doesn't reserve it (the installed and desktop apps).
@@ -61,10 +71,9 @@ export function useGlobalShortcuts() {
       if (m('Mod+N') && route.name === 'notes')
         return run(() => useNotesUi.getState().setComposer('note'));
       if (m(SHORTCUTS.newDoc) || m('Mod+N')) return run(() => void A.chooseNewDocument());
-      if (m(SHORTCUTS.templates) || m(SHORTCUTS.templatesAlt))
-        return run(() => void A.newFromTemplate());
+      if (k('templates')) return run(() => void A.newFromTemplate());
       if (m(SHORTCUTS.newFolder)) return run(() => void A.newFolder());
-      if (m(SHORTCUTS.dailyNote)) return run(() => void A.openDailyNote());
+      if (k('dailyNote')) return run(() => void A.openDailyNote());
       if (m(SHORTCUTS.quickNote)) return run(() => quickNote('note'));
       if (m(SHORTCUTS.quickList)) return run(() => quickNote('list'));
       if (m(SHORTCUTS.toggleSidebar))
@@ -74,10 +83,12 @@ export function useGlobalShortcuts() {
             : ui.setSidebar(!ui.sidebarOpen),
         );
       if (m(SHORTCUTS.togglePanel)) return run(toggleSidePanel);
-      if (m(SHORTCUTS.aon)) return run(toggleAon);
+      if (k('aon')) return run(toggleAon);
       if (m(SHORTCUTS.back)) return run(() => void goBack());
       if (m(SHORTCUTS.forward)) return run(goForward);
-      if (m(SHORTCUTS.reopenTab)) return run(() => void reopenClosedTab());
+      if (k('nextFile')) return run(() => ui.requestTreeStep(1));
+      if (k('prevFile')) return run(() => ui.requestTreeStep(-1));
+      if (k('reopenTab')) return run(() => void reopenClosedTab());
       // Editors, inputs and the sheet grid select their own content. Anywhere else the browser would
       // select the whole page (sidebar included): select the focused pane's content instead.
       if (
@@ -99,20 +110,21 @@ export function useGlobalShortcuts() {
       if (m(SHORTCUTS.find) && inSidebar(e.target))
         return run(() => useUi.getState().requestSidebarFind());
       if (onDoc) {
-        if (m(SHORTCUTS.toggleMode)) return run(() => sendDocCommand('toggle-mode'));
+        if (k('toggleMode')) return run(() => sendDocCommand('toggle-mode'));
         if (m(SHORTCUTS.splitView)) return run(() => sendDocCommand('split'));
         if (m(SHORTCUTS.richMode)) return run(() => sendDocCommand('rich'));
         if (m(SHORTCUTS.focusMode)) return run(() => ui.setFocusMode(!ui.focusMode));
-        if (m(SHORTCUTS.readingMode)) return run(() => ui.setReadingMode(!ui.readingMode));
+        if (k('readingMode')) return run(() => ui.setReadingMode(!ui.readingMode));
         if (m(SHORTCUTS.closeTab)) {
           const id = useEditor.getState().activeId;
           if (id) return run(() => void A.closeTab(id));
         }
-        if (m(SHORTCUTS.nextTab) || m('Ctrl+Shift+Tab')) {
+        const step = k('nextTab') ? 1 : k('prevTab') ? -1 : 0;
+        if (step) {
           const { tabs, activeId } = useEditor.getState();
           if (tabs.length > 1 && activeId) {
             const i = tabs.indexOf(activeId);
-            const next = tabs[(i + (e.shiftKey ? -1 : 1) + tabs.length) % tabs.length]!;
+            const next = tabs[(i + step + tabs.length) % tabs.length]!;
             return run(() => void A.openEntry(next));
           }
         }

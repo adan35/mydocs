@@ -27,6 +27,9 @@ interface UiState {
   /** Bumped to open the file search at the top of the Files list. */
   sidebarFind: number;
   requestSidebarFind(): void;
+  /** Asks the Files tree to open the next (1) or previous (-1) visible file. `n` makes repeats distinct. */
+  treeStep: { dir: 1 | -1; n: number } | null;
+  requestTreeStep(dir: 1 | -1): void;
   setSidebar(open: boolean): void;
   setDrawer(open: boolean): void;
   setRightPanel(open: boolean, panel?: RightPanel): void;
@@ -78,6 +81,10 @@ export const useUi = create<UiState>((set) => ({
   sidebarFind: 0,
   requestSidebarFind() {
     set((s) => ({ sidebarFind: s.sidebarFind + 1 }));
+  },
+  treeStep: null,
+  requestTreeStep(dir) {
+    set((s) => ({ treeStep: { dir, n: (s.treeStep?.n ?? 0) + 1 } }));
   },
   setSidebar(open) {
     set({ sidebarOpen: open });

@@ -218,6 +218,17 @@ export function Sidebar({ onClose, drawer }: { onClose?: () => void; drawer?: bo
             <span className="flex-1">Commands</span>
             <kbd className="kbd hidden md:inline-flex">{formatShortcut(SHORTCUTS.palette)}</kbd>
           </button>
+          <button
+            type="button"
+            className="nav-item hidden h-[30px] w-full items-center gap-2 rounded-md px-2 text-left text-[14px] hover:bg-hover md:flex"
+            onClick={() => void dialogs.shortcuts()}
+          >
+            <span className="text-steel" aria-hidden>
+              <Keyboard size={16} />
+            </span>
+            <span className="flex-1">Shortcuts</span>
+            <kbd className="kbd inline-flex">{formatShortcut(SHORTCUTS.shortcuts)}</kbd>
+          </button>
           <NavItem
             icon={<Trash2 size={16} />}
             label="Trash"
